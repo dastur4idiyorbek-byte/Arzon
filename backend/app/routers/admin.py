@@ -1,0 +1,414 @@
+"""Admin endpointlari — Boshqaruv Boti orqali ishlatiladi (phase 8).
+
+Har bir endpoint check_store_access(admin_id, store_id) orqali izolyatsiyani
+tekshiradi (rule 7). Mahfiy kod faqat shu yerda yaratiladi/yangilanadi
+(rule 4). Yangi do'kon faqat super-admin tomonidan qo'shiladi (rule 11).
+"""
+from __future__ import annotations
+
+import secrets
+from datetime import datetime
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from .. import vector_store
+from ..database import get_db
+from ..models import Order, Product, PromoCode, Store
+from ..schemas import OrderOut, ProductCreate, ProductOut, ProductUpdate
+from ..security import (
+    check_store_access,
+    get_admin_store_ids,
+    is_super_admin,
+    require_admin,
+)
+from ..services import orders as order_service
+
+router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+
+def _generate_secret_code() -> str:
+    """Do'kon uchun mahfiy kirish kodi (rule 3, 4)."""
+    return secrets.token_hex(3).upper()  # 6 belgili, masalan 'A1B2C3'
+
+
+# ---------------------------------------------------------------------------
+# Mahsulot boshqaruvi (phase 8.2) — faqat shu admin store_id doirasida (rule 7)
+# ---------------------------------------------------------------------------
+@router.post("/stores/{store_id}/products", response_model=ProductOut)
+def add_product(
+    store_id: int,
+    payload: ProductCreate,
+    admin_id: int = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    check_store_access(admin_id, store_id, db)  # rule 7
+    if payload.korinish not in ("ommaviy", "mahfiy"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="korinish 'ommaviy' yoki 'mahfiy' bo'lishi kerak.",
+        )
+    product = Product(store_id=store_id, **payload.model_dump())
+    db.add(product)
+    db.commit()
+    db.refresh(product)
+    vector_store.index_product(
+        product.id,
+        store_id,
+        product.nomi,
+        product.tavsif,
+        product.rang,
+        product.korinish,
+    )
+    return ProductOut.model_validate(product)
+
+
+@router.patch("/products/{product_id}", response_model=ProductOut)
+def update_product(
+    product_id: int,
+    payload: ProductUpdate,
+    admin_id: int = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    product = db.get(Product, product_id)
+    if product is None:
+        raise HTTPException(status_code=404, detail="Mahsulot topilmadi.")
+    check_store_access(admin_id, product.store_id, db)  # rule 7
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(product, field, value)
+    db.commit()
+    db.refresh(product)
+    vector_store.index_product(
+        product.id,
+        product.store_id,
+        product.nomi,
+        product.tavsif,
+        product.rang,
+        product.korinish,
+    )
+    return ProductOut.model_validate(product)
+
+
+@router.delete("/products/{product_id}")
+def delete_product(
+    product_id: int,
+    admin_id: int = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    product = db.get(Product, product_id)
+    if product is None:
+        raise HTTPException(status_code=404, detail="Mahsulot topilmadi.")
+    check_store_access(admin_id, product.store_id, db)  # rule 7
+    db.delete(product)
+    db.commit()
+    vector_store.remove_product(product_id)
+    return {"ochirildi": True}
+
+
+@router.get("/stores/{store_id}/products", response_model=List[ProductOut])
+def admin_list_products(
+    store_id: int,
+    admin_id: int = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    check_store_access(admin_id, store_id, db)  # rule 7
+    rows = db.scalars(
+        select(Product).where(Product.store_id == store_id)
+    ).all()
+    return [ProductOut.model_validate(p) for p in rows]
+
+
+# ---------------------------------------------------------------------------
+# Buyurtma boshqaruvi (phase 8.3)
+# ---------------------------------------------------------------------------
+@router.get("/stores/{store_id}/orders", response_model=List[OrderOut])
+def admin_orders(
+    store_id: int,
+    admin_id: int = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    check_store_access(admin_id, store_id, db)  # rule 7
+    rows = db.scalars(
+        select(Order)
+        .where(Order.store_id == store_id)
+        .order_by(Order.yaratilgan_vaqt.desc())
+    ).all()
+    return [OrderOut.model_validate(o) for o in rows]
+
+
+class StatusChange(BaseModel):
+    holat: str
+
+
+@router.patch("/orders/{order_id}/status", response_model=OrderOut)
+def change_status(
+    order_id: int,
+    payload: StatusChange,
+    admin_id: int = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    order = db.get(Order, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="Buyurtma topilmadi.")
+    check_store_access(admin_id, order.store_id, db)  # rule 7
+    order = order_service.change_order_status(
+        db, order, payload.holat, admin_id
+    )
+    return OrderOut.model_validate(order)
+
+
+class CodeConfirm(BaseModel):
+    kod: str = Field(min_length=6, max_length=6)
+
+
+@router.post("/orders/confirm-code", response_model=OrderOut)
+def confirm_code(
+    payload: CodeConfirm,
+    admin_id: int = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Buyurtma kodini tasdiqlash (phase 3.3).
+
+    Avval kodga tegishli buyurtma topiladi, keyin do'kon ruxsati tekshiriladi.
+    """
+    order = db.scalar(select(Order).where(Order.kod == payload.kod))
+    if order is None:
+        raise HTTPException(
+            status_code=404, detail="Bunday kodli buyurtma topilmadi."
+        )
+    check_store_access(admin_id, order.store_id, db)  # rule 7
+    order = order_service.confirm_order_code(db, payload.kod, admin_id)
+    return OrderOut.model_validate(order)
+
+
+# ---------------------------------------------------------------------------
+# Promo (phase 8.4)
+# ---------------------------------------------------------------------------
+class PromoCreate(BaseModel):
+    kod: str
+    chegirma_foizi: int = Field(ge=1, le=100)
+    muddat: Optional[datetime] = None
+
+
+@router.post("/stores/{store_id}/promo")
+def create_promo(
+    store_id: int,
+    payload: PromoCreate,
+    admin_id: int = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    check_store_access(admin_id, store_id, db)  # rule 7
+    promo = PromoCode(
+        store_id=store_id,
+        kod=payload.kod,
+        chegirma_foizi=payload.chegirma_foizi,
+        muddat=payload.muddat,
+    )
+    db.add(promo)
+    db.commit()
+    db.refresh(promo)
+    return {"id": promo.id, "kod": promo.kod, "xabar": "Promo yaratildi."}
+
+
+# ---------------------------------------------------------------------------
+# Statistika (phase 8.4) — faqat o'z do'koni bo'yicha (rule 7)
+# ---------------------------------------------------------------------------
+@router.get("/stores/{store_id}/stats")
+def store_stats(
+    store_id: int,
+    admin_id: int = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    check_store_access(admin_id, store_id, db)  # rule 7
+
+    umumiy_buyurtma = db.scalar(
+        select(func.count(Order.id)).where(Order.store_id == store_id)
+    )
+    tasdiqlangan = db.scalar(
+        select(func.count(Order.id)).where(
+            Order.store_id == store_id,
+            Order.tasdiqlangan_vaqt.isnot(None),
+        )
+    )
+    tushum = db.scalar(
+        select(func.coalesce(func.sum(Order.jami_narx), 0)).where(
+            Order.store_id == store_id,
+            Order.tasdiqlangan_vaqt.isnot(None),
+        )
+    )
+    mahsulot_soni = db.scalar(
+        select(func.count(Product.id)).where(Product.store_id == store_id)
+    )
+    return {
+        "store_id": store_id,
+        "umumiy_buyurtma": umumiy_buyurtma or 0,
+        "tasdiqlangan_buyurtma": tasdiqlangan or 0,
+        "umumiy_tushum": float(tushum or 0),
+        "mahsulot_soni": mahsulot_soni or 0,
+    }
+
+
+@router.get("/stores/{store_id}/top-products")
+def top_products(
+    store_id: int,
+    admin_id: int = Depends(require_admin),
+    db: Session = Depends(get_db),
+    limit: int = 10,
+):
+    """Eng ko'p sotilgan tovarlar (phase 8.4).
+
+    mahsulotlar JSONB ichidagi 'soni' bo'yicha jamlanadi (dastur tomonida,
+    baza-agnostik bo'lishi uchun).
+    """
+    check_store_access(admin_id, store_id, db)  # rule 7
+    orders = db.scalars(
+        select(Order).where(
+            Order.store_id == store_id,
+            Order.tasdiqlangan_vaqt.isnot(None),
+        )
+    ).all()
+    tally: dict[str, dict] = {}
+    for o in orders:
+        for item in o.mahsulotlar or []:
+            key = str(item.get("product_id"))
+            entry = tally.setdefault(
+                key, {"nomi": item.get("nomi"), "soni": 0}
+            )
+            entry["soni"] += item.get("soni", 0)
+    top = sorted(tally.values(), key=lambda x: x["soni"], reverse=True)
+    return top[:limit]
+
+
+# ---------------------------------------------------------------------------
+# Mahfiy kod (phase 8.5) — YARATISH/YANGILASH faqat shu yerda (rule 4)
+# ---------------------------------------------------------------------------
+@router.get("/stores/{store_id}/secret-code")
+def get_secret_code(
+    store_id: int,
+    admin_id: int = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Joriy mahfiy kodni ko'rsatish (rule 4).
+
+    Faqat shu do'kon admini ko'ra oladi — boshqa admin ko'ra olmaydi (rule 7).
+    """
+    store = check_store_access(admin_id, store_id, db)
+    return {"store_id": store_id, "mahfiy_kirish_kodi": store.mahfiy_kirish_kodi}
+
+
+@router.post("/stores/{store_id}/secret-code/refresh")
+def refresh_secret_code(
+    store_id: int,
+    admin_id: int = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Mahfiy kodni yangilash (rule 4, 6).
+
+    Yangilangach, eski kod bilan ochgan mijozlar uchun mahfiy mahsulotlar
+    avtomatik qayta yopiladi — chunki katalog har safar ishlatilgan_kod'ni
+    joriy kod bilan solishtiradi (rule 6). Alohida "tozalash" YO'Q.
+    """
+    store = check_store_access(admin_id, store_id, db)
+    store.mahfiy_kirish_kodi = _generate_secret_code()
+    db.commit()
+    return {
+        "store_id": store_id,
+        "mahfiy_kirish_kodi": store.mahfiy_kirish_kodi,
+        "xabar": (
+            "Kod yangilandi. Eski kod bilan ochgan barcha mijozlar uchun "
+            "mahfiy mahsulotlar avtomatik yopildi."
+        ),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Super-admin: yangi do'kon/admin (phase 8.6, rule 11)
+# ---------------------------------------------------------------------------
+class NewStoreRequest(BaseModel):
+    nomi: str
+    admin_telegram_id: int
+    logo: Optional[str] = None
+
+
+@router.post("/stores")
+def create_store(
+    payload: NewStoreRequest,
+    admin_id: int = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Yangi do'kon + birinchi admin (rule 11).
+
+    Faqat super-admin. Bir martalik mahfiy kod generatsiya qilinadi. admin_ids
+    bazada saqlanadi — .env'da EMAS, shuning uchun server qayta ishga
+    tushirilmaydi (rule 11 notogri).
+    """
+    if not is_super_admin(admin_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Faqat super-admin yangi do'kon qo'sha oladi.",
+        )
+    store = Store(
+        nomi=payload.nomi,
+        logo=payload.logo,
+        admin_ids=[payload.admin_telegram_id],
+        mahfiy_kirish_kodi=_generate_secret_code(),
+        holat="faol",
+    )
+    db.add(store)
+    db.commit()
+    db.refresh(store)
+    return {
+        "store_id": store.id,
+        "nomi": store.nomi,
+        "admin_ids": store.admin_ids,
+        "mahfiy_kirish_kodi": store.mahfiy_kirish_kodi,
+        "xabar": "Yangi do'kon yaratildi.",
+    }
+
+
+class AddAdminRequest(BaseModel):
+    admin_telegram_id: int
+
+
+@router.post("/stores/{store_id}/admins")
+def add_admin(
+    store_id: int,
+    payload: AddAdminRequest,
+    admin_id: int = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Mavjud do'konga qo'shimcha admin biriktirish (rule 11).
+
+    Faqat super-admin. admin_ids massiviga qo'shiladi (bazada, real vaqtda).
+    """
+    if not is_super_admin(admin_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Faqat super-admin admin qo'sha oladi.",
+        )
+    store = db.get(Store, store_id)
+    if store is None:
+        raise HTTPException(status_code=404, detail="Do'kon topilmadi.")
+    ids = list(store.admin_ids or [])
+    if payload.admin_telegram_id not in ids:
+        ids.append(payload.admin_telegram_id)
+        store.admin_ids = ids
+        db.commit()
+    return {"store_id": store_id, "admin_ids": store.admin_ids}
+
+
+@router.get("/my-stores")
+def my_stores(
+    admin_id: int = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Admin tegishli bo'lgan do'konlar (Boshqaruv Boti menyusi uchun)."""
+    ids = get_admin_store_ids(admin_id, db)
+    stores = db.scalars(select(Store).where(Store.id.in_(ids or {-1}))).all()
+    return [
+        {"id": s.id, "nomi": s.nomi, "holat": s.holat}
+        for s in stores
+    ]

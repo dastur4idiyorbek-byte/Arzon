@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>ARZON</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <h1>ARZON</h1>
+    <button id="btn-code" class="code-btn" title="Mahfiy kod kiritish">🔑 Kod</button>
+  </header>
+
+  <!-- Bitta umumiy katalog (rule 1) — do'kon tanlash ekrani YO'Q -->
+  <main id="view-katalog" class="view active">
+    <div id="catalog" class="catalog"></div>
+    <p id="catalog-empty" class="empty" hidden>Hozircha mahsulot yo'q.</p>
+  </main>
+
+  <main id="view-savat" class="view">
+    <h2>Savat</h2>
+    <div id="cart-items"></div>
+    <p id="cart-empty" class="empty">Savat bo'sh.</p>
+    <div id="cart-summary" class="cart-summary" hidden>
+      <input id="promo" type="text" placeholder="Promo kod (ixtiyoriy)" />
+      <div class="total">Jami: <span id="cart-total">0</span> so'm</div>
+      <button id="btn-checkout" class="primary">Buyurtma berish</button>
+    </div>
+  </main>
+
+  <main id="view-buyurtmalar" class="view">
+    <h2>Buyurtmalarim</h2>
+    <div id="orders"></div>
+    <p id="orders-empty" class="empty" hidden>Buyurtmalar yo'q.</p>
+  </main>
+
+  <main id="view-chat" class="view">
+    <h2>Yordamchi</h2>
+    <div id="chat-log" class="chat-log"></div>
+    <div class="chat-input">
+      <input id="chat-text" type="text" placeholder="Savolingizni yozing..." />
+      <button id="btn-send" class="primary">➤</button>
+    </div>
+  </main>
+
+  <main id="view-sodiqlik" class="view">
+    <h2>Sodiqlik</h2>
+    <div id="loyalty"></div>
+  </main>
+
+  <nav class="tabbar">
+    <button class="tab active" data-view="katalog">🛍<span>Katalog</span></button>
+    <button class="tab" data-view="savat">🛒<span>Savat</span><b id="cart-badge" hidden>0</b></button>
+    <button class="tab" data-view="buyurtmalar">📦<span>Buyurtma</span></button>
+    <button class="tab" data-view="chat">💬<span>Chat</span></button>
+    <button class="tab" data-view="sodiqlik">🎁<span>Sodiqlik</span></button>
+  </nav>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

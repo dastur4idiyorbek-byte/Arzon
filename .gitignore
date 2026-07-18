@@ -1,0 +1,29 @@
+# Muhit
+.env
+*.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Ma'lumotlar bazasi / vektor store
+*.db
+*.sqlite3
+chroma_data/
+backend/chroma_data/
+
+# Test / cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+*.log
