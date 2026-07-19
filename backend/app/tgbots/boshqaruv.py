@@ -34,7 +34,6 @@ from .client import api
 # ---------------------------------------------------------------------------
 # Bosh menyu tugmalari (spec1 task_1)
 # ---------------------------------------------------------------------------
-BTN_DOKON = "🏪 Do'kon ochish"
 BTN_ADD = "📦 Mahsulot qo'shish"
 BTN_DEL = "🗑 Mahsulotni o'chirish"
 BTN_EDIT = "🔄 Mahsulotni tahrirlash"
@@ -43,14 +42,22 @@ BTN_SECRET = "🔑 Mahfiy kod"
 BTN_STATS = "📊 Statistika"
 BTN_ORDERS = "📋 Buyurtmalar"
 BTN_SEARCH = "🔍 Buyurtma qidirish"
+# Faqat super-admin (do'kon/admin boshqaruvi)
+BTN_NEWSTORE = "🏪 Yangi do'kon"
 BTN_NEWADMIN = "➕ Yangi admin qo'shish"
-BTN_CANCEL = "❌ Bekor qilish"
+BTN_DELSTORE = "🗑 Do'kon o'chirish"
+# Navigatsiya
+BTN_CANCEL = "❌ Bekor qilish"  # eski (fallbackда saqlanadi)
+BTN_HOME = "🏠 Bosh menyu"
+BTN_BACK = "⬅️ Orqaga"
 BTN_DONE = "✅ Tayyor"
 BTN_SKIP = "⏭ O'tkazib yuborish"
 
+# Bosh menyu tugmalari — jarayon ichida bosilса "avval yakunlang" deyiladi.
 MENU_BUTTONS = {
-    BTN_DOKON, BTN_ADD, BTN_DEL, BTN_EDIT, BTN_PROMO,
-    BTN_SECRET, BTN_STATS, BTN_ORDERS, BTN_SEARCH, BTN_NEWADMIN,
+    BTN_ADD, BTN_DEL, BTN_EDIT, BTN_PROMO, BTN_SECRET,
+    BTN_STATS, BTN_ORDERS, BTN_SEARCH,
+    BTN_NEWSTORE, BTN_NEWADMIN, BTN_DELSTORE,
 }
 
 # Conversation holatlari.
@@ -72,24 +79,39 @@ def _is_super(uid: int) -> bool:
 
 
 def menu_markup(uid: int) -> ReplyKeyboardMarkup:
-    """Bosh menyu — doimiy tugmalar qatori (spec1 rule 1)."""
+    """Bosh menyu — doimiy tugmalar qatori (spec1 rule 1).
+
+    Do'kon/admin boshqaruvi (yangi do'kon, yangi admin, do'kon o'chirish)
+    faqat super-adminга ko'rinadi. Oddiy admin do'kon ocholmaydi.
+    """
     rows = [
-        [KeyboardButton(BTN_DOKON), KeyboardButton(BTN_ADD)],
-        [KeyboardButton(BTN_DEL), KeyboardButton(BTN_EDIT)],
-        [KeyboardButton(BTN_PROMO), KeyboardButton(BTN_SECRET)],
-        [KeyboardButton(BTN_STATS), KeyboardButton(BTN_ORDERS)],
-        [KeyboardButton(BTN_SEARCH)],
+        [KeyboardButton(BTN_ADD), KeyboardButton(BTN_EDIT)],
+        [KeyboardButton(BTN_DEL), KeyboardButton(BTN_SECRET)],
+        [KeyboardButton(BTN_PROMO), KeyboardButton(BTN_STATS)],
+        [KeyboardButton(BTN_ORDERS), KeyboardButton(BTN_SEARCH)],
     ]
     if _is_super(uid):
-        rows.append([KeyboardButton(BTN_NEWADMIN)])
+        rows.append(
+            [KeyboardButton(BTN_NEWSTORE), KeyboardButton(BTN_NEWADMIN)]
+        )
+        rows.append([KeyboardButton(BTN_DELSTORE)])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
 
-def cancel_markup(*extra_rows: list[str]) -> ReplyKeyboardMarkup:
-    """Jarayon ichidagi klaviatura: qo'shimcha tugmalar + Bekor qilish."""
+def nav_markup(*extra_rows: list[str], back: bool = False) -> ReplyKeyboardMarkup:
+    """Jarayon klaviaturasi: qo'shimcha tugmalar + [⬅️ Orqaga] [🏠 Bosh menyu]."""
     rows = [[KeyboardButton(b) for b in row] for row in extra_rows]
-    rows.append([KeyboardButton(BTN_CANCEL)])
+    bottom = []
+    if back:
+        bottom.append(KeyboardButton(BTN_BACK))
+    bottom.append(KeyboardButton(BTN_HOME))
+    rows.append(bottom)
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
+
+
+# Eski nomni saqlaymiz (qisqa flowlar cancel_markup ishlatadi) — endi 🏠 beradi.
+def cancel_markup(*extra_rows: list[str]) -> ReplyKeyboardMarkup:
+    return nav_markup(*extra_rows, back=False)
 
 
 def _menu_notice(text: str) -> str:
@@ -118,8 +140,9 @@ async def _resolve_store(update: Update, context: ContextTypes.DEFAULT_TYPE):
     stores = await api.my_stores(admin_id)
     if not stores:
         await update.effective_message.reply_text(
-            "⛔️ Sizда hali do'kon yo'q.\n"
-            f"'{BTN_DOKON}' tugmasi orqali do'kon oching.",
+            "⛔️ Sizga hali do'kon biriktirilmagan.\n"
+            "Do'kon faqat super-admin tomonidan ochiladi/biriktiriladi — "
+            "super-admin bilan bog'laning.",
             reply_markup=menu_markup(admin_id),
         )
         return None
@@ -138,11 +161,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             lines.append(f"• {s['nomi']} (ID: {s['id']}, holat: {s['holat']})")
         lines.append("\nQuyidagi tugmalardан foydalaning 👇")
         text = "\n".join(lines)
+    elif _is_super(uid):
+        text = (
+            "Assalomu alaykum, super-admin! 👋\n\n"
+            f"'{BTN_NEWSTORE}' tugmasi bilan do'kon oching va admin tayinlang."
+        )
     else:
         text = (
             "Assalomu alaykum! 👋\n\n"
-            f"Sizда hali do'kon yo'q. '{BTN_DOKON}' tugmasini bosib, "
-            "o'z do'koningizni oching."
+            "Sizga hali do'kon biriktirilmagan. Do'kon super-admin tomonidan "
+            "ochiladi — super-admin bilan bog'laning."
         )
     await update.message.reply_text(text, reply_markup=menu_markup(uid))
 
@@ -162,40 +190,108 @@ async def add_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
     context.user_data.clear()
     context.user_data["p"] = {"store_id": store_id, "rasmlar": []}
-    await update.message.reply_text(
-        "1/8 — Mahsulot nomini kiriting:", reply_markup=cancel_markup()
+    return await _ask_nomi(update)
+
+
+# --- Har qadam uchun "so'rash" funksiyalari (orqaga navigatsiya uchun) ---
+async def _ask_nomi(update: Update):
+    await update.effective_message.reply_text(
+        "1/8 — Mahsulot nomini kiriting:", reply_markup=nav_markup(back=False)
     )
     return P_NOMI
 
 
+async def _ask_rasm(update: Update):
+    await update.effective_message.reply_text(
+        "2/8 — Mahsulot rasmlarini yuboring (maksimal 10 ta).\n"
+        f"Tugatgach '{BTN_DONE}' bosing, rasm bo'lmasa '{BTN_SKIP}' bosing.",
+        reply_markup=nav_markup([BTN_DONE], [BTN_SKIP], back=True),
+    )
+    return P_RASM
+
+
+async def _ask_narx(update: Update):
+    await update.effective_message.reply_text(
+        "3/8 — Narxini kiriting (som), masalan: 3200",
+        reply_markup=nav_markup(back=True),
+    )
+    return P_NARX
+
+
+async def _ask_skidka(update: Update):
+    await update.effective_message.reply_text(
+        "4/8 — Chegirma bormi? Foizni kiriting (masalan 20), "
+        "yo'q bo'lsa 0 yozing:",
+        reply_markup=nav_markup(back=True),
+    )
+    return P_SKIDKA
+
+
+async def _ask_muddat(update: Update):
+    await update.effective_message.reply_text(
+        "Chegirma qachongacha amal qiladi? Sana kiriting "
+        "(masalan 31.07.2026), muddatsiz bo'lsa 'yo'q' deb yozing:",
+        reply_markup=nav_markup(back=True),
+    )
+    return P_MUDDAT
+
+
+async def _ask_miqdor(update: Update):
+    await update.effective_message.reply_text(
+        "5/8 — Omborда nechta bor? Sonini kiriting (dona), "
+        "cheksiz bo'lsa 'yo'q' deb yozing:",
+        reply_markup=nav_markup(back=True),
+    )
+    return P_MIQDOR
+
+
+async def _ask_tavsif(update: Update):
+    await update.effective_message.reply_text(
+        "6/8 — Tavsif (opisaniya) yozing: o'lcham, rang, material va h.k. "
+        f"Bo'lmasa '{BTN_SKIP}' bosing.",
+        reply_markup=nav_markup([BTN_SKIP], back=True),
+    )
+    return P_TAVSIF
+
+
+async def _ask_korinish(update: Update):
+    kb = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("🌐 Ommaviy", callback_data="pkor_ommaviy"),
+                InlineKeyboardButton("🔒 Mahfiy", callback_data="pkor_mahfiy"),
+            ],
+            [InlineKeyboardButton("⬅️ Orqaga", callback_data="pkor_back")],
+        ]
+    )
+    await update.effective_message.reply_text(
+        "7/8 — Ko'rinishini tanlang:\n"
+        "🌐 Ommaviy — hamma ko'radi.\n"
+        "🔒 Mahfiy — faqat do'kon mahfiy kodi bilan ochiladi.",
+        reply_markup=kb,
+    )
+    return P_KORINISH
+
+
+# --- Qadam ishlovchilari ---
 async def p_nomi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if _is_menu_press(update.message.text):
         await _warn_finish_first(update)
         return P_NOMI
     context.user_data["p"]["nomi"] = update.message.text.strip()
-    await update.message.reply_text(
-        "2/8 — Mahsulot rasmlarini yuboring (maksimal 10 ta).\n"
-        f"Tugatganingizда '{BTN_DONE}' bosing, rasm bo'lmasa "
-        f"'{BTN_SKIP}' bosing.",
-        reply_markup=cancel_markup([BTN_DONE], [BTN_SKIP]),
-    )
-    return P_RASM
+    return await _ask_rasm(update)
 
 
 async def p_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rasmlar = context.user_data["p"]["rasmlar"]
     if len(rasmlar) >= 10:
         await update.message.reply_text(
-            "Maksimal 10 ta rasm. Ortiqcha rasm qabul qilinmadi — "
-            f"'{BTN_DONE}' bosing."
+            f"Maksimal 10 ta rasm. Ortiqcha qabul qilinmadi — '{BTN_DONE}' bosing."
         )
         return P_RASM
-    # Eng katta o'lchamdagi variant file_id'sini olamiz.
     rasmlar.append(update.message.photo[-1].file_id)
     if len(rasmlar) == 10:
-        await update.message.reply_text(
-            "10/10 rasm qabul qilindi (maksimal). Keyingi qadamга o'tamiz."
-        )
+        await update.message.reply_text("10/10 rasm qabul qilindi (maksimal).")
         return await _ask_narx(update)
     await update.message.reply_text(
         f"{len(rasmlar)}/10 rasm qabul qilindi. Yana yuboring yoki "
@@ -204,12 +300,8 @@ async def p_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return P_RASM
 
 
-async def _ask_narx(update: Update):
-    await update.message.reply_text(
-        "3/8 — Narxini kiriting (som), masalan: 3200",
-        reply_markup=cancel_markup(),
-    )
-    return P_NARX
+async def p_back_to_nomi(update, context):
+    return await _ask_nomi(update)
 
 
 async def p_rasm_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -227,9 +319,7 @@ async def p_rasm_skip(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def p_stray_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Rasm bosqichi tugagach kelgan ortiqcha rasm (media-group qoldiq)."""
     await update.message.reply_text("Maksimal 10 ta rasm qabul qilindi.")
-    # Holatni o'zgartirmaymiz — joriy qadam davom etadi.
     return None
 
 
@@ -246,12 +336,11 @@ async def p_narx(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return P_NARX
     context.user_data["p"]["narxi"] = narx
-    await update.message.reply_text(
-        "4/8 — Chegirma bormi? Foizni kiriting (masalan 20), "
-        "yo'q bo'lsa 0 yozing:",
-        reply_markup=cancel_markup(),
-    )
-    return P_SKIDKA
+    return await _ask_skidka(update)
+
+
+async def p_back_to_rasm(update, context):
+    return await _ask_rasm(update)
 
 
 async def p_skidka(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -272,13 +361,16 @@ async def p_skidka(update: Update, context: ContextTypes.DEFAULT_TYPE):
         p["yakuniy_narx"] = yakuniy
         await update.message.reply_text(
             f"Asosiy narx: {narx:,.0f} som, Skidka: {foiz}% → "
-            f"Yakuniy narx: {yakuniy:,.0f} som\n\n"
-            "Chegirma qachongacha amal qiladi? Sana kiriting "
-            "(masalan 31.07.2026), muddatsiz bo'lsa 'yo'q' deb yozing:",
+            f"Yakuniy narx: {yakuniy:,.0f} som"
         )
-        return P_MUDDAT
+        return await _ask_muddat(update)
     p["skidka_muddati"] = None
+    p["yakuniy_narx"] = None
     return await _ask_miqdor(update)
+
+
+async def p_back_to_narx(update, context):
+    return await _ask_narx(update)
 
 
 async def p_muddat(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -295,8 +387,7 @@ async def p_muddat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ).astimezone(timezone.utc)
         if muddat < datetime.now(timezone.utc):
             await update.message.reply_text(
-                "Bu sana o'tib ketgan. Kelajakdagi sanani kiriting "
-                "(masalan 31.07.2026) yoki 'yo'q' yozing:"
+                "Bu sana o'tib ketgan. Kelajakdagi sanani kiriting yoki 'yo'q':"
             )
             return P_MUDDAT
         p["skidka_muddati"] = muddat.isoformat()
@@ -308,13 +399,8 @@ async def p_muddat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await _ask_miqdor(update)
 
 
-async def _ask_miqdor(update: Update):
-    await update.message.reply_text(
-        "5/8 — Omborда nechta bor? Sonini kiriting (dona), "
-        "cheksiz bo'lsa 'yo'q' deb yozing:",
-        reply_markup=cancel_markup(),
-    )
-    return P_MIQDOR
+async def p_back_to_skidka(update, context):
+    return await _ask_skidka(update)
 
 
 async def p_miqdor(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -331,12 +417,15 @@ async def p_miqdor(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Raqam kiriting (dona) yoki cheksiz bo'lsa 'yo'q' yozing:"
             )
             return P_MIQDOR
-    await update.message.reply_text(
-        "6/8 — Tavsif (opisaniya) yozing: o'lcham, rang, material va h.k. "
-        f"Bo'lmasa '{BTN_SKIP}' bosing.",
-        reply_markup=cancel_markup([BTN_SKIP]),
-    )
-    return P_TAVSIF
+    return await _ask_tavsif(update)
+
+
+async def p_back_from_miqdor(update, context):
+    """Miqdordan orqaga: chegirma bo'lsa muddatга, aks holda skidkaга."""
+    p = context.user_data["p"]
+    if p.get("skidka_foizi", 0) > 0:
+        return await _ask_muddat(update)
+    return await _ask_skidka(update)
 
 
 async def p_tavsif(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -352,22 +441,16 @@ async def p_tavsif_skip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await _ask_korinish(update)
 
 
-async def _ask_korinish(update: Update):
-    kb = InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton("🌐 Ommaviy", callback_data="pkor_ommaviy"),
-                InlineKeyboardButton("🔒 Mahfiy", callback_data="pkor_mahfiy"),
-            ]
-        ]
-    )
-    await update.message.reply_text(
-        "7/8 — Ko'rinishini tanlang:\n"
-        "🌐 Ommaviy — hamma ko'radi.\n"
-        "🔒 Mahfiy — faqat do'kon mahfiy kodi bilan ochiladi.",
-        reply_markup=kb,
-    )
-    return P_KORINISH
+async def p_back_to_miqdor(update, context):
+    return await _ask_miqdor(update)
+
+
+async def p_korinish_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Ko'rinishдан orqaga → tavsif (inline'дан reply klaviaturaга qaytamiz)."""
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_reply_markup(reply_markup=None)
+    return await _ask_tavsif(update)
 
 
 async def p_korinish(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -405,7 +488,8 @@ async def p_korinish(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [
                 InlineKeyboardButton("✅ Saqlash", callback_data="psave_ok"),
                 InlineKeyboardButton("❌ Bekor qilish", callback_data="psave_no"),
-            ]
+            ],
+            [InlineKeyboardButton("⬅️ Orqaga", callback_data="psave_back")],
         ]
     )
     await query.edit_message_text(xulosa, reply_markup=kb)
@@ -415,6 +499,9 @@ async def p_korinish(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def p_saqlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    if query.data == "psave_back":
+        await query.edit_message_reply_markup(reply_markup=None)
+        return await _ask_korinish(update)
     if query.data == "psave_no":
         context.user_data.clear()
         await query.edit_message_text("Bekor qilindi.")
@@ -1146,9 +1233,11 @@ async def promo_foiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Super-admin: boshqa odamга do'kon ochish (legacy /yangi_dokon)
 # ---------------------------------------------------------------------------
 async def yangi_dokon(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not _is_super(update.effective_user.id):
+        await _back_to_menu(update, "⛔️ Do'kon ochish faqat super-admin uchun.")
+        return ConversationHandler.END
     await update.message.reply_text(
-        "🏪 (Super-admin) Boshqa egaga do'kon yaratish.\n"
-        "Do'kon nomini kiriting (/bekor — bekor qilish):",
+        "🏪 Yangi do'kon yaratish.\nDo'kon nomini kiriting:",
         reply_markup=cancel_markup(),
     )
     return S_NOMI
@@ -1199,6 +1288,9 @@ async def s_admin_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- Super-admin: do'konni o'chirish (mavjud oqim) ---
 async def dokon_ochirish(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not _is_super(update.effective_user.id):
+        await _back_to_menu(update, "⛔️ Do'kon o'chirish faqat super-admin uchun.")
+        return
     stores = await api.my_stores(update.effective_user.id)
     if not stores:
         await update.message.reply_text("Do'konlar yo'q.")
@@ -1272,6 +1364,7 @@ def _conv(entry_points, states, name: str) -> ConversationHandler:
         entry_points=entry_points,
         states=states,
         fallbacks=[
+            MessageHandler(filters.Regex(f"^{BTN_HOME}$"), bekor),
             MessageHandler(filters.Regex(f"^{BTN_CANCEL}$"), bekor),
             CommandHandler("bekor", bekor),
         ],
@@ -1294,22 +1387,37 @@ def build_application(token: str) -> Application:
         {
             P_NOMI: [MessageHandler(TXT, p_nomi)],
             P_RASM: [
+                MessageHandler(filters.Regex(f"^{BTN_BACK}$"), p_back_to_nomi),
                 MessageHandler(filters.PHOTO, p_rasm),
                 MessageHandler(filters.Regex(f"^{BTN_DONE}$"), p_rasm_done),
                 MessageHandler(filters.Regex(f"^{BTN_SKIP}$"), p_rasm_skip),
             ],
             P_NARX: [
+                MessageHandler(filters.Regex(f"^{BTN_BACK}$"), p_back_to_rasm),
                 MessageHandler(filters.PHOTO, p_stray_photo),
                 MessageHandler(TXT, p_narx),
             ],
-            P_SKIDKA: [MessageHandler(TXT, p_skidka)],
-            P_MUDDAT: [MessageHandler(TXT, p_muddat)],
-            P_MIQDOR: [MessageHandler(TXT, p_miqdor)],
+            P_SKIDKA: [
+                MessageHandler(filters.Regex(f"^{BTN_BACK}$"), p_back_to_narx),
+                MessageHandler(TXT, p_skidka),
+            ],
+            P_MUDDAT: [
+                MessageHandler(filters.Regex(f"^{BTN_BACK}$"), p_back_to_skidka),
+                MessageHandler(TXT, p_muddat),
+            ],
+            P_MIQDOR: [
+                MessageHandler(filters.Regex(f"^{BTN_BACK}$"), p_back_from_miqdor),
+                MessageHandler(TXT, p_miqdor),
+            ],
             P_TAVSIF: [
+                MessageHandler(filters.Regex(f"^{BTN_BACK}$"), p_back_to_miqdor),
                 MessageHandler(filters.Regex(f"^{BTN_SKIP}$"), p_tavsif_skip),
                 MessageHandler(TXT, p_tavsif),
             ],
-            P_KORINISH: [CallbackQueryHandler(p_korinish, pattern="^pkor_")],
+            P_KORINISH: [
+                CallbackQueryHandler(p_korinish_back, pattern="^pkor_back$"),
+                CallbackQueryHandler(p_korinish, pattern="^pkor_"),
+            ],
             P_TASDIQ: [CallbackQueryHandler(p_saqlash, pattern="^psave_")],
         },
         "add_product",
@@ -1362,13 +1470,6 @@ def build_application(token: str) -> Application:
         "search",
     )
 
-    # 🏪 Do'kon ochish (o'ziga)
-    dokon_conv = _conv(
-        [MessageHandler(filters.Regex(f"^{BTN_DOKON}$"), dokon_start)],
-        {DO_NOMI: [MessageHandler(TXT, dokon_nomi)]},
-        "self_store",
-    )
-
     # ➕ Yangi admin (super)
     newadmin_conv = _conv(
         [MessageHandler(filters.Regex(f"^{BTN_NEWADMIN}$"), newadmin_start)],
@@ -1381,9 +1482,12 @@ def build_application(token: str) -> Application:
         "new_admin",
     )
 
-    # Super: boshqa egaga do'kon (legacy buyruq)
+    # 🏪 Yangi do'kon (faqat super) — nom + admin ID so'raydi
     store_conv = _conv(
-        [CommandHandler("yangi_dokon", yangi_dokon)],
+        [
+            MessageHandler(filters.Regex(f"^{BTN_NEWSTORE}$"), yangi_dokon),
+            CommandHandler("yangi_dokon", yangi_dokon),
+        ],
         {
             S_NOMI: [MessageHandler(TXT, s_nomi)],
             S_ADMIN_ID: [MessageHandler(TXT, s_admin_id)],
@@ -1399,11 +1503,12 @@ def build_application(token: str) -> Application:
     )
 
     app.add_handler(CommandHandler("start", start))
+    # 🏠 Bosh menyu — jarayondan tashqarida bosilса menyuni ko'rsatadi
+    app.add_handler(MessageHandler(filters.Regex(f"^{BTN_HOME}$"), start))
     app.add_handler(add_conv)
     app.add_handler(edit_conv)
     app.add_handler(promo_conv)
     app.add_handler(search_conv)
-    app.add_handler(dokon_conv)
     app.add_handler(newadmin_conv)
     app.add_handler(store_conv)
     app.add_handler(reject_conv)
@@ -1424,6 +1529,10 @@ def build_application(token: str) -> Application:
     app.add_handler(CommandHandler("mahsulotlar", mahsulotlar))
     app.add_handler(CommandHandler("tasdiqlash", tasdiqlash))
     app.add_handler(CommandHandler("top_tovarlar", top_tovarlar))
+    # 🗑 Do'kon o'chirish (faqat super-admin)
+    app.add_handler(
+        MessageHandler(filters.Regex(f"^{BTN_DELSTORE}$"), dokon_ochirish)
+    )
     app.add_handler(CommandHandler("dokon_ochirish", dokon_ochirish))
 
     # Inline callbacklar
