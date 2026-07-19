@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     DateTime,
     ForeignKey,
@@ -88,8 +89,9 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    # BigInteger — Telegram ID'lar 2.1 mlrd (INT4) dан oshishi mumkin (Postgres).
     telegram_id: Mapped[int] = mapped_column(
-        Integer, unique=True, index=True
+        BigInteger, unique=True, index=True
     )
     ism: Mapped[str | None] = mapped_column(String(255), nullable=True)
     tel: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -128,7 +130,10 @@ class Order(Base):
         DateTime(timezone=True), nullable=True
     )
     # Kod'ni kim tasdiqlagani (admin telegram_id) — audit uchun (phase 3.3).
-    tasdiqlagan_kim: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # BigInteger — Telegram ID'lar katta bo'lishi mumkin.
+    tasdiqlagan_kim: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True
+    )
 
 
 class LoyaltyCard(Base):
