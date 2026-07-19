@@ -22,6 +22,17 @@ from .routers import admin, bot, chat, instagram, loyalty, orders, products
 async def lifespan(app: FastAPI):
     # Ishga tushishда jadvallarni yaratamiz (agar mavjud bo'lmasa).
     init_db()
+    # SEED_DEMO=1 bo'lса va do'konlar bo'sh bo'lса — demo mahsulotlar qo'shamiz
+    # (cloud'da SQLite qayta ishga tushganда tozalangani uchun foydali).
+    if os.getenv("SEED_DEMO", "").strip().lower() in ("1", "true", "yes"):
+        from .database import SessionLocal
+        from .seed_data import seed_if_empty
+
+        db = SessionLocal()
+        try:
+            seed_if_empty(db)
+        finally:
+            db.close()
     yield
 
 

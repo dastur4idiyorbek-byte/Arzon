@@ -1,0 +1,10 @@
+# Cloud (Render) uchun backend bog'liqliklari — yengil to'plam.
+# Faqat backend web-xizmati uchun kerak bo'lganlari (chromadb/anthropic emas —
+# ular ixtiyoriy va og'ir; kerak bo'lса keyin qo'shiladi).
+fastapi==0.139.2
+uvicorn==0.51.0
+SQLAlchemy==2.0.51
+pydantic==2.13.4
+pydantic-settings==2.14.2
+python-dotenv==1.2.2
+httpx==0.28.1

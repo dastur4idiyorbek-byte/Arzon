@@ -1,0 +1,28 @@
+# Render.com uchun sozlama (Blueprint).
+# Bu backend web-xizmatini yaratadi: u ham API (/api/...), ham Mini App (/app)
+# ni xizmat qiladi. Maxfiy qiymatlar (tokenlar) Render saytida qo'lда kiritiladi.
+services:
+  - type: web
+    name: arzon-backend
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port $PORT
+    envVars:
+      # Demo mahsulotlarni avtomatik qo'shish (bo'sh baza uchun).
+      - key: SEED_DEMO
+        value: "1"
+      - key: CORS_ORIGINS
+        value: "*"
+      - key: DATABASE_URL
+        value: "sqlite:///./arzon.db"
+      # Quyidagilarni Render saytida qo'lда kiritasiz (Environment bo'limi):
+      #   MINIAPP_BOT_TOKEN   = Savdo bot tokeni (initData tekshiruvi uchun)
+      #   INTERNAL_API_TOKEN  = botlar bilan bir xil maxfiy token
+      #   SUPER_ADMIN_IDS     = sizning Telegram ID
+      - key: MINIAPP_BOT_TOKEN
+        sync: false
+      - key: INTERNAL_API_TOKEN
+        sync: false
+      - key: SUPER_ADMIN_IDS
+        sync: false
