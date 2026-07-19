@@ -80,6 +80,10 @@ class Product(Base):
     rasm_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     # Bir nechta rasm (max 10) — /media/<file_id> ko'rinishidagi URL'lar ro'yxati.
     rasm_urls: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Rasm nisbati (Mini App'да ko'rsatish uchun): '1:1','4:3','3:4','9:16','16:9'.
+    rasm_nisbati: Mapped[str | None] = mapped_column(
+        String(8), nullable=True, default="1:1"
+    )
     tavsif: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Chegirma: foiz (0 = yo'q), yakuniy narx (hisoblangan), muddat (ixtiyoriy).
     skidka_foizi: Mapped[int | None] = mapped_column(

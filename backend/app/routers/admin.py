@@ -38,6 +38,17 @@ def _generate_secret_code() -> str:
 # ---------------------------------------------------------------------------
 # Mahsulot boshqaruvi (phase 8.2) — faqat shu admin store_id doirasida (rule 7)
 # ---------------------------------------------------------------------------
+ALLOWED_RATIOS = {"1:1", "4:3", "3:4", "9:16", "16:9"}
+
+
+def _check_ratio(nisbat: str | None) -> None:
+    if nisbat is not None and nisbat not in ALLOWED_RATIOS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"rasm_nisbati quyidagilardan biri bo'lsin: {ALLOWED_RATIOS}",
+        )
+
+
 def _hisobla_yakuniy(narxi: float, skidka_foizi: int | None) -> float | None:
     """Chegirmali yakuniy narx: narx - (narx * foiz / 100)."""
     sk = skidka_foizi or 0
@@ -68,6 +79,7 @@ def add_product(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Maksimal 10 ta rasm.",
         )
+    _check_ratio(payload.rasm_nisbati)
     data = payload.model_dump()
     data["yakuniy_narx"] = _hisobla_yakuniy(
         payload.narxi, payload.skidka_foizi
@@ -103,6 +115,8 @@ def update_product(
     updates = payload.model_dump(exclude_unset=True)
     if updates.get("rasm_urls") and len(updates["rasm_urls"]) > 10:
         raise HTTPException(status_code=400, detail="Maksimal 10 ta rasm.")
+    if "rasm_nisbati" in updates:
+        _check_ratio(updates["rasm_nisbati"])
     for field, value in updates.items():
         setattr(product, field, value)
     if updates.get("rasm_urls"):

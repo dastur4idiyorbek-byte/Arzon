@@ -108,6 +108,7 @@ def get_catalog(db: Session, user: User) -> List[dict]:
                     "rasm_url": p.rasm_url
                     or ((p.rasm_urls or [None])[0]),
                     "rasm_urls": p.rasm_urls or [],
+                    "rasm_nisbati": p.rasm_nisbati or "1:1",
                     "tavsif": p.tavsif,
                     "korinish": p.korinish,
                     "tugadi": tugadi(p),

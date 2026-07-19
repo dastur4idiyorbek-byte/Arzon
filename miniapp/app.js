@@ -49,8 +49,9 @@ async function loadCatalog() {
     const card = document.createElement("div");
     card.className = "card";
     const imgSrc = p.rasm_url || (p.rasm_urls && p.rasm_urls[0]);
+    const ratio = (p.rasm_nisbati || "1:1").replace(":", " / ");
     const img = imgSrc
-      ? `<img src="${imgSrc}" alt="">`
+      ? `<img style="aspect-ratio:${ratio}" src="${imgSrc}" alt="">`
       : `<div class="no-img">🛍️</div>`;
     let badges = "";
     if (p.korinish === "mahfiy") badges += `<span class="card-badge">🔒 maxfiy</span>`;

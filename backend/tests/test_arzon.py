@@ -587,3 +587,38 @@ def test_spec_daily_report_and_discount_expiry():
         assert "Kunlik hisobot" in text and "Tushum" in text
     finally:
         db.close()
+
+
+def test_spec_image_aspect_ratio():
+    """Rasm nisbati saqlanadi, katalogда qaytadi, noto'g'ri nisbat rad etiladi."""
+    store_a, _ = setup_two_stores()
+    # To'g'ri nisbat bilan.
+    p = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/products",
+        headers=admin_headers(ADMIN_A),
+        json={"nomi": "Nisbatli", "narxi": 100, "korinish": "ommaviy",
+              "rasm_nisbati": "16:9", "rasm_urls": ["/media/abc"]},
+    )
+    assert p.status_code == 200, p.text
+    assert p.json()["rasm_nisbati"] == "16:9"
+
+    cat = client.get("/api/products", headers=customer_headers(8811)).json()
+    item = next(x for x in cat if x["nomi"] == "Nisbatli")
+    assert item["rasm_nisbati"] == "16:9"
+
+    # Noto'g'ri nisbat -> 400.
+    bad = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/products",
+        headers=admin_headers(ADMIN_A),
+        json={"nomi": "Yomon", "narxi": 100, "korinish": "ommaviy",
+              "rasm_nisbati": "5:2"},
+    )
+    assert bad.status_code == 400, bad.text
+
+    # Nisbatsiz -> standart 1:1.
+    p2 = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/products",
+        headers=admin_headers(ADMIN_A),
+        json={"nomi": "Standart", "narxi": 100, "korinish": "ommaviy"},
+    ).json()
+    assert p2["rasm_nisbati"] == "1:1"

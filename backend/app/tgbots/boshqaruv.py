@@ -62,7 +62,7 @@ MENU_BUTTONS = {
 
 # Conversation holatlari.
 (
-    P_NOMI, P_RASM, P_NARX, P_SKIDKA, P_MUDDAT, P_MIQDOR, P_TAVSIF,
+    P_NOMI, P_RASM, P_NISBAT, P_NARX, P_SKIDKA, P_MUDDAT, P_MIQDOR, P_TAVSIF,
     P_KORINISH, P_TASDIQ,
     E_FIELD, E_VALUE, E_MUDDAT,
     PR_KOD, PR_FOIZ,
@@ -71,7 +71,10 @@ MENU_BUTTONS = {
     NA_ID,
     S_NOMI, S_ADMIN_ID,
     RAD_SABAB,
-) = range(20)
+) = range(21)
+
+# Ruxsat etilgan rasm nisbatlari.
+RATIOS = ["1:1", "4:3", "3:4", "9:16", "16:9"]
 
 
 def _is_super(uid: int) -> bool:
@@ -210,6 +213,31 @@ async def _ask_rasm(update: Update):
     return P_RASM
 
 
+async def _ask_nisbat(update: Update):
+    rows = [
+        [
+            InlineKeyboardButton("⬜️ 1:1", callback_data="nis_1:1"),
+            InlineKeyboardButton("🖼 4:3", callback_data="nis_4:3"),
+            InlineKeyboardButton("📱 3:4", callback_data="nis_3:4"),
+        ],
+        [
+            InlineKeyboardButton("📲 9:16", callback_data="nis_9:16"),
+            InlineKeyboardButton("🖥 16:9", callback_data="nis_16:9"),
+        ],
+        [InlineKeyboardButton("⬅️ Orqaga", callback_data="nis_back")],
+    ]
+    await update.effective_message.reply_text(
+        "Rasm nisbatini tanlang (rasmingiz shakliga mos keladiganini):\n"
+        "⬜️ 1:1 — kvadrat\n"
+        "🖼 4:3 — yotiq\n"
+        "📱 3:4 — tik\n"
+        "📲 9:16 — baland (story)\n"
+        "🖥 16:9 — keng",
+        reply_markup=InlineKeyboardMarkup(rows),
+    )
+    return P_NISBAT
+
+
 async def _ask_narx(update: Update):
     await update.effective_message.reply_text(
         "3/8 — Narxini kiriting (som), masalan: 3200",
@@ -292,7 +320,7 @@ async def p_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rasmlar.append(update.message.photo[-1].file_id)
     if len(rasmlar) == 10:
         await update.message.reply_text("10/10 rasm qabul qilindi (maksimal).")
-        return await _ask_narx(update)
+        return await _ask_nisbat(update)
     await update.message.reply_text(
         f"{len(rasmlar)}/10 rasm qabul qilindi. Yana yuboring yoki "
         f"'{BTN_DONE}' bosing."
@@ -310,11 +338,25 @@ async def p_rasm_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Hali rasm yubormadingiz. Rasm yuboring yoki '{BTN_SKIP}' bosing."
         )
         return P_RASM
-    return await _ask_narx(update)
+    return await _ask_nisbat(update)
 
 
 async def p_rasm_skip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["p"]["rasmlar"] = []
+    context.user_data["p"]["rasm_nisbati"] = "1:1"
+    return await _ask_narx(update)
+
+
+async def p_nisbat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if query.data == "nis_back":
+        await query.edit_message_reply_markup(reply_markup=None)
+        return await _ask_rasm(update)
+    context.user_data["p"]["rasm_nisbati"] = query.data.replace("nis_", "")
+    await query.edit_message_text(
+        f"Rasm nisbati: {context.user_data['p']['rasm_nisbati']} ✅"
+    )
     return await _ask_narx(update)
 
 
@@ -339,7 +381,10 @@ async def p_narx(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await _ask_skidka(update)
 
 
-async def p_back_to_rasm(update, context):
+async def p_back_from_narx(update, context):
+    """Narxдан orqaga: rasm bo'lsa nisbatга, aks holda rasmга."""
+    if context.user_data["p"].get("rasmlar"):
+        return await _ask_nisbat(update)
     return await _ask_rasm(update)
 
 
@@ -474,10 +519,13 @@ async def p_korinish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     miqdor_txt = (
         f"{p['miqdor']} dona" if p.get("miqdor") is not None else "cheksiz"
     )
+    rasm_txt = f"{len(p['rasmlar'])} ta"
+    if p["rasmlar"]:
+        rasm_txt += f" ({p.get('rasm_nisbati', '1:1')})"
     xulosa = (
         "8/8 — Tekshirib tasdiqlang:\n\n"
         f"📦 Nomi: {p['nomi']}\n"
-        f"🖼 Rasmlar: {len(p['rasmlar'])} ta\n"
+        f"🖼 Rasmlar: {rasm_txt}\n"
         f"💰 Narx: {narx_txt}\n"
         f"📊 Miqdor: {miqdor_txt}\n"
         f"📝 Tavsif: {p.get('tavsif') or '—'}\n"
@@ -522,6 +570,7 @@ async def p_saqlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "tavsif": p.get("tavsif"),
         "korinish": p["korinish"],
         "rasm_urls": [f"/media/{fid}" for fid in p["rasmlar"]],
+        "rasm_nisbati": p.get("rasm_nisbati", "1:1"),
     }
     r = await api.add_product(update.effective_user.id, p["store_id"], data)
     if r.status_code == 200:
@@ -548,6 +597,7 @@ EDIT_FIELDS = {
     "tavsif": "📝 Tavsif",
     "korinish": "👁 Ko'rinish",
     "rasm": "🖼 Rasmlar",
+    "nisbat": "📐 Rasm nisbati",
 }
 
 
@@ -612,6 +662,22 @@ async def edit_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await query.edit_message_text(
             "Yangi ko'rinishni tanlang:", reply_markup=kb
+        )
+        return E_VALUE
+    if field == "nisbat":
+        rows = [
+            [
+                InlineKeyboardButton(r, callback_data=f"enis_{r}")
+                for r in RATIOS[:3]
+            ],
+            [
+                InlineKeyboardButton(r, callback_data=f"enis_{r}")
+                for r in RATIOS[3:]
+            ],
+        ]
+        await query.edit_message_text(
+            "Yangi rasm nisbatini tanlang:",
+            reply_markup=InlineKeyboardMarkup(rows),
         )
         return E_VALUE
     if field == "rasm":
@@ -726,6 +792,25 @@ async def edit_value_korinish(update: Update, context: ContextTypes.DEFAULT_TYPE
     pid = context.user_data["edit_pid"]
     r = await api.update_product(
         update.effective_user.id, pid, {"korinish": korinish}
+    )
+    msg = "✅ Yangilandi!" if r.status_code == 200 else f"❌ {r.text[:300]}"
+    await query.edit_message_text(msg)
+    await context.bot.send_message(
+        update.effective_chat.id,
+        "Bosh menyu 👇",
+        reply_markup=menu_markup(update.effective_user.id),
+    )
+    context.user_data.clear()
+    return ConversationHandler.END
+
+
+async def edit_value_nisbat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    nisbat = query.data.replace("enis_", "")
+    pid = context.user_data["edit_pid"]
+    r = await api.update_product(
+        update.effective_user.id, pid, {"rasm_nisbati": nisbat}
     )
     msg = "✅ Yangilandi!" if r.status_code == 200 else f"❌ {r.text[:300]}"
     await query.edit_message_text(msg)
@@ -1392,8 +1477,9 @@ def build_application(token: str) -> Application:
                 MessageHandler(filters.Regex(f"^{BTN_DONE}$"), p_rasm_done),
                 MessageHandler(filters.Regex(f"^{BTN_SKIP}$"), p_rasm_skip),
             ],
+            P_NISBAT: [CallbackQueryHandler(p_nisbat, pattern="^nis_")],
             P_NARX: [
-                MessageHandler(filters.Regex(f"^{BTN_BACK}$"), p_back_to_rasm),
+                MessageHandler(filters.Regex(f"^{BTN_BACK}$"), p_back_from_narx),
                 MessageHandler(filters.PHOTO, p_stray_photo),
                 MessageHandler(TXT, p_narx),
             ],
@@ -1436,6 +1522,7 @@ def build_application(token: str) -> Application:
             ],
             E_VALUE: [
                 CallbackQueryHandler(edit_value_korinish, pattern="^ekor_"),
+                CallbackQueryHandler(edit_value_nisbat, pattern="^enis_"),
                 MessageHandler(filters.PHOTO, edit_value_photo),
                 MessageHandler(
                     filters.Regex(f"^{BTN_DONE}$"), edit_value_photo_done

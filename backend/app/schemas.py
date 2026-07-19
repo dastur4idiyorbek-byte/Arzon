@@ -22,6 +22,7 @@ class ProductOut(BaseModel):
     rang: Optional[str] = None
     rasm_url: Optional[str] = None
     rasm_urls: Optional[list] = None
+    rasm_nisbati: Optional[str] = "1:1"
     tavsif: Optional[str] = None
     korinish: str
     skidka_foizi: Optional[int] = 0
@@ -38,6 +39,7 @@ class ProductCreate(BaseModel):
     rang: Optional[str] = None
     rasm_url: Optional[str] = None
     rasm_urls: Optional[list] = None  # max 10 — routerда tekshiriladi
+    rasm_nisbati: Optional[str] = "1:1"
     tavsif: Optional[str] = None
     korinish: str = "ommaviy"  # 'ommaviy' | 'mahfiy'
     skidka_foizi: int = Field(default=0, ge=0, le=99)
@@ -52,6 +54,7 @@ class ProductUpdate(BaseModel):
     rang: Optional[str] = None
     rasm_url: Optional[str] = None
     rasm_urls: Optional[list] = None
+    rasm_nisbati: Optional[str] = None
     tavsif: Optional[str] = None
     korinish: Optional[str] = None
     skidka_foizi: Optional[int] = Field(default=None, ge=0, le=99)
