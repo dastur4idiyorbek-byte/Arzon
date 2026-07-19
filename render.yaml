@@ -26,3 +26,10 @@ services:
         sync: false
       - key: SUPER_ADMIN_IDS
         sync: false
+      # Webhook rejimi: botlar backend ichida ishlaydi (PowerShell kerak emas).
+      #   SAVDO_BOT_TOKEN     = mijoz boti tokeni (MINIAPP_BOT_TOKEN bilan bir xil)
+      #   BOSHQARUV_BOT_TOKEN = admin boti tokeni
+      - key: SAVDO_BOT_TOKEN
+        sync: false
+      - key: BOSHQARUV_BOT_TOKEN
+        sync: false

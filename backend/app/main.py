@@ -17,6 +17,13 @@ from .config import settings
 from .database import init_db
 from .routers import admin, bot, chat, instagram, loyalty, orders, products
 
+# Telegram webhook botlari — python-telegram-bot o'rnatilgan bo'lsagina.
+# (Minimal o'rnatishда backend botlarsiz ham ishlayveradi.)
+try:
+    from .tgbots import router as tgbots_router
+except ImportError:  # noqa: BLE001
+    tgbots_router = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -33,7 +40,12 @@ async def lifespan(app: FastAPI):
             seed_if_empty(db)
         finally:
             db.close()
+    # Telegram botlarни webhook rejimда yoqamiz (bulutда, PowerShell'siz).
+    if tgbots_router is not None:
+        await tgbots_router.startup()
     yield
+    if tgbots_router is not None:
+        await tgbots_router.shutdown()
 
 
 app = FastAPI(
@@ -54,7 +66,10 @@ app.add_middleware(
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "xizmat": "arzon-backend"}
+    faol_botlar = (
+        tgbots_router.active_bots() if tgbots_router is not None else []
+    )
+    return {"status": "ok", "xizmat": "arzon-backend", "botlar": faol_botlar}
 
 
 # Mijoz endpointlari (Mini App — initData bilan)
@@ -68,6 +83,9 @@ app.include_router(bot.router)
 app.include_router(admin.router)
 # Instagram webhook
 app.include_router(instagram.router)
+# Telegram webhook botlari (bulut rejimi)
+if tgbots_router is not None:
+    app.include_router(tgbots_router.router)
 
 # Mini App statik fayllari — backend orqali xizmat qilinadi.
 # Shunда bitta ommaviy manzil (tunnel) bilan ham API (/api/...), ham Mini App
