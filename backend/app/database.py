@@ -8,17 +8,23 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from .config import settings
 
+# Neon/Heroku kabi provayderlar "postgres://" beradi, SQLAlchemy 2.0 esa
+# "postgresql://" ni kutadi — normallashtiramiz.
+db_url = settings.database_url
+if db_url.startswith("postgres://"):
+    db_url = db_url.replace("postgres://", "postgresql://", 1)
+
+is_sqlite = db_url.startswith("sqlite")
+
 # SQLite bilan ko'p oqimli FastAPI uchun check_same_thread=False kerak.
-connect_args = (
-    {"check_same_thread": False}
-    if settings.database_url.startswith("sqlite")
-    else {}
-)
+connect_args = {"check_same_thread": False} if is_sqlite else {}
 
 engine = create_engine(
-    settings.database_url,
+    db_url,
     connect_args=connect_args,
     pool_pre_ping=True,
+    # Neon idle ulanishlarni yopadi — eskirган ulanishlarni yangilaymiz.
+    pool_recycle=300 if not is_sqlite else -1,
 )
 
 SessionLocal = sessionmaker(
