@@ -51,6 +51,26 @@ def checkout(
     # Referal: birinchi xaridni belgilash (phase 4.4).
     loyalty_service.mark_referral_purchased(db, user)
 
+    # Yangi buyurtma haqida do'kon adminlariga xabar (spec2 task_1).
+    # PTB o'rnatilmagan yoki botlar faol bo'lmagan muhitда jimgina o'tadi.
+    try:
+        from ..models import Store
+        from ..tgbots import notify
+
+        for o in orders:
+            store = db.get(Store, o.store_id)
+            notify.notify_new_order(
+                admin_ids=list(store.admin_ids or []) if store else [],
+                order_id=o.id,
+                kod=o.kod,
+                jami=float(o.jami_narx),
+                mahsulotlar=o.mahsulotlar,
+                mijoz_ism=user.ism,
+                mijoz_tel=user.tel,
+            )
+    except ImportError:
+        pass
+
     return CheckoutResponse(
         buyurtmalar=[OrderOut.model_validate(o) for o in orders],
         xabar=(

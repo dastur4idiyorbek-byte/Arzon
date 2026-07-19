@@ -45,8 +45,36 @@ def get_db():
         db.close()
 
 
+def _auto_migrate() -> None:
+    """Mavjud jadvallarga yetishmayotgan ustunlarni qo'shadi (yengil migratsiya).
+
+    create_all faqat YANGI jadval yaratadi — mavjud jadvalga ustun qo'shmaydi.
+    Model'ga yangi maydon qo'shilganда (masalan skidka_foizi), bu funksiya
+    ALTER TABLE ... ADD COLUMN bilan uni bazaga qo'shadi. SQLite va Postgres
+    ikkalasida ham ishlaydi. Ustunlar nullable qo'shiladi; kod NULL qiymatga
+    bardoshli yozilgan (masalan `skidka_foizi or 0`).
+    """
+    from sqlalchemy import inspect, text
+
+    insp = inspect(engine)
+    for table in Base.metadata.sorted_tables:
+        if not insp.has_table(table.name):
+            continue
+        mavjud = {c["name"] for c in insp.get_columns(table.name)}
+        for col in table.columns:
+            if col.name in mavjud:
+                continue
+            col_type = col.type.compile(engine.dialect)
+            stmt = (
+                f"ALTER TABLE {table.name} ADD COLUMN {col.name} {col_type}"
+            )
+            with engine.begin() as conn:
+                conn.execute(text(stmt))
+
+
 def init_db() -> None:
-    """Barcha jadvallarni yaratadi (agar mavjud bo'lmasa)."""
+    """Barcha jadvallarni yaratadi (agar mavjud bo'lmasa) va migratsiya qiladi."""
     from . import models  # noqa: F401  (modellarni ro'yxatga olish uchun)
 
     Base.metadata.create_all(bind=engine)
+    _auto_migrate()

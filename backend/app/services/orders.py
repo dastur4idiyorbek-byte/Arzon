@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import settings
-from ..models import Order, Product, PromoCode, User
+from ..models import Order, Product, PromoCode, Store, User
 from ..models import _as_aware, _now
 
 # Buyurtma holati tizimi (phase 3.2).
@@ -97,12 +97,34 @@ def create_orders_from_cart(
             )
         grouped.setdefault(product.store_id, []).append((product, it.soni))
 
+    # Ombor tekshiruvi (task_2): tugagan yoki yetarli bo'lmagan mahsulot
+    # savatdan o'tmaydi.
+    from .catalog import sotuv_narxi as _sotuv_narxi
+
+    for store_id, line_items in grouped.items():
+        for product, soni in line_items:
+            if product.miqdor is not None:
+                if product.miqdor <= 0:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"'{product.nomi}' tugagan (omborда yo'q).",
+                    )
+                if soni > product.miqdor:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=(
+                            f"'{product.nomi}'дан faqat {product.miqdor} dona "
+                            "qolgan."
+                        ),
+                    )
+
     orders: List[Order] = []
     for store_id, line_items in grouped.items():
         jami = Decimal("0")
         mahsulotlar_json = []
         for product, soni in line_items:
-            narx = Decimal(str(product.narxi))
+            # Chegirma faol bo'lса chegirmali narx bilan sotiladi.
+            narx = Decimal(str(_sotuv_narxi(product)))
             jami += narx * soni
             mahsulotlar_json.append(
                 {
@@ -177,6 +199,64 @@ def change_order_status(
     db.commit()
     db.refresh(order)
     return order
+
+
+def accept_order(db: Session, order: Order, admin_id: int) -> dict:
+    """Buyurtmani tezkor qabul qilish (spec2 task_1 + task_2).
+
+    Holat: yangi -> tayyorlanmoqda. Mahsulotlar miqdori kamaytiriladi;
+    tugagan/kamaygan mahsulotlar bo'yicha ogohlantirishlar qaytariladi.
+    """
+    if order.holat != "yangi":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Buyurtma allaqachon '{order.holat}' holatida.",
+        )
+    order.holat = "tayyorlanmoqda"
+
+    ogohlantirishlar: List[str] = []
+    for item in order.mahsulotlar or []:
+        product = db.get(Product, item.get("product_id"))
+        if product is None or product.miqdor is None:
+            continue  # cheksiz ombor — kamaytirilmaydi
+        product.miqdor = max(0, product.miqdor - int(item.get("soni", 0)))
+        if product.miqdor == 0:
+            ogohlantirishlar.append(
+                f"⚠️ '{product.nomi}' tugadi, miqdorni yangilang."
+            )
+        elif product.miqdor <= 3:
+            ogohlantirishlar.append(
+                f"🟡 '{product.nomi}' kamaymoqda — {product.miqdor} dona qoldi."
+            )
+    db.commit()
+    db.refresh(order)
+
+    user = db.get(User, order.user_id)
+    return {
+        "order": order,
+        "ogohlantirishlar": ogohlantirishlar,
+        "user_telegram_id": user.telegram_id if user else None,
+    }
+
+
+def cancel_order(
+    db: Session, order: Order, admin_id: int, sabab: str
+) -> dict:
+    """Buyurtmani bekor qilish — sabab bilan (spec2 task_1)."""
+    if order.holat in ("topshirildi", "bekor_qilindi"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"'{order.holat}' holatidagi buyurtmani bekor qilib bo'lmaydi.",
+        )
+    order.holat = "bekor_qilindi"
+    order.bekor_sababi = (sabab or "").strip()[:255] or None
+    db.commit()
+    db.refresh(order)
+    user = db.get(User, order.user_id)
+    return {
+        "order": order,
+        "user_telegram_id": user.telegram_id if user else None,
+    }
 
 
 def confirm_order_code(db: Session, kod: str, admin_id: int) -> Order:

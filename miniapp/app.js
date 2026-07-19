@@ -48,20 +48,31 @@ async function loadCatalog() {
   data.forEach((p) => {
     const card = document.createElement("div");
     card.className = "card";
-    const img = p.rasm_url
-      ? `<img src="${p.rasm_url}" alt="">`
+    const imgSrc = p.rasm_url || (p.rasm_urls && p.rasm_urls[0]);
+    const img = imgSrc
+      ? `<img src="${imgSrc}" alt="">`
       : `<div class="no-img">🛍️</div>`;
-    const badge = p.korinish === "mahfiy" ? `<span class="card-badge">🔒 maxfiy</span>` : "";
+    let badges = "";
+    if (p.korinish === "mahfiy") badges += `<span class="card-badge">🔒 maxfiy</span>`;
+    if (p.skidka_foizi > 0) badges += `<span class="card-badge sale">-${p.skidka_foizi}%</span>`;
+    if (p.tugadi) badges += `<span class="card-badge out">Tugadi</span>`;
+    // Chegirma bo'lsa: eski narx ustidan chizilgan + yangi narx.
+    const sotuv = p.sotuv_narxi != null ? p.sotuv_narxi : p.narxi;
+    const priceHtml =
+      sotuv < p.narxi
+        ? `<s class="old-price">${money(p.narxi)}</s> ${money(sotuv)} som`
+        : `${money(p.narxi)} som`;
     card.innerHTML = `
       ${img}
       <div class="card-body">
         <div class="card-store">${p.store_nomi || ""}</div>
         <div class="card-name">${p.nomi}</div>
-        ${badge}
-        <div class="card-price">${money(p.narxi)} so'm</div>
+        <div>${badges}</div>
+        <div class="card-price">${priceHtml}</div>
       </div>
-      <button>Savatga</button>`;
-    card.querySelector("button").onclick = () => addToCart(p);
+      <button ${p.tugadi ? "disabled" : ""}>${p.tugadi ? "Tugadi" : "Savatga"}</button>`;
+    const btn = card.querySelector("button");
+    if (!p.tugadi) btn.onclick = () => addToCart(p);
     box.appendChild(card);
   });
 }
@@ -103,14 +114,15 @@ function renderCart() {
   let count = 0, total = 0;
   ids.forEach((id) => {
     const { product, soni } = cart[id];
+    const birNarx = product.sotuv_narxi != null ? product.sotuv_narxi : product.narxi;
     count += soni;
-    total += product.narxi * soni;
+    total += birNarx * soni;
     const row = document.createElement("div");
     row.className = "cart-row";
     row.innerHTML = `
       <div class="grow">
         <div>${product.nomi}</div>
-        <div class="card-store">${product.store_nomi || ""} · ${money(product.narxi)} so'm</div>
+        <div class="card-store">${product.store_nomi || ""} · ${money(birNarx)} som</div>
       </div>
       <div class="qty">
         <button data-a="minus">−</button><span>${soni}</span><button data-a="plus">+</button>

@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import settings
 from .database import init_db
-from .routers import admin, bot, chat, instagram, loyalty, orders, products
+from .routers import admin, bot, chat, instagram, loyalty, media, orders, products
 
 # Telegram webhook botlari — python-telegram-bot o'rnatilgan bo'lsagina.
 # (Minimal o'rnatishда backend botlarsiz ham ishlayveradi.)
@@ -83,6 +83,8 @@ app.include_router(bot.router)
 app.include_router(admin.router)
 # Instagram webhook
 app.include_router(instagram.router)
+# Telegram rasm proksisi (mahsulot rasmlari Mini App uchun)
+app.include_router(media.router)
 # Telegram webhook botlari (bulut rejimi)
 if tgbots_router is not None:
     app.include_router(tgbots_router.router)

@@ -38,6 +38,18 @@ def _generate_secret_code() -> str:
 # ---------------------------------------------------------------------------
 # Mahsulot boshqaruvi (phase 8.2) — faqat shu admin store_id doirasida (rule 7)
 # ---------------------------------------------------------------------------
+def _hisobla_yakuniy(narxi: float, skidka_foizi: int | None) -> float | None:
+    """Chegirmali yakuniy narx: narx - (narx * foiz / 100)."""
+    sk = skidka_foizi or 0
+    if sk <= 0:
+        return None
+    from decimal import Decimal
+
+    return float(
+        (Decimal(str(narxi)) * (100 - sk) / 100).quantize(Decimal("0.01"))
+    )
+
+
 @router.post("/stores/{store_id}/products", response_model=ProductOut)
 def add_product(
     store_id: int,
@@ -51,7 +63,18 @@ def add_product(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="korinish 'ommaviy' yoki 'mahfiy' bo'lishi kerak.",
         )
-    product = Product(store_id=store_id, **payload.model_dump())
+    if payload.rasm_urls and len(payload.rasm_urls) > 10:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Maksimal 10 ta rasm.",
+        )
+    data = payload.model_dump()
+    data["yakuniy_narx"] = _hisobla_yakuniy(
+        payload.narxi, payload.skidka_foizi
+    )
+    if data.get("rasm_urls") and not data.get("rasm_url"):
+        data["rasm_url"] = data["rasm_urls"][0]
+    product = Product(store_id=store_id, **data)
     db.add(product)
     db.commit()
     db.refresh(product)
@@ -77,8 +100,18 @@ def update_product(
     if product is None:
         raise HTTPException(status_code=404, detail="Mahsulot topilmadi.")
     check_store_access(admin_id, product.store_id, db)  # rule 7
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    updates = payload.model_dump(exclude_unset=True)
+    if updates.get("rasm_urls") and len(updates["rasm_urls"]) > 10:
+        raise HTTPException(status_code=400, detail="Maksimal 10 ta rasm.")
+    for field, value in updates.items():
         setattr(product, field, value)
+    if updates.get("rasm_urls"):
+        product.rasm_url = updates["rasm_urls"][0]
+    # Narx yoki chegirma o'zgarган bo'lса — yakuniy narxni qayta hisoblaymiz.
+    if "narxi" in updates or "skidka_foizi" in updates:
+        product.yakuniy_narx = _hisobla_yakuniy(
+            float(product.narxi), product.skidka_foizi
+        )
     db.commit()
     db.refresh(product)
     vector_store.index_product(
@@ -158,6 +191,108 @@ def change_status(
         db, order, payload.holat, admin_id
     )
     return OrderOut.model_validate(order)
+
+
+class OrderActionOut(BaseModel):
+    model_config = {"from_attributes": True}
+
+    order: OrderOut
+    ogohlantirishlar: List[str] = []
+    user_telegram_id: Optional[int] = None
+
+
+@router.post("/orders/{order_id}/accept", response_model=OrderActionOut)
+def accept_order_endpoint(
+    order_id: int,
+    admin_id: int = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Buyurtmani tezkor qabul qilish (spec2 task_1).
+
+    Faqat shu do'kon admini (rule 7). Ombor miqdori kamaytiriladi (task_2).
+    """
+    order = db.get(Order, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="Buyurtma topilmadi.")
+    check_store_access(admin_id, order.store_id, db)  # rule 7
+    natija = order_service.accept_order(db, order, admin_id)
+    return OrderActionOut(
+        order=OrderOut.model_validate(natija["order"]),
+        ogohlantirishlar=natija["ogohlantirishlar"],
+        user_telegram_id=natija["user_telegram_id"],
+    )
+
+
+class CancelRequest(BaseModel):
+    sabab: str = Field(min_length=1, max_length=255)
+
+
+@router.post("/orders/{order_id}/cancel", response_model=OrderActionOut)
+def cancel_order_endpoint(
+    order_id: int,
+    payload: CancelRequest,
+    admin_id: int = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    order = db.get(Order, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="Buyurtma topilmadi.")
+    check_store_access(admin_id, order.store_id, db)  # rule 7
+    natija = order_service.cancel_order(db, order, admin_id, payload.sabab)
+    return OrderActionOut(
+        order=OrderOut.model_validate(natija["order"]),
+        user_telegram_id=natija["user_telegram_id"],
+    )
+
+
+@router.get("/stores/{store_id}/orders/search")
+def search_orders(
+    store_id: int,
+    q: str,
+    admin_id: int = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Buyurtma qidirish (spec2 task_4): kod, mijoz telefoni yoki ismi bo'yicha.
+
+    Faqat shu adminning store_id doirasida (rule 7).
+    """
+    check_store_access(admin_id, store_id, db)  # rule 7
+    q = q.strip()
+    if not q:
+        return []
+    from ..models import User as _User
+
+    rows = db.execute(
+        select(Order, _User)
+        .join(_User, _User.id == Order.user_id)
+        .where(
+            Order.store_id == store_id,
+            (
+                (Order.kod == q)
+                | _User.tel.ilike(f"%{q}%")
+                | _User.ism.ilike(f"%{q}%")
+            ),
+        )
+        .order_by(Order.yaratilgan_vaqt.desc())
+        .limit(20)
+    ).all()
+    return [
+        {
+            "id": o.id,
+            "kod": o.kod,
+            "holat": o.holat,
+            "jami_narx": float(o.jami_narx),
+            "mahsulotlar": [
+                f"{m.get('nomi')} x{m.get('soni')}" for m in (o.mahsulotlar or [])
+            ],
+            "mijoz_ism": u.ism,
+            "mijoz_tel": u.tel,
+            "yaratilgan_vaqt": o.yaratilgan_vaqt.isoformat()
+            if o.yaratilgan_vaqt
+            else None,
+        }
+        for o, u in rows
+    ]
 
 
 class CodeConfirm(BaseModel):
@@ -434,6 +569,52 @@ def add_admin(
         store.admin_ids = ids
         db.commit()
     return {"store_id": store_id, "admin_ids": store.admin_ids}
+
+
+class SelfStoreRequest(BaseModel):
+    nomi: str = Field(min_length=1, max_length=255)
+
+
+@router.post("/stores/self")
+def create_self_store(
+    payload: SelfStoreRequest,
+    admin_id: int = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """O'ziga do'kon ochish (spec1 task_3).
+
+    Do'koni bo'lmagan foydalanuvchi o'z do'konини yaratadi va uning admini
+    bo'ladi. Allaqachon do'koni bo'lса — 400.
+    Eslatma: bu eski rule 11 (faqat super-admin) dan farq qiladi — yangi spec
+    talabi bo'yicha o'z-o'ziga xizmat (self-service) rejimi.
+    """
+    mavjud = get_admin_store_ids(admin_id, db)
+    if not is_super_admin(admin_id) and mavjud:
+        stores = db.scalars(
+            select(Store).where(Store.id.in_(mavjud))
+        ).all()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Sizда allaqachon do'kon bor: "
+                + ", ".join(s.nomi for s in stores)
+            ),
+        )
+    store = Store(
+        nomi=payload.nomi,
+        admin_ids=[admin_id],
+        mahfiy_kirish_kodi=_generate_secret_code(),
+        holat="faol",
+    )
+    db.add(store)
+    db.commit()
+    db.refresh(store)
+    return {
+        "store_id": store.id,
+        "nomi": store.nomi,
+        "mahfiy_kirish_kodi": store.mahfiy_kirish_kodi,
+        "xabar": "Do'koningiz yaratildi.",
+    }
 
 
 @router.get("/my-stores")

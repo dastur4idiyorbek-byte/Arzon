@@ -16,11 +16,19 @@ class ProductOut(BaseModel):
     store_nomi: Optional[str] = None
     nomi: str
     narxi: float
+    # Amaldagi sotuv narxi (chegirma hisobga olingan). get_catalog to'ldiradi.
+    sotuv_narxi: Optional[float] = None
     olcham: Optional[str] = None
     rang: Optional[str] = None
     rasm_url: Optional[str] = None
+    rasm_urls: Optional[list] = None
     tavsif: Optional[str] = None
     korinish: str
+    skidka_foizi: Optional[int] = 0
+    yakuniy_narx: Optional[float] = None
+    skidka_muddati: Optional[datetime] = None
+    miqdor: Optional[int] = None  # None = cheksiz
+    tugadi: Optional[bool] = None
 
 
 class ProductCreate(BaseModel):
@@ -29,8 +37,12 @@ class ProductCreate(BaseModel):
     olcham: Optional[str] = None
     rang: Optional[str] = None
     rasm_url: Optional[str] = None
+    rasm_urls: Optional[list] = None  # max 10 — routerда tekshiriladi
     tavsif: Optional[str] = None
     korinish: str = "ommaviy"  # 'ommaviy' | 'mahfiy'
+    skidka_foizi: int = Field(default=0, ge=0, le=99)
+    skidka_muddati: Optional[datetime] = None
+    miqdor: Optional[int] = Field(default=None, ge=0)
 
 
 class ProductUpdate(BaseModel):
@@ -39,8 +51,12 @@ class ProductUpdate(BaseModel):
     olcham: Optional[str] = None
     rang: Optional[str] = None
     rasm_url: Optional[str] = None
+    rasm_urls: Optional[list] = None
     tavsif: Optional[str] = None
     korinish: Optional[str] = None
+    skidka_foizi: Optional[int] = Field(default=None, ge=0, le=99)
+    skidka_muddati: Optional[datetime] = None
+    miqdor: Optional[int] = Field(default=None, ge=0)
 
 
 # --- Mahfiy kod ---

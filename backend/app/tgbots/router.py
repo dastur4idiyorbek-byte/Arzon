@@ -7,9 +7,13 @@ webhook o'rnatilmaydi va lokal polling skriptlari ishlashда davom etadi.
 Xavfsizlik: har webhook so'rovда Telegram `X-Telegram-Bot-Api-Secret-Token`
 sarlavhasini yuboradi (set_webhook'да berganimiz) — INTERNAL_API_TOKEN bilan
 solishtiramiz. Mos kelmasa 403.
+
+Kunlik hisobot (spec2 task_3): Boshqaruv Boti JobQueue'siда har kuni 21:00
+(LOCAL_TZ) da daily.daily_tick ishga tushadi.
 """
 from __future__ import annotations
 
+import asyncio
 import hmac
 import logging
 import os
@@ -19,14 +23,11 @@ from telegram import Update
 from telegram.ext import Application
 
 from ..config import settings
-from . import boshqaruv, savdo
+from . import boshqaruv, daily, registry, savdo
 
 logger = logging.getLogger("arzon.tgbots")
 
 router = APIRouter(prefix="/webhook/telegram", tags=["telegram-webhook"])
-
-# Faol bot ilovalari: {"savdo": Application, "boshqaruv": Application}
-_apps: dict[str, Application] = {}
 
 
 def _base_url() -> str:
@@ -43,17 +44,20 @@ def _miniapp_url(base: str) -> str:
 async def _setup_one(name: str, app: Application, base: str) -> None:
     """Bitta botni initsializatsiya qilib, webhook o'rnatadi."""
     await app.initialize()
+    await app.start()  # JobQueue va fon vazifalari uchun
     await app.bot.set_webhook(
         url=f"{base}/webhook/telegram/{name}",
         secret_token=settings.internal_api_token,
         drop_pending_updates=True,
     )
-    _apps[name] = app
+    registry.register(name, app)
     logger.info("Telegram webhook o'rnatildi: %s", name)
 
 
 async def startup() -> None:
     """FastAPI lifespan'дан chaqiriladi — botlarni webhook rejimда yoqadi."""
+    registry.loop = asyncio.get_running_loop()
+
     base = _base_url()
     if not base:
         logger.info(
@@ -86,20 +90,45 @@ async def startup() -> None:
                 boshqaruv.build_application(settings.boshqaruv_bot_token),
                 base,
             )
+            _schedule_daily(registry.get("boshqaruv"))
         except Exception:  # noqa: BLE001
             logger.exception("Boshqaruv boti webhook o'rnatilmadi.")
     else:
         logger.info("BOSHQARUV_BOT_TOKEN yo'q — boshqaruv boti o'chiq.")
 
 
+def _schedule_daily(app: Application | None) -> None:
+    """Kunlik hisobot jobини ro'yxatga oladi (JobQueue mavjud bo'lса)."""
+    if app is None:
+        return
+    if app.job_queue is None:
+        logger.warning(
+            "JobQueue yo'q (python-telegram-bot[job-queue] o'rnatilmagan) — "
+            "kunlik hisobot o'chiq."
+        )
+        return
+
+    async def _tick(context) -> None:
+        try:
+            await daily.daily_tick(context.bot)
+        except Exception:  # noqa: BLE001
+            logger.exception("Kunlik hisobotда xato.")
+
+    app.job_queue.run_daily(_tick, time=daily.report_time())
+    logger.info("Kunlik hisobot rejalashtirildi: 21:00 (%s)", daily.LOCAL_TZ)
+
+
 async def shutdown() -> None:
     """Bot resurslarini yopadi (webhook Telegram'да saqlanib qoladi)."""
-    for name, app in list(_apps.items()):
+    for name in registry.active():
+        app = registry.get(name)
         try:
-            await app.shutdown()
+            if app is not None:
+                await app.stop()
+                await app.shutdown()
         except Exception:  # noqa: BLE001
             logger.exception("Bot yopishда xato: %s", name)
-    _apps.clear()
+    registry.clear()
 
 
 @router.post("/{bot_name}")
@@ -108,7 +137,7 @@ async def telegram_webhook(
     request: Request,
     x_secret: str = Header(default="", alias="X-Telegram-Bot-Api-Secret-Token"),
 ):
-    app = _apps.get(bot_name)
+    app = registry.get(bot_name)
     if app is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Bot faol emas."
@@ -129,4 +158,4 @@ async def telegram_webhook(
 
 
 def active_bots() -> list[str]:
-    return sorted(_apps.keys())
+    return registry.active()

@@ -1,11 +1,22 @@
-"""Boshqaruv Boti handlerlari — webhook rejimi (adminlar uchun, phase 8).
+"""Boshqaruv Boti — tugmali interfeys (spec1) + yangi funksiyalar (spec2).
 
-bots/boshqaruv_bot/bot.py bilan bir xil mantiq, bulutда ishlaydi.
-Har amal backend'да check_store_access orqali tekshiriladi (rule 7).
+Bosh menyu ReplyKeyboardMarkup orqali doimiy ko'rinadi (spec1 rule 1).
+Eski /buyruqlar ham saqlanadi (spec1 rule 3) — faqat kirish nuqtalari
+tugmalarga bog'landi. Har amal backend'да check_store_access orqali
+tekshiriladi (admin izolyatsiyasi).
 """
 from __future__ import annotations
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from datetime import datetime, time, timezone
+from zoneinfo import ZoneInfo
+
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+    Update,
+)
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -16,16 +27,89 @@ from telegram.ext import (
     filters,
 )
 
+from ..config import settings
+from . import daily, notify
 from .client import api
 
-# ConversationHandler holatlari.
+# ---------------------------------------------------------------------------
+# Bosh menyu tugmalari (spec1 task_1)
+# ---------------------------------------------------------------------------
+BTN_DOKON = "🏪 Do'kon ochish"
+BTN_ADD = "📦 Mahsulot qo'shish"
+BTN_DEL = "🗑 Mahsulotni o'chirish"
+BTN_EDIT = "🔄 Mahsulotni tahrirlash"
+BTN_PROMO = "🎟 Promo kod"
+BTN_SECRET = "🔑 Mahfiy kod"
+BTN_STATS = "📊 Statistika"
+BTN_ORDERS = "📋 Buyurtmalar"
+BTN_SEARCH = "🔍 Buyurtma qidirish"
+BTN_NEWADMIN = "➕ Yangi admin qo'shish"
+BTN_CANCEL = "❌ Bekor qilish"
+BTN_DONE = "✅ Tayyor"
+BTN_SKIP = "⏭ O'tkazib yuborish"
+
+MENU_BUTTONS = {
+    BTN_DOKON, BTN_ADD, BTN_DEL, BTN_EDIT, BTN_PROMO,
+    BTN_SECRET, BTN_STATS, BTN_ORDERS, BTN_SEARCH, BTN_NEWADMIN,
+}
+
+# Conversation holatlari.
 (
-    P_NOMI,
-    P_NARX,
-    P_KORINISH,
-    S_NOMI,
-    S_ADMIN_ID,
-) = range(5)
+    P_NOMI, P_RASM, P_NARX, P_SKIDKA, P_MUDDAT, P_MIQDOR, P_TAVSIF,
+    P_KORINISH, P_TASDIQ,
+    E_FIELD, E_VALUE, E_MUDDAT,
+    PR_KOD, PR_FOIZ,
+    Q_KIRITISH,
+    DO_NOMI,
+    NA_ID,
+    S_NOMI, S_ADMIN_ID,
+    RAD_SABAB,
+) = range(20)
+
+
+def _is_super(uid: int) -> bool:
+    return uid in settings.super_admin_id_list
+
+
+def menu_markup(uid: int) -> ReplyKeyboardMarkup:
+    """Bosh menyu — doimiy tugmalar qatori (spec1 rule 1)."""
+    rows = [
+        [KeyboardButton(BTN_DOKON), KeyboardButton(BTN_ADD)],
+        [KeyboardButton(BTN_DEL), KeyboardButton(BTN_EDIT)],
+        [KeyboardButton(BTN_PROMO), KeyboardButton(BTN_SECRET)],
+        [KeyboardButton(BTN_STATS), KeyboardButton(BTN_ORDERS)],
+        [KeyboardButton(BTN_SEARCH)],
+    ]
+    if _is_super(uid):
+        rows.append([KeyboardButton(BTN_NEWADMIN)])
+    return ReplyKeyboardMarkup(rows, resize_keyboard=True)
+
+
+def cancel_markup(*extra_rows: list[str]) -> ReplyKeyboardMarkup:
+    """Jarayon ichidagi klaviatura: qo'shimcha tugmalar + Bekor qilish."""
+    rows = [[KeyboardButton(b) for b in row] for row in extra_rows]
+    rows.append([KeyboardButton(BTN_CANCEL)])
+    return ReplyKeyboardMarkup(rows, resize_keyboard=True)
+
+
+def _menu_notice(text: str) -> str:
+    return text
+
+
+async def _back_to_menu(update: Update, text: str) -> None:
+    await update.effective_message.reply_text(
+        text, reply_markup=menu_markup(update.effective_user.id)
+    )
+
+
+def _is_menu_press(text: str | None) -> bool:
+    return (text or "").strip() in MENU_BUTTONS
+
+
+async def _warn_finish_first(update: Update) -> None:
+    await update.message.reply_text(
+        f"Avval joriy jarayonni yakunlang yoki '{BTN_CANCEL}' tugmasini bosing."
+    )
 
 
 async def _resolve_store(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -34,91 +118,836 @@ async def _resolve_store(update: Update, context: ContextTypes.DEFAULT_TYPE):
     stores = await api.my_stores(admin_id)
     if not stores:
         await update.effective_message.reply_text(
-            "⛔️ Sizда ruxsat yo'q. Super-admin bilan bog'laning."
+            "⛔️ Sizда hali do'kon yo'q.\n"
+            f"'{BTN_DOKON}' tugmasi orqali do'kon oching.",
+            reply_markup=menu_markup(admin_id),
         )
         return None
-    if len(stores) == 1:
-        return stores[0]["id"]
-    context.user_data["stores"] = stores
     return stores[0]["id"]
 
 
+# ---------------------------------------------------------------------------
+# /start — bosh menyu
+# ---------------------------------------------------------------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    admin_id = update.effective_user.id
-    stores = await api.my_stores(admin_id)
-    if not stores:
-        await update.message.reply_text(
-            "⛔️ Sizда ruxsat yo'q, super-admin bilan bog'laning.\n"
-            "(Telegram ID'ingiz hech qaysi do'konга biriktirilmagan.)"
+    uid = update.effective_user.id
+    stores = await api.my_stores(uid)
+    if stores:
+        lines = ["✅ Xush kelibsiz, admin!\n\nSizning do'konlaringiz:"]
+        for s in stores:
+            lines.append(f"• {s['nomi']} (ID: {s['id']}, holat: {s['holat']})")
+        lines.append("\nQuyidagi tugmalardан foydalaning 👇")
+        text = "\n".join(lines)
+    else:
+        text = (
+            "Assalomu alaykum! 👋\n\n"
+            f"Sizда hali do'kon yo'q. '{BTN_DOKON}' tugmasini bosib, "
+            "o'z do'koningizni oching."
         )
-        return
-    lines = ["✅ Xush kelibsiz, admin!\n\nSizning do'konlaringiz:"]
-    for s in stores:
-        lines.append(f"• {s['nomi']} (ID: {s['id']}, holat: {s['holat']})")
-    lines.append(
-        "\nBuyruqlar: /mahsulot_qoshish, /mahsulotlar, /buyurtmalar, "
-        "/tasdiqlash, /mahfiy_kod, /statistika, /top_tovarlar, /promo_yaratish"
-    )
-    await update.message.reply_text("\n".join(lines))
+    await update.message.reply_text(text, reply_markup=menu_markup(uid))
 
 
-# --- Mahsulot qo'shish (ConversationHandler) ---
-async def mahsulot_qoshish(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def bekor(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.clear()
+    await _back_to_menu(update, "Bekor qilindi. Bosh menyu 👇")
+    return ConversationHandler.END
+
+
+# ---------------------------------------------------------------------------
+# 📦 Mahsulot qo'shish — kengaytirilgan jarayon (spec1 task_2)
+# ---------------------------------------------------------------------------
+async def add_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     store_id = await _resolve_store(update, context)
     if store_id is None:
         return ConversationHandler.END
-    context.user_data["store_id"] = store_id
-    await update.message.reply_text("Mahsulot nomini kiriting:")
+    context.user_data.clear()
+    context.user_data["p"] = {"store_id": store_id, "rasmlar": []}
+    await update.message.reply_text(
+        "1/8 — Mahsulot nomini kiriting:", reply_markup=cancel_markup()
+    )
     return P_NOMI
 
 
 async def p_nomi(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["nomi"] = update.message.text
-    await update.message.reply_text("Narxini kiriting (faqat raqam, so'mда):")
+    if _is_menu_press(update.message.text):
+        await _warn_finish_first(update)
+        return P_NOMI
+    context.user_data["p"]["nomi"] = update.message.text.strip()
+    await update.message.reply_text(
+        "2/8 — Mahsulot rasmlarini yuboring (maksimal 10 ta).\n"
+        f"Tugatganingizда '{BTN_DONE}' bosing, rasm bo'lmasa "
+        f"'{BTN_SKIP}' bosing.",
+        reply_markup=cancel_markup([BTN_DONE], [BTN_SKIP]),
+    )
+    return P_RASM
+
+
+async def p_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    rasmlar = context.user_data["p"]["rasmlar"]
+    if len(rasmlar) >= 10:
+        await update.message.reply_text(
+            "Maksimal 10 ta rasm. Ortiqcha rasm qabul qilinmadi — "
+            f"'{BTN_DONE}' bosing."
+        )
+        return P_RASM
+    # Eng katta o'lchamdagi variant file_id'sini olamiz.
+    rasmlar.append(update.message.photo[-1].file_id)
+    if len(rasmlar) == 10:
+        await update.message.reply_text(
+            "10/10 rasm qabul qilindi (maksimal). Keyingi qadamга o'tamiz."
+        )
+        return await _ask_narx(update)
+    await update.message.reply_text(
+        f"{len(rasmlar)}/10 rasm qabul qilindi. Yana yuboring yoki "
+        f"'{BTN_DONE}' bosing."
+    )
+    return P_RASM
+
+
+async def _ask_narx(update: Update):
+    await update.message.reply_text(
+        "3/8 — Narxini kiriting (som), masalan: 3200",
+        reply_markup=cancel_markup(),
+    )
     return P_NARX
 
 
+async def p_rasm_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.user_data["p"]["rasmlar"]:
+        await update.message.reply_text(
+            f"Hali rasm yubormadingiz. Rasm yuboring yoki '{BTN_SKIP}' bosing."
+        )
+        return P_RASM
+    return await _ask_narx(update)
+
+
+async def p_rasm_skip(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["p"]["rasmlar"] = []
+    return await _ask_narx(update)
+
+
+async def p_stray_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Rasm bosqichi tugagach kelgan ortiqcha rasm (media-group qoldiq)."""
+    await update.message.reply_text("Maksimal 10 ta rasm qabul qilindi.")
+    # Holatni o'zgartirmaymiz — joriy qadam davom etadi.
+    return None
+
+
 async def p_narx(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        context.user_data["narxi"] = float(update.message.text.replace(" ", ""))
-    except ValueError:
-        await update.message.reply_text("Narx noto'g'ri. Faqat raqam kiriting:")
+    if _is_menu_press(update.message.text):
+        await _warn_finish_first(update)
         return P_NARX
+    try:
+        narx = float(update.message.text.replace(" ", "").replace(",", "."))
+        assert narx >= 0
+    except (ValueError, AssertionError):
+        await update.message.reply_text(
+            "Narx noto'g'ri. Faqat raqam kiriting (som), masalan: 3200"
+        )
+        return P_NARX
+    context.user_data["p"]["narxi"] = narx
+    await update.message.reply_text(
+        "4/8 — Chegirma bormi? Foizni kiriting (masalan 20), "
+        "yo'q bo'lsa 0 yozing:",
+        reply_markup=cancel_markup(),
+    )
+    return P_SKIDKA
+
+
+async def p_skidka(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if _is_menu_press(update.message.text):
+        await _warn_finish_first(update)
+        return P_SKIDKA
+    try:
+        foiz = int(update.message.text.strip())
+        assert 0 <= foiz <= 99
+    except (ValueError, AssertionError):
+        await update.message.reply_text("Foiz 0 dan 99 gacha raqam bo'lsin:")
+        return P_SKIDKA
+    p = context.user_data["p"]
+    p["skidka_foizi"] = foiz
+    if foiz > 0:
+        narx = p["narxi"]
+        yakuniy = narx - (narx * foiz / 100)
+        p["yakuniy_narx"] = yakuniy
+        await update.message.reply_text(
+            f"Asosiy narx: {narx:,.0f} som, Skidka: {foiz}% → "
+            f"Yakuniy narx: {yakuniy:,.0f} som\n\n"
+            "Chegirma qachongacha amal qiladi? Sana kiriting "
+            "(masalan 31.07.2026), muddatsiz bo'lsa 'yo'q' deb yozing:",
+        )
+        return P_MUDDAT
+    p["skidka_muddati"] = None
+    return await _ask_miqdor(update)
+
+
+async def p_muddat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    matn = update.message.text.strip().lower()
+    p = context.user_data["p"]
+    if matn in ("yo'q", "yoq", "yok", "нет"):
+        p["skidka_muddati"] = None
+        return await _ask_miqdor(update)
+    try:
+        sana = datetime.strptime(matn, "%d.%m.%Y")
+        tz = ZoneInfo(daily.LOCAL_TZ)
+        muddat = datetime.combine(
+            sana.date(), time(23, 59), tzinfo=tz
+        ).astimezone(timezone.utc)
+        if muddat < datetime.now(timezone.utc):
+            await update.message.reply_text(
+                "Bu sana o'tib ketgan. Kelajakdagi sanani kiriting "
+                "(masalan 31.07.2026) yoki 'yo'q' yozing:"
+            )
+            return P_MUDDAT
+        p["skidka_muddati"] = muddat.isoformat()
+    except ValueError:
+        await update.message.reply_text(
+            "Sana formati noto'g'ri. Masalan: 31.07.2026 — yoki 'yo'q' yozing:"
+        )
+        return P_MUDDAT
+    return await _ask_miqdor(update)
+
+
+async def _ask_miqdor(update: Update):
+    await update.message.reply_text(
+        "5/8 — Omborда nechta bor? Sonini kiriting (dona), "
+        "cheksiz bo'lsa 'yo'q' deb yozing:",
+        reply_markup=cancel_markup(),
+    )
+    return P_MIQDOR
+
+
+async def p_miqdor(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    matn = update.message.text.strip().lower()
+    p = context.user_data["p"]
+    if matn in ("yo'q", "yoq", "yok"):
+        p["miqdor"] = None
+    else:
+        try:
+            p["miqdor"] = int(matn)
+            assert p["miqdor"] >= 0
+        except (ValueError, AssertionError):
+            await update.message.reply_text(
+                "Raqam kiriting (dona) yoki cheksiz bo'lsa 'yo'q' yozing:"
+            )
+            return P_MIQDOR
+    await update.message.reply_text(
+        "6/8 — Tavsif (opisaniya) yozing: o'lcham, rang, material va h.k. "
+        f"Bo'lmasa '{BTN_SKIP}' bosing.",
+        reply_markup=cancel_markup([BTN_SKIP]),
+    )
+    return P_TAVSIF
+
+
+async def p_tavsif(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if _is_menu_press(update.message.text):
+        await _warn_finish_first(update)
+        return P_TAVSIF
+    context.user_data["p"]["tavsif"] = update.message.text.strip()
+    return await _ask_korinish(update)
+
+
+async def p_tavsif_skip(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["p"]["tavsif"] = None
+    return await _ask_korinish(update)
+
+
+async def _ask_korinish(update: Update):
     kb = InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton("Ommaviy", callback_data="kor_ommaviy"),
-                InlineKeyboardButton("Mahfiy", callback_data="kor_mahfiy"),
+                InlineKeyboardButton("🌐 Ommaviy", callback_data="pkor_ommaviy"),
+                InlineKeyboardButton("🔒 Mahfiy", callback_data="pkor_mahfiy"),
             ]
         ]
     )
-    await update.message.reply_text("Ko'rinishini tanlang:", reply_markup=kb)
+    await update.message.reply_text(
+        "7/8 — Ko'rinishini tanlang:\n"
+        "🌐 Ommaviy — hamma ko'radi.\n"
+        "🔒 Mahfiy — faqat do'kon mahfiy kodi bilan ochiladi.",
+        reply_markup=kb,
+    )
     return P_KORINISH
 
 
 async def p_korinish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    korinish = query.data.replace("kor_", "")
-    admin_id = update.effective_user.id
-    r = await api.add_product(
-        admin_id,
-        context.user_data["store_id"],
-        {
-            "nomi": context.user_data["nomi"],
-            "narxi": context.user_data["narxi"],
-            "korinish": korinish,
-        },
-    )
-    if r.status_code == 200:
-        await query.edit_message_text(
-            f"✅ '{context.user_data['nomi']}' qo'shildi ({korinish})."
+    p = context.user_data["p"]
+    p["korinish"] = query.data.replace("pkor_", "")
+
+    # 8/8 — Yakuniy tasdiqlash xulosasi.
+    foiz = p.get("skidka_foizi", 0)
+    narx_txt = f"{p['narxi']:,.0f} som"
+    if foiz > 0:
+        narx_txt += (
+            f" | Skidka: {foiz}% → Yakuniy: {p['yakuniy_narx']:,.0f} som"
         )
+        if p.get("skidka_muddati"):
+            sana = datetime.fromisoformat(p["skidka_muddati"]).astimezone(
+                ZoneInfo(daily.LOCAL_TZ)
+            )
+            narx_txt += f" (muddati: {sana.strftime('%d.%m.%Y')})"
+    miqdor_txt = (
+        f"{p['miqdor']} dona" if p.get("miqdor") is not None else "cheksiz"
+    )
+    xulosa = (
+        "8/8 — Tekshirib tasdiqlang:\n\n"
+        f"📦 Nomi: {p['nomi']}\n"
+        f"🖼 Rasmlar: {len(p['rasmlar'])} ta\n"
+        f"💰 Narx: {narx_txt}\n"
+        f"📊 Miqdor: {miqdor_txt}\n"
+        f"📝 Tavsif: {p.get('tavsif') or '—'}\n"
+        f"👁 Ko'rinish: {'🔒 Mahfiy' if p['korinish'] == 'mahfiy' else '🌐 Ommaviy'}"
+    )
+    kb = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("✅ Saqlash", callback_data="psave_ok"),
+                InlineKeyboardButton("❌ Bekor qilish", callback_data="psave_no"),
+            ]
+        ]
+    )
+    await query.edit_message_text(xulosa, reply_markup=kb)
+    return P_TASDIQ
+
+
+async def p_saqlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if query.data == "psave_no":
+        context.user_data.clear()
+        await query.edit_message_text("Bekor qilindi.")
+        await context.bot.send_message(
+            update.effective_chat.id,
+            "Bosh menyu 👇",
+            reply_markup=menu_markup(update.effective_user.id),
+        )
+        return ConversationHandler.END
+
+    p = context.user_data["p"]
+    data = {
+        "nomi": p["nomi"],
+        "narxi": p["narxi"],
+        "skidka_foizi": p.get("skidka_foizi", 0),
+        "skidka_muddati": p.get("skidka_muddati"),
+        "miqdor": p.get("miqdor"),
+        "tavsif": p.get("tavsif"),
+        "korinish": p["korinish"],
+        "rasm_urls": [f"/media/{fid}" for fid in p["rasmlar"]],
+    }
+    r = await api.add_product(update.effective_user.id, p["store_id"], data)
+    if r.status_code == 200:
+        await query.edit_message_text(f"✅ '{p['nomi']}' saqlandi!")
     else:
-        await query.edit_message_text(f"❌ Xatolik: {r.text}")
+        await query.edit_message_text(f"❌ Xatolik: {r.text[:300]}")
+    context.user_data.clear()
+    await context.bot.send_message(
+        update.effective_chat.id,
+        "Bosh menyu 👇",
+        reply_markup=menu_markup(update.effective_user.id),
+    )
     return ConversationHandler.END
 
 
+# ---------------------------------------------------------------------------
+# 🔄 Mahsulotni tahrirlash (spec1 task_5)
+# ---------------------------------------------------------------------------
+EDIT_FIELDS = {
+    "nomi": "📦 Nomi",
+    "narx": "💰 Narxi",
+    "skidka": "📉 Skidka %",
+    "miqdor": "📊 Miqdor",
+    "tavsif": "📝 Tavsif",
+    "korinish": "👁 Ko'rinish",
+    "rasm": "🖼 Rasmlar",
+}
+
+
+async def edit_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    store_id = await _resolve_store(update, context)
+    if store_id is None:
+        return ConversationHandler.END
+    r = await api.list_products(update.effective_user.id, store_id)
+    items = r.json() if r.status_code == 200 else []
+    if not items:
+        await _back_to_menu(update, "Mahsulotlar yo'q.")
+        return ConversationHandler.END
+    rows = [
+        [
+            InlineKeyboardButton(
+                f"{p['nomi']} — {p['narxi']:,.0f} som",
+                callback_data=f"epick_{p['id']}",
+            )
+        ]
+        for p in items[:50]
+    ]
+    await update.message.reply_text(
+        "Qaysi mahsulotni tahrirlaysiz?",
+        reply_markup=InlineKeyboardMarkup(rows),
+    )
+    return E_FIELD
+
+
+async def edit_pick(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    context.user_data["edit_pid"] = int(query.data.replace("epick_", ""))
+    rows = [
+        [InlineKeyboardButton(label, callback_data=f"ef_{field}")]
+        for field, label in EDIT_FIELDS.items()
+    ]
+    await query.edit_message_text(
+        "Qaysi maydonni o'zgartirasiz?",
+        reply_markup=InlineKeyboardMarkup(rows),
+    )
+    return E_FIELD
+
+
+async def edit_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    field = query.data.replace("ef_", "")
+    context.user_data["edit_field"] = field
+
+    if field == "korinish":
+        kb = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "🌐 Ommaviy", callback_data="ekor_ommaviy"
+                    ),
+                    InlineKeyboardButton(
+                        "🔒 Mahfiy", callback_data="ekor_mahfiy"
+                    ),
+                ]
+            ]
+        )
+        await query.edit_message_text(
+            "Yangi ko'rinishni tanlang:", reply_markup=kb
+        )
+        return E_VALUE
+    if field == "rasm":
+        context.user_data["edit_rasmlar"] = []
+        await query.edit_message_text(
+            "Yangi rasmlarni yuboring (eski rasmlar almashtiriladi, "
+            f"maksimal 10 ta). Tugatgach '{BTN_DONE}' bosing."
+        )
+        await context.bot.send_message(
+            update.effective_chat.id,
+            "Rasm yuboring 👇",
+            reply_markup=cancel_markup([BTN_DONE]),
+        )
+        return E_VALUE
+
+    prompts = {
+        "nomi": "Yangi nomini kiriting:",
+        "narx": "Yangi narxini kiriting (som):",
+        "skidka": "Yangi skidka foizini kiriting (0-99, 0 = chegirma yo'q):",
+        "miqdor": "Yangi miqdorni kiriting (dona), cheksiz bo'lsa 'yo'q':",
+        "tavsif": "Yangi tavsifni kiriting:",
+    }
+    await query.edit_message_text(prompts[field])
+    await context.bot.send_message(
+        update.effective_chat.id, "Kiriting 👇", reply_markup=cancel_markup()
+    )
+    return E_VALUE
+
+
+async def _apply_edit(update: Update, context, data: dict) -> int:
+    pid = context.user_data["edit_pid"]
+    r = await api.update_product(update.effective_user.id, pid, data)
+    msg = "✅ Yangilandi!" if r.status_code == 200 else f"❌ {r.text[:300]}"
+    await _back_to_menu(update, msg)
+    context.user_data.clear()
+    return ConversationHandler.END
+
+
+async def edit_value_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if _is_menu_press(update.message.text):
+        await _warn_finish_first(update)
+        return E_VALUE
+    field = context.user_data.get("edit_field")
+    matn = update.message.text.strip()
+    if field == "nomi":
+        return await _apply_edit(update, context, {"nomi": matn})
+    if field == "tavsif":
+        return await _apply_edit(update, context, {"tavsif": matn})
+    if field == "narx":
+        try:
+            narx = float(matn.replace(" ", "").replace(",", "."))
+        except ValueError:
+            await update.message.reply_text("Raqam kiriting:")
+            return E_VALUE
+        return await _apply_edit(update, context, {"narxi": narx})
+    if field == "miqdor":
+        if matn.lower() in ("yo'q", "yoq", "yok"):
+            return await _apply_edit(update, context, {"miqdor": None})
+        try:
+            return await _apply_edit(update, context, {"miqdor": int(matn)})
+        except ValueError:
+            await update.message.reply_text("Raqam yoki 'yo'q' kiriting:")
+            return E_VALUE
+    if field == "skidka":
+        try:
+            foiz = int(matn)
+            assert 0 <= foiz <= 99
+        except (ValueError, AssertionError):
+            await update.message.reply_text("0 dan 99 gacha raqam kiriting:")
+            return E_VALUE
+        context.user_data["edit_skidka"] = foiz
+        if foiz > 0:
+            await update.message.reply_text(
+                "Chegirma qachongacha? (masalan 31.07.2026, "
+                "muddatsiz bo'lsa 'yo'q'):"
+            )
+            return E_MUDDAT
+        return await _apply_edit(
+            update, context, {"skidka_foizi": 0, "skidka_muddati": None}
+        )
+    await update.message.reply_text("Nomalum maydon.")
+    return ConversationHandler.END
+
+
+async def edit_muddat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    matn = update.message.text.strip().lower()
+    foiz = context.user_data.get("edit_skidka", 0)
+    if matn in ("yo'q", "yoq", "yok"):
+        return await _apply_edit(
+            update, context, {"skidka_foizi": foiz, "skidka_muddati": None}
+        )
+    try:
+        sana = datetime.strptime(matn, "%d.%m.%Y")
+        tz = ZoneInfo(daily.LOCAL_TZ)
+        muddat = datetime.combine(
+            sana.date(), time(23, 59), tzinfo=tz
+        ).astimezone(timezone.utc)
+    except ValueError:
+        await update.message.reply_text("Masalan: 31.07.2026 — yoki 'yo'q':")
+        return E_MUDDAT
+    return await _apply_edit(
+        update,
+        context,
+        {"skidka_foizi": foiz, "skidka_muddati": muddat.isoformat()},
+    )
+
+
+async def edit_value_korinish(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    korinish = query.data.replace("ekor_", "")
+    pid = context.user_data["edit_pid"]
+    r = await api.update_product(
+        update.effective_user.id, pid, {"korinish": korinish}
+    )
+    msg = "✅ Yangilandi!" if r.status_code == 200 else f"❌ {r.text[:300]}"
+    await query.edit_message_text(msg)
+    await context.bot.send_message(
+        update.effective_chat.id,
+        "Bosh menyu 👇",
+        reply_markup=menu_markup(update.effective_user.id),
+    )
+    context.user_data.clear()
+    return ConversationHandler.END
+
+
+async def edit_value_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    rasmlar = context.user_data.setdefault("edit_rasmlar", [])
+    if len(rasmlar) >= 10:
+        await update.message.reply_text("Maksimal 10 ta rasm.")
+        return E_VALUE
+    rasmlar.append(update.message.photo[-1].file_id)
+    await update.message.reply_text(
+        f"{len(rasmlar)}/10 qabul qilindi. Yana yuboring yoki '{BTN_DONE}'."
+    )
+    return E_VALUE
+
+
+async def edit_value_photo_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    rasmlar = context.user_data.get("edit_rasmlar", [])
+    if not rasmlar:
+        await update.message.reply_text("Hali rasm yubormadingiz.")
+        return E_VALUE
+    return await _apply_edit(
+        update,
+        context,
+        {"rasm_urls": [f"/media/{fid}" for fid in rasmlar]},
+    )
+
+
+# ---------------------------------------------------------------------------
+# 🗑 Mahsulotni o'chirish (spec1 task_5) — inline, suhbatsiz
+# ---------------------------------------------------------------------------
+async def del_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    store_id = await _resolve_store(update, context)
+    if store_id is None:
+        return
+    r = await api.list_products(update.effective_user.id, store_id)
+    items = r.json() if r.status_code == 200 else []
+    if not items:
+        await _back_to_menu(update, "Mahsulotlar yo'q.")
+        return
+    rows = [
+        [
+            InlineKeyboardButton(
+                f"🗑 {p['nomi']} — {p['narxi']:,.0f} som",
+                callback_data=f"pdel_{p['id']}",
+            )
+        ]
+        for p in items[:50]
+    ]
+    await update.message.reply_text(
+        "Qaysi mahsulot o'chirilsin?", reply_markup=InlineKeyboardMarkup(rows)
+    )
+
+
+async def del_pick(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    pid = query.data.replace("pdel_", "")
+    kb = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("✅ Ha", callback_data=f"pdelok_{pid}"),
+                InlineKeyboardButton("❌ Yo'q", callback_data="pdelno"),
+            ]
+        ]
+    )
+    await query.edit_message_text(
+        "Rostdan o'chirilsinmi?", reply_markup=kb
+    )
+
+
+async def del_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if query.data == "pdelno":
+        await query.edit_message_text("Bekor qilindi.")
+        return
+    pid = int(query.data.replace("pdelok_", ""))
+    r = await api.delete_product(update.effective_user.id, pid)
+    if r.status_code == 200:
+        await query.edit_message_text("🗑 Mahsulot o'chirildi.")
+    else:
+        await query.edit_message_text(f"❌ {r.text[:300]}")
+
+
+# ---------------------------------------------------------------------------
+# 🆕 Buyurtmani tezkor qabul qilish / bekor qilish (spec2 task_1)
+# ---------------------------------------------------------------------------
+async def order_accept(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    order_id = int(query.data.replace("qabul_", ""))
+    r = await api.accept_order(update.effective_user.id, order_id)
+    if r.status_code == 403:
+        await query.answer("Bu buyurtma sizga tegishli emas.", show_alert=True)
+        return
+    if r.status_code != 200:
+        try:
+            detail = r.json().get("detail", "Xatolik")
+        except Exception:  # noqa: BLE001
+            detail = "Xatolik"
+        await query.answer(detail, show_alert=True)
+        return
+    await query.answer("Qabul qilindi!")
+    d = r.json()
+    vaqt = datetime.now(ZoneInfo(daily.LOCAL_TZ)).strftime("%H:%M")
+    ism = update.effective_user.first_name or "admin"
+    original = query.message.text or ""
+    await query.edit_message_text(
+        f"{original}\n\n✅ Qabul qilindi — {ism}, {vaqt}"
+    )
+    # Ombor ogohlantirishlari (task_2).
+    for w in d.get("ogohlantirishlar", []):
+        await context.bot.send_message(update.effective_chat.id, w)
+    # Mijozga xabar (Savdo Boti orqali).
+    await notify.send_customer(
+        d.get("user_telegram_id"),
+        f"✅ Buyurtmangiz qabul qilindi! Kod: {d['order']['kod']}\n"
+        "Tez orada tayyorlab jo'natamiz.",
+    )
+
+
+async def order_reject_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    context.user_data["rad_order_id"] = int(query.data.replace("rad_", ""))
+    await context.bot.send_message(
+        update.effective_chat.id,
+        "Bekor qilish sababini yozing (mijozga yuboriladi):",
+        reply_markup=cancel_markup(),
+    )
+    return RAD_SABAB
+
+
+async def order_reject_reason(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if _is_menu_press(update.message.text):
+        await _warn_finish_first(update)
+        return RAD_SABAB
+    sabab = update.message.text.strip()
+    order_id = context.user_data.get("rad_order_id")
+    r = await api.cancel_order(update.effective_user.id, order_id, sabab)
+    if r.status_code == 403:
+        await _back_to_menu(update, "⛔️ Bu buyurtma sizga tegishli emas.")
+    elif r.status_code != 200:
+        await _back_to_menu(update, f"❌ {r.text[:300]}")
+    else:
+        d = r.json()
+        await notify.send_customer(
+            d.get("user_telegram_id"),
+            f"❌ Buyurtmangiz bekor qilindi (kod: {d['order']['kod']}).\n"
+            f"Sabab: {sabab}",
+        )
+        await _back_to_menu(update, "Buyurtma bekor qilindi, mijozga xabar ketdi.")
+    context.user_data.clear()
+    return ConversationHandler.END
+
+
+# ---------------------------------------------------------------------------
+# 🔍 Buyurtma qidirish (spec2 task_4)
+# ---------------------------------------------------------------------------
+async def search_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    store_id = await _resolve_store(update, context)
+    if store_id is None:
+        return ConversationHandler.END
+    context.user_data["search_store"] = store_id
+    await update.message.reply_text(
+        "6 xonali buyurtma kodini YOKI mijoz telefon/ismini kiriting:",
+        reply_markup=cancel_markup(),
+    )
+    return Q_KIRITISH
+
+
+async def search_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if _is_menu_press(update.message.text):
+        await _warn_finish_first(update)
+        return Q_KIRITISH
+    q = update.message.text.strip()
+    r = await api.search_orders(
+        update.effective_user.id, context.user_data["search_store"], q
+    )
+    natijalar = r.json() if r.status_code == 200 else []
+    if not natijalar:
+        await _back_to_menu(update, "Hech narsa topilmadi.")
+        return ConversationHandler.END
+    lines = ["🔍 Topilgan buyurtmalar:\n"]
+    for o in natijalar[:10]:
+        sana = (o.get("yaratilgan_vaqt") or "")[:10]
+        lines.append(
+            f"• Kod: {o['kod']} | {', '.join(o['mahsulotlar'])} | "
+            f"{o.get('mijoz_ism') or '—'} ({o.get('mijoz_tel') or '—'}) | "
+            f"{o['holat']} | {sana}"
+        )
+    await _back_to_menu(update, "\n".join(lines))
+    context.user_data.clear()
+    return ConversationHandler.END
+
+
+# ---------------------------------------------------------------------------
+# 🏪 Do'kon ochish (spec1 task_3)
+# ---------------------------------------------------------------------------
+async def dokon_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    stores = await api.my_stores(update.effective_user.id)
+    if stores:
+        nomlar = ", ".join(s["nomi"] for s in stores)
+        await _back_to_menu(
+            update, f"Sizда allaqachon do'kon bor: {nomlar}"
+        )
+        return ConversationHandler.END
+    await update.message.reply_text(
+        "🏪 Yangi do'kon ochamiz!\nDo'kon nomini kiriting:",
+        reply_markup=cancel_markup(),
+    )
+    return DO_NOMI
+
+
+async def dokon_nomi(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if _is_menu_press(update.message.text):
+        await _warn_finish_first(update)
+        return DO_NOMI
+    r = await api.create_self_store(
+        update.effective_user.id, update.message.text.strip()
+    )
+    if r.status_code == 200:
+        d = r.json()
+        await _back_to_menu(
+            update,
+            f"✅ '{d['nomi']}' do'koni ochildi!\n\n"
+            f"🔑 Mahfiy kodingiz: {d['mahfiy_kirish_kodi']}\n"
+            "(Buni yozib qo'ying — mahfiy mahsulotlar shu kod bilan ochiladi.)",
+        )
+    else:
+        try:
+            detail = r.json().get("detail", r.text)
+        except Exception:  # noqa: BLE001
+            detail = r.text
+        await _back_to_menu(update, f"❌ {detail}")
+    return ConversationHandler.END
+
+
+# ---------------------------------------------------------------------------
+# ➕ Yangi admin qo'shish (spec1 task_4, faqat super-admin)
+# ---------------------------------------------------------------------------
+async def newadmin_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not _is_super(update.effective_user.id):
+        await _back_to_menu(update, "⛔️ Bu amal faqat super-admin uchun.")
+        return ConversationHandler.END
+    stores = await api.my_stores(update.effective_user.id)
+    if not stores:
+        await _back_to_menu(update, "Hali do'konlar yo'q.")
+        return ConversationHandler.END
+    rows = [
+        [
+            InlineKeyboardButton(
+                s["nomi"], callback_data=f"nastore_{s['id']}"
+            )
+        ]
+        for s in stores[:50]
+    ]
+    await update.message.reply_text(
+        "Qaysi do'konга admin qo'shasiz?",
+        reply_markup=InlineKeyboardMarkup(rows),
+    )
+    return NA_ID
+
+
+async def newadmin_store(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    context.user_data["na_store"] = int(query.data.replace("nastore_", ""))
+    await query.edit_message_text(
+        "Yangi adminning Telegram ID'sini kiriting:"
+    )
+    return NA_ID
+
+
+async def newadmin_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        new_admin = int(update.message.text.strip())
+    except ValueError:
+        await update.message.reply_text("Telegram ID raqam bo'lishi kerak:")
+        return NA_ID
+    store_id = context.user_data.get("na_store")
+    if store_id is None:
+        await _back_to_menu(update, "Avval do'konni tanlang.")
+        return ConversationHandler.END
+    r = await api.add_store_admin(
+        update.effective_user.id, store_id, new_admin
+    )
+    if r.status_code == 200:
+        await _back_to_menu(
+            update,
+            f"✅ Admin {new_admin} qo'shildi. U darhol botга kira oladi.",
+        )
+    else:
+        await _back_to_menu(update, f"❌ {r.text[:300]}")
+    context.user_data.clear()
+    return ConversationHandler.END
+
+
+# ---------------------------------------------------------------------------
+# Oddiy ko'rish funksiyalari (mavjud mantiq — tugmalarga ulangan)
+# ---------------------------------------------------------------------------
 async def mahsulotlar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     store_id = await _resolve_store(update, context)
     if store_id is None:
@@ -134,7 +963,19 @@ async def mahsulotlar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines = ["📋 *Mahsulotlar:*\n"]
     for p in items:
         belgi = "🔒" if p["korinish"] == "mahfiy" else "🌐"
-        lines.append(f"{belgi} #{p['id']} {p['nomi']} — {p['narxi']:,.0f} so'm")
+        narx = f"{p['narxi']:,.0f} som"
+        if (p.get("skidka_foizi") or 0) > 0 and p.get("yakuniy_narx"):
+            narx = (
+                f"~{p['narxi']:,.0f}~ → {p['yakuniy_narx']:,.0f} som "
+                f"(-{p['skidka_foizi']}%)"
+            )
+        miqdor = p.get("miqdor")
+        ombor = (
+            " | ❌ Tugadi" if miqdor == 0
+            else f" | {miqdor} dona" if miqdor is not None
+            else ""
+        )
+        lines.append(f"{belgi} #{p['id']} {p['nomi']} — {narx}{ombor}")
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
@@ -153,14 +994,14 @@ async def buyurtmalar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines = ["🧾 *Buyurtmalar:*\n"]
     for o in orders[:15]:
         lines.append(
-            f"• #{o['id']} kod:`{o['kod']}` — {o['jami_narx']:,.0f} so'm — "
+            f"• #{o['id']} kod:`{o['kod']}` — {o['jami_narx']:,.0f} som — "
             f"_{o['holat']}_"
         )
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
 async def tasdiqlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/tasdiqlash <kod> — buyurtma kodini tasdiqlash (phase 3.3)."""
+    """/tasdiqlash <kod> — buyurtma kodini tasdiqlash."""
     if not context.args:
         await update.message.reply_text("Foydalanish: /tasdiqlash <6 xonali kod>")
         return
@@ -180,7 +1021,6 @@ async def tasdiqlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def mahfiy_kod(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Joriy mahfiy kodni ko'rsatish + yangilash tugmasi (rule 4, 6)."""
     store_id = await _resolve_store(update, context)
     if store_id is None:
         return
@@ -231,7 +1071,7 @@ async def statistika(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📊 *Statistika*\n\n"
         f"Buyurtmalar: {s['umumiy_buyurtma']}\n"
         f"Tasdiqlangan: {s['tasdiqlangan_buyurtma']}\n"
-        f"Tushum: {s['umumiy_tushum']:,.0f} so'm\n"
+        f"Tushum: {s['umumiy_tushum']:,.0f} som\n"
         f"Mahsulotlar: {s['mahsulot_soni']}",
         parse_mode="Markdown",
     )
@@ -247,7 +1087,7 @@ async def top_tovarlar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     top = r.json()
     if not top:
-        await update.message.reply_text("Hali sotilган tovar yo'q.")
+        await update.message.reply_text("Hali sotilgan tovar yo'q.")
         return
     lines = ["🏆 *Top tovarlar:*\n"]
     for i, t in enumerate(top, 1):
@@ -255,43 +1095,69 @@ async def top_tovarlar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
-async def promo_yaratish(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/promo_yaratish <kod> <foiz> — promo kod (phase 8.4)."""
-    if len(context.args) < 2:
-        await update.message.reply_text(
-            "Foydalanish: /promo_yaratish <KOD> <chegirma_foizi>"
-        )
-        return
+# ---------------------------------------------------------------------------
+# 🎟 Promo kod (tugmali)
+# ---------------------------------------------------------------------------
+async def promo_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     store_id = await _resolve_store(update, context)
     if store_id is None:
-        return
+        return ConversationHandler.END
+    context.user_data["promo_store"] = store_id
+    await update.message.reply_text(
+        "Promo kod matnini kiriting (masalan: YOZGI20):",
+        reply_markup=cancel_markup(),
+    )
+    return PR_KOD
+
+
+async def promo_kod(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if _is_menu_press(update.message.text):
+        await _warn_finish_first(update)
+        return PR_KOD
+    context.user_data["promo_kod"] = update.message.text.strip()
+    await update.message.reply_text("Chegirma foizini kiriting (1-100):")
+    return PR_FOIZ
+
+
+async def promo_foiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        foiz = int(context.args[1])
-    except ValueError:
-        await update.message.reply_text("Foiz raqam bo'lishi kerak.")
-        return
+        foiz = int(update.message.text.strip())
+        assert 1 <= foiz <= 100
+    except (ValueError, AssertionError):
+        await update.message.reply_text("1 dan 100 gacha raqam kiriting:")
+        return PR_FOIZ
     r = await api.create_promo(
         update.effective_user.id,
-        store_id,
-        {"kod": context.args[0], "chegirma_foizi": foiz},
+        context.user_data["promo_store"],
+        {"kod": context.user_data["promo_kod"], "chegirma_foizi": foiz},
     )
     if r.status_code == 200:
-        await update.message.reply_text(
-            f"✅ Promo yaratildi: {context.args[0]} (-{foiz}%)"
+        await _back_to_menu(
+            update,
+            f"✅ Promo yaratildi: {context.user_data['promo_kod']} (-{foiz}%)",
         )
     else:
-        await update.message.reply_text(f"❌ {r.text}")
+        await _back_to_menu(update, f"❌ {r.text[:300]}")
+    context.user_data.clear()
+    return ConversationHandler.END
 
 
-# --- Super-admin: yangi do'kon (rule 11) ---
+# ---------------------------------------------------------------------------
+# Super-admin: boshqa odamга do'kon ochish (legacy /yangi_dokon)
+# ---------------------------------------------------------------------------
 async def yangi_dokon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🏪 Yangi do'kon yaratish.\nDo'kon nomini kiriting (/bekor — bekor qilish):"
+        "🏪 (Super-admin) Boshqa egaga do'kon yaratish.\n"
+        "Do'kon nomini kiriting (/bekor — bekor qilish):",
+        reply_markup=cancel_markup(),
     )
     return S_NOMI
 
 
 async def s_nomi(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if _is_menu_press(update.message.text):
+        await _warn_finish_first(update)
+        return S_NOMI
     context.user_data["yangi_dokon_nomi"] = update.message.text
     await update.message.reply_text(
         "Yangi admin(do'kon egasi)ning Telegram ID'sini kiriting:"
@@ -314,37 +1180,28 @@ async def s_admin_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     if r.status_code == 200:
         d = r.json()
-        await update.message.reply_text(
+        await _back_to_menu(
+            update,
             f"✅ Do'kon yaratildi!\n\n"
             f"Nomi: {d['nomi']}\nID: {d['store_id']}\n"
             f"Admin: {new_admin}\n"
-            f"Mahfiy kod: `{d['mahfiy_kirish_kodi']}`\n\n"
-            "Yangi admin darhol Boshqaruv Botiga kira oladi.",
-            parse_mode="Markdown",
+            f"Mahfiy kod: {d['mahfiy_kirish_kodi']}",
         )
     elif r.status_code == 403:
-        await update.message.reply_text(
-            "⛔️ Faqat super-admin yangi do'kon qo'sha oladi."
+        await _back_to_menu(
+            update, "⛔️ Faqat super-admin yangi do'kon qo'sha oladi."
         )
     else:
-        await update.message.reply_text(f"❌ {r.text}")
-    return ConversationHandler.END
-
-
-async def bekor(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await _back_to_menu(update, f"❌ {r.text[:300]}")
     context.user_data.clear()
-    await update.message.reply_text("Bekor qilindi.")
     return ConversationHandler.END
 
 
-# --- Super-admin: do'konni o'chirish (phase 8.6) ---
+# --- Super-admin: do'konni o'chirish (mavjud oqim) ---
 async def dokon_ochirish(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/dokon_ochirish — do'konни tanlab o'chirish (faqat super-admin)."""
     stores = await api.my_stores(update.effective_user.id)
     if not stores:
-        await update.message.reply_text(
-            "⛔️ Sizда ruxsat yo'q yoki do'konlar yo'q."
-        )
+        await update.message.reply_text("Do'konlar yo'q.")
         return
     rows = [
         [
@@ -398,7 +1255,7 @@ async def dokon_ochirish_tasdiq(update: Update, context: ContextTypes.DEFAULT_TY
             "⛔️ Faqat super-admin do'kon o'chira oladi."
         )
     else:
-        await query.edit_message_text(f"❌ Xatolik: {r.text}")
+        await query.edit_message_text(f"❌ Xatolik: {r.text[:300]}")
 
 
 async def dokon_ochirish_bekor(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -407,39 +1264,174 @@ async def dokon_ochirish_bekor(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.edit_message_text("Bekor qilindi — hech narsa o'chirilmadi.")
 
 
+# ---------------------------------------------------------------------------
+# Application yig'ish
+# ---------------------------------------------------------------------------
+def _conv(entry_points, states, name: str) -> ConversationHandler:
+    return ConversationHandler(
+        entry_points=entry_points,
+        states=states,
+        fallbacks=[
+            MessageHandler(filters.Regex(f"^{BTN_CANCEL}$"), bekor),
+            CommandHandler("bekor", bekor),
+        ],
+        allow_reentry=True,
+        name=name,
+    )
+
+
 def build_application(token: str) -> Application:
     app = Application.builder().token(token).updater(None).build()
 
-    product_conv = ConversationHandler(
-        entry_points=[CommandHandler("mahsulot_qoshish", mahsulot_qoshish)],
-        states={
-            P_NOMI: [MessageHandler(filters.TEXT & ~filters.COMMAND, p_nomi)],
-            P_NARX: [MessageHandler(filters.TEXT & ~filters.COMMAND, p_narx)],
-            P_KORINISH: [CallbackQueryHandler(p_korinish, pattern="^kor_")],
+    TXT = filters.TEXT & ~filters.COMMAND
+
+    # 📦 Mahsulot qo'shish (kengaytirilgan, spec1 task_2)
+    add_conv = _conv(
+        [
+            MessageHandler(filters.Regex(f"^{BTN_ADD}$"), add_start),
+            CommandHandler("mahsulot_qoshish", add_start),
+        ],
+        {
+            P_NOMI: [MessageHandler(TXT, p_nomi)],
+            P_RASM: [
+                MessageHandler(filters.PHOTO, p_rasm),
+                MessageHandler(filters.Regex(f"^{BTN_DONE}$"), p_rasm_done),
+                MessageHandler(filters.Regex(f"^{BTN_SKIP}$"), p_rasm_skip),
+            ],
+            P_NARX: [
+                MessageHandler(filters.PHOTO, p_stray_photo),
+                MessageHandler(TXT, p_narx),
+            ],
+            P_SKIDKA: [MessageHandler(TXT, p_skidka)],
+            P_MUDDAT: [MessageHandler(TXT, p_muddat)],
+            P_MIQDOR: [MessageHandler(TXT, p_miqdor)],
+            P_TAVSIF: [
+                MessageHandler(filters.Regex(f"^{BTN_SKIP}$"), p_tavsif_skip),
+                MessageHandler(TXT, p_tavsif),
+            ],
+            P_KORINISH: [CallbackQueryHandler(p_korinish, pattern="^pkor_")],
+            P_TASDIQ: [CallbackQueryHandler(p_saqlash, pattern="^psave_")],
         },
-        fallbacks=[CommandHandler("bekor", bekor)],
+        "add_product",
     )
-    store_conv = ConversationHandler(
-        entry_points=[CommandHandler("yangi_dokon", yangi_dokon)],
-        states={
-            S_NOMI: [MessageHandler(filters.TEXT & ~filters.COMMAND, s_nomi)],
-            S_ADMIN_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, s_admin_id)],
+
+    # 🔄 Tahrirlash
+    edit_conv = _conv(
+        [
+            MessageHandler(filters.Regex(f"^{BTN_EDIT}$"), edit_start),
+            CommandHandler("mahsulot_yangilash", edit_start),
+        ],
+        {
+            E_FIELD: [
+                CallbackQueryHandler(edit_pick, pattern="^epick_"),
+                CallbackQueryHandler(edit_field, pattern="^ef_"),
+            ],
+            E_VALUE: [
+                CallbackQueryHandler(edit_value_korinish, pattern="^ekor_"),
+                MessageHandler(filters.PHOTO, edit_value_photo),
+                MessageHandler(
+                    filters.Regex(f"^{BTN_DONE}$"), edit_value_photo_done
+                ),
+                MessageHandler(TXT, edit_value_text),
+            ],
+            E_MUDDAT: [MessageHandler(TXT, edit_muddat)],
         },
-        fallbacks=[CommandHandler("bekor", bekor)],
+        "edit_product",
+    )
+
+    # 🎟 Promo
+    promo_conv = _conv(
+        [
+            MessageHandler(filters.Regex(f"^{BTN_PROMO}$"), promo_start),
+            CommandHandler("promo_yaratish", promo_start),
+        ],
+        {
+            PR_KOD: [MessageHandler(TXT, promo_kod)],
+            PR_FOIZ: [MessageHandler(TXT, promo_foiz)],
+        },
+        "promo",
+    )
+
+    # 🔍 Qidirish
+    search_conv = _conv(
+        [
+            MessageHandler(filters.Regex(f"^{BTN_SEARCH}$"), search_start),
+            CommandHandler("qidirish", search_start),
+        ],
+        {Q_KIRITISH: [MessageHandler(TXT, search_query)]},
+        "search",
+    )
+
+    # 🏪 Do'kon ochish (o'ziga)
+    dokon_conv = _conv(
+        [MessageHandler(filters.Regex(f"^{BTN_DOKON}$"), dokon_start)],
+        {DO_NOMI: [MessageHandler(TXT, dokon_nomi)]},
+        "self_store",
+    )
+
+    # ➕ Yangi admin (super)
+    newadmin_conv = _conv(
+        [MessageHandler(filters.Regex(f"^{BTN_NEWADMIN}$"), newadmin_start)],
+        {
+            NA_ID: [
+                CallbackQueryHandler(newadmin_store, pattern="^nastore_"),
+                MessageHandler(TXT, newadmin_id),
+            ]
+        },
+        "new_admin",
+    )
+
+    # Super: boshqa egaga do'kon (legacy buyruq)
+    store_conv = _conv(
+        [CommandHandler("yangi_dokon", yangi_dokon)],
+        {
+            S_NOMI: [MessageHandler(TXT, s_nomi)],
+            S_ADMIN_ID: [MessageHandler(TXT, s_admin_id)],
+        },
+        "super_store",
+    )
+
+    # ❌ Buyurtmani bekor qilish (sabab bilan)
+    reject_conv = _conv(
+        [CallbackQueryHandler(order_reject_start, pattern="^rad_")],
+        {RAD_SABAB: [MessageHandler(TXT, order_reject_reason)]},
+        "reject_order",
     )
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(product_conv)
+    app.add_handler(add_conv)
+    app.add_handler(edit_conv)
+    app.add_handler(promo_conv)
+    app.add_handler(search_conv)
+    app.add_handler(dokon_conv)
+    app.add_handler(newadmin_conv)
     app.add_handler(store_conv)
-    app.add_handler(CommandHandler("mahsulotlar", mahsulotlar))
-    app.add_handler(CommandHandler("buyurtmalar", buyurtmalar))
-    app.add_handler(CommandHandler("tasdiqlash", tasdiqlash))
+    app.add_handler(reject_conv)
+
+    # Bir bosishli tugmalar / buyruqlar
+    app.add_handler(MessageHandler(filters.Regex(f"^{BTN_DEL}$"), del_start))
+    app.add_handler(CommandHandler("mahsulot_ochirish", del_start))
+    app.add_handler(
+        MessageHandler(filters.Regex(f"^{BTN_SECRET}$"), mahfiy_kod)
+    )
     app.add_handler(CommandHandler("mahfiy_kod", mahfiy_kod))
-    app.add_handler(CallbackQueryHandler(mahfiy_kod_refresh, pattern="^refresh_"))
+    app.add_handler(MessageHandler(filters.Regex(f"^{BTN_STATS}$"), statistika))
     app.add_handler(CommandHandler("statistika", statistika))
+    app.add_handler(
+        MessageHandler(filters.Regex(f"^{BTN_ORDERS}$"), buyurtmalar)
+    )
+    app.add_handler(CommandHandler("buyurtmalar", buyurtmalar))
+    app.add_handler(CommandHandler("mahsulotlar", mahsulotlar))
+    app.add_handler(CommandHandler("tasdiqlash", tasdiqlash))
     app.add_handler(CommandHandler("top_tovarlar", top_tovarlar))
-    app.add_handler(CommandHandler("promo_yaratish", promo_yaratish))
     app.add_handler(CommandHandler("dokon_ochirish", dokon_ochirish))
+
+    # Inline callbacklar
+    app.add_handler(CallbackQueryHandler(order_accept, pattern="^qabul_"))
+    app.add_handler(CallbackQueryHandler(del_pick, pattern="^pdel_\\d"))
+    app.add_handler(CallbackQueryHandler(del_confirm, pattern="^pdelok_"))
+    app.add_handler(CallbackQueryHandler(del_confirm, pattern="^pdelno$"))
+    app.add_handler(CallbackQueryHandler(mahfiy_kod_refresh, pattern="^refresh_"))
     app.add_handler(
         CallbackQueryHandler(dokon_ochirish_tanlash, pattern="^delstore_")
     )

@@ -14,12 +14,34 @@ amalga oshiradi. Har o'zgartirishdan oldin o'sha qoidalarni qayta o'qing.
 """
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import List, Set
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import Product, Store, UnlockedStore, User
+from ..models import Product, Store, UnlockedStore, User, _as_aware, _now
+
+
+def sotuv_narxi(p: Product) -> float:
+    """Mahsulotning amaldagi sotuv narxi.
+
+    Chegirma faol bo'lса (foiz > 0 va muddati o'tmagan) — chegirmali narx,
+    aks holda asosiy narx. Muddat tekshiruvi har o'qishда bo'lgani uchun
+    kunlik job kechiksa ham narx to'g'ri hisoblanadi.
+    """
+    sk = p.skidka_foizi or 0
+    if sk > 0 and (
+        p.skidka_muddati is None or _as_aware(p.skidka_muddati) >= _now()
+    ):
+        narx = Decimal(str(p.narxi)) * (100 - sk) / 100
+        return float(narx.quantize(Decimal("0.01")))
+    return float(p.narxi)
+
+
+def tugadi(p: Product) -> bool:
+    """Ombor tugaganmi? (miqdor NULL = cheksiz, hech qachon tugamaydi.)"""
+    return p.miqdor is not None and p.miqdor <= 0
 
 
 def get_unlocked_store_ids(db: Session, user: User) -> Set[int]:
@@ -68,6 +90,7 @@ def get_catalog(db: Session, user: User) -> List[dict]:
     for p in products:
         if p.korinish == "ommaviy" or p.store_id in unlocked_ids:
             store = stores.get(p.store_id)
+            eff = sotuv_narxi(p)
             catalog.append(
                 {
                     "id": p.id,
@@ -75,11 +98,19 @@ def get_catalog(db: Session, user: User) -> List[dict]:
                     "store_nomi": store.nomi if store else None,
                     "nomi": p.nomi,
                     "narxi": float(p.narxi),
+                    # Amaldagi sotuv narxi (chegirma hisobga olingan).
+                    "sotuv_narxi": eff,
+                    "skidka_foizi": (p.skidka_foizi or 0)
+                    if eff < float(p.narxi)
+                    else 0,
                     "olcham": p.olcham,
                     "rang": p.rang,
-                    "rasm_url": p.rasm_url,
+                    "rasm_url": p.rasm_url
+                    or ((p.rasm_urls or [None])[0]),
+                    "rasm_urls": p.rasm_urls or [],
                     "tavsif": p.tavsif,
                     "korinish": p.korinish,
+                    "tugadi": tugadi(p),
                 }
             )
     return catalog

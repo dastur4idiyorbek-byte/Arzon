@@ -11,4 +11,5 @@ httpx==0.28.1
 # PostgreSQL (Neon) drayveri — doimiy baza uchun.
 psycopg2-binary==2.9.10
 # Telegram botlar (webhook rejimi — bulutда, backend ichida ishlaydi).
-python-telegram-bot==22.8
+# [job-queue] — kunlik hisobot uchun (APScheduler).
+python-telegram-bot[job-queue]==22.8

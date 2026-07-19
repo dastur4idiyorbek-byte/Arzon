@@ -369,3 +369,221 @@ def test_phase86_delete_store_super_admin_only():
     cat = client.get("/api/products", headers=customer_headers(9911)).json()
     assert "O'chadigan tovar" not in {x["nomi"] for x in cat}
     assert sid not in {x["store_id"] for x in cat}
+
+
+# ===========================================================================
+# spec2: chegirma, ombor, qabul qilish, qidirish, o'z do'konini ochish
+# ===========================================================================
+def test_spec_discount_price_applied():
+    """Skidka 20%: 3200 -> 2560 (spec1 task_2 verification #3)."""
+    store_a, _ = setup_two_stores()
+    p = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/products",
+        headers=admin_headers(ADMIN_A),
+        json={"nomi": "Chegirmali", "narxi": 3200, "korinish": "ommaviy",
+              "skidka_foizi": 20},
+    ).json()
+    assert p["yakuniy_narx"] == 2560.0
+
+    cat = client.get("/api/products", headers=customer_headers(3311)).json()
+    item = next(x for x in cat if x["nomi"] == "Chegirmali")
+    assert item["sotuv_narxi"] == 2560.0
+    assert item["skidka_foizi"] == 20
+
+    # Checkout ham chegirmali narxда hisoblaydi.
+    cust = customer_headers(3311)
+    client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700000001"})
+    r = client.post(
+        "/api/checkout", headers=cust,
+        json={"items": [{"product_id": p["id"], "soni": 1}]},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["buyurtmalar"][0]["jami_narx"] == 2560.0
+
+
+def test_spec_expired_discount_ignored():
+    """Muddati o'tgan chegirma narxga qo'llanmaydi (spec2 task_5)."""
+    store_a, _ = setup_two_stores()
+    p = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/products",
+        headers=admin_headers(ADMIN_A),
+        json={"nomi": "Eski chegirma", "narxi": 1000, "korinish": "ommaviy",
+              "skidka_foizi": 50, "skidka_muddati": "2020-01-01T00:00:00Z"},
+    ).json()
+    cat = client.get("/api/products", headers=customer_headers(3322)).json()
+    item = next(x for x in cat if x["id"] == p["id"])
+    assert item["sotuv_narxi"] == 1000.0  # chegirma o'tgan — asl narx
+
+
+def test_spec_stock_flow_accept_and_out_of_stock():
+    """Ombor: miqdor 1 -> qabul qilingach 0 -> 'Tugadi' -> checkout rad."""
+    store_a, _ = setup_two_stores()
+    p = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/products",
+        headers=admin_headers(ADMIN_A),
+        json={"nomi": "Oxirgi dona", "narxi": 500, "korinish": "ommaviy",
+              "miqdor": 1},
+    ).json()
+
+    cust = customer_headers(4411)
+    client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700000002"})
+
+    # 2 dona so'ralsa — rad (faqat 1 qolgan).
+    r2 = client.post(
+        "/api/checkout", headers=cust,
+        json={"items": [{"product_id": p["id"], "soni": 2}]},
+    )
+    assert r2.status_code == 400, r2.text
+
+    # 1 dona — o'tadi.
+    ok = client.post(
+        "/api/checkout", headers=cust,
+        json={"items": [{"product_id": p["id"], "soni": 1}]},
+    )
+    assert ok.status_code == 200, ok.text
+    order = ok.json()["buyurtmalar"][0]
+
+    # Boshqa admin qabul qila olmaydi (rule 7).
+    forbidden = client.post(
+        f"/api/admin/orders/{order['id']}/accept",
+        headers=admin_headers(ADMIN_B),
+    )
+    assert forbidden.status_code == 403, forbidden.text
+
+    # O'z admini qabul qiladi -> holat tayyorlanmoqda, miqdor 0, ogohlantirish.
+    acc = client.post(
+        f"/api/admin/orders/{order['id']}/accept",
+        headers=admin_headers(ADMIN_A),
+    )
+    assert acc.status_code == 200, acc.text
+    d = acc.json()
+    assert d["order"]["holat"] == "tayyorlanmoqda"
+    assert any("tugadi" in w.lower() for w in d["ogohlantirishlar"])
+    assert d["user_telegram_id"] == 4411
+
+    # Katalogда 'tugadi' belgisi.
+    cat = client.get("/api/products", headers=customer_headers(4412)).json()
+    item = next(x for x in cat if x["id"] == p["id"])
+    assert item["tugadi"] is True
+
+    # Endi sotib bo'lmaydi.
+    cust2 = customer_headers(4412)
+    client.post("/api/confirm-phone", headers=cust2, json={"tel": "+996700000003"})
+    r3 = client.post(
+        "/api/checkout", headers=cust2,
+        json={"items": [{"product_id": p["id"], "soni": 1}]},
+    )
+    assert r3.status_code == 400, r3.text
+
+
+def test_spec_cancel_order_with_reason():
+    store_a, _ = setup_two_stores()
+    p = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/products",
+        headers=admin_headers(ADMIN_A),
+        json={"nomi": "Bekor tovar", "narxi": 700, "korinish": "ommaviy"},
+    ).json()
+    cust = customer_headers(5511)
+    client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700000004"})
+    order = client.post(
+        "/api/checkout", headers=cust,
+        json={"items": [{"product_id": p["id"], "soni": 1}]},
+    ).json()["buyurtmalar"][0]
+
+    r = client.post(
+        f"/api/admin/orders/{order['id']}/cancel",
+        headers=admin_headers(ADMIN_A),
+        json={"sabab": "Mahsulot sifatsiz chiqdi"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["order"]["holat"] == "bekor_qilindi"
+
+
+def test_spec_order_search_store_scoped():
+    """Qidiruv faqat o'z do'koni doirasida (spec2 task_4 verification #4)."""
+    store_a, store_b = setup_two_stores()
+    pa = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/products",
+        headers=admin_headers(ADMIN_A),
+        json={"nomi": "Qidiruv A", "narxi": 100, "korinish": "ommaviy"},
+    ).json()
+    cust = customer_headers(6611)
+    client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700123456"})
+    order = client.post(
+        "/api/checkout", headers=cust,
+        json={"items": [{"product_id": pa["id"], "soni": 1}]},
+    ).json()["buyurtmalar"][0]
+
+    # O'z do'konida kod bo'yicha topiladi.
+    r = client.get(
+        f"/api/admin/stores/{store_a['store_id']}/orders/search",
+        headers=admin_headers(ADMIN_A),
+        params={"q": order["kod"]},
+    )
+    assert r.status_code == 200 and len(r.json()) == 1
+
+    # Telefon bo'yicha ham topiladi.
+    r_tel = client.get(
+        f"/api/admin/stores/{store_a['store_id']}/orders/search",
+        headers=admin_headers(ADMIN_A),
+        params={"q": "700123456"},
+    )
+    assert len(r_tel.json()) >= 1
+
+    # B do'koni adminining qidiruvida A'ning kodi chiqmaydi.
+    r_b = client.get(
+        f"/api/admin/stores/{store_b['store_id']}/orders/search",
+        headers=admin_headers(ADMIN_B),
+        params={"q": order["kod"]},
+    )
+    assert r_b.status_code == 200 and r_b.json() == []
+
+
+def test_spec_self_store_creation():
+    """Do'koni yo'q foydalanuvchi o'ziga do'kon ochadi (spec1 task_3)."""
+    r = client.post(
+        "/api/admin/stores/self",
+        headers=admin_headers(770077),
+        json={"nomi": "O'z do'konim"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["mahfiy_kirish_kodi"]
+
+    # Ikkinchi marta — rad ("allaqachon bor").
+    r2 = client.post(
+        "/api/admin/stores/self",
+        headers=admin_headers(770077),
+        json={"nomi": "Ikkinchi"},
+    )
+    assert r2.status_code == 400, r2.text
+
+
+def test_spec_daily_report_and_discount_expiry():
+    """Kunlik hisobot matni + muddati o'tgan chegirma nolga tushishi."""
+    from app.tgbots import daily as daily_mod
+    from app.database import SessionLocal
+    from app.models import Product as ProductModel, Store as StoreModel
+    from sqlalchemy import select as sa_select
+
+    store_a, _ = setup_two_stores()
+    client.post(
+        f"/api/admin/stores/{store_a['store_id']}/products",
+        headers=admin_headers(ADMIN_A),
+        json={"nomi": "Muddat tovar", "narxi": 2000, "korinish": "ommaviy",
+              "skidka_foizi": 30, "skidka_muddati": "2020-06-01T00:00:00Z"},
+    )
+
+    db = SessionLocal()
+    try:
+        xabarlar = daily_mod.expire_discounts(db)
+        assert store_a["store_id"] in xabarlar
+        p = db.scalar(
+            sa_select(ProductModel).where(ProductModel.nomi == "Muddat tovar")
+        )
+        assert (p.skidka_foizi or 0) == 0 and p.yakuniy_narx is None
+
+        store = db.get(StoreModel, store_a["store_id"])
+        text = daily_mod.build_store_report(db, store)
+        assert "Kunlik hisobot" in text and "Tushum" in text
+    finally:
+        db.close()

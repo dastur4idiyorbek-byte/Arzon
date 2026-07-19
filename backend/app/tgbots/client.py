@@ -188,5 +188,73 @@ class BotApi:
             headers=self._admin(admin_id),
         )
 
+    async def update_product(
+        self, admin_id: int, product_id: int, data: dict
+    ) -> httpx.Response:
+        return await self._request(
+            "PATCH",
+            f"/api/admin/products/{product_id}",
+            headers=self._admin(admin_id),
+            json=data,
+        )
+
+    async def delete_product(
+        self, admin_id: int, product_id: int
+    ) -> httpx.Response:
+        return await self._request(
+            "DELETE",
+            f"/api/admin/products/{product_id}",
+            headers=self._admin(admin_id),
+        )
+
+    async def accept_order(
+        self, admin_id: int, order_id: int
+    ) -> httpx.Response:
+        return await self._request(
+            "POST",
+            f"/api/admin/orders/{order_id}/accept",
+            headers=self._admin(admin_id),
+        )
+
+    async def cancel_order(
+        self, admin_id: int, order_id: int, sabab: str
+    ) -> httpx.Response:
+        return await self._request(
+            "POST",
+            f"/api/admin/orders/{order_id}/cancel",
+            headers=self._admin(admin_id),
+            json={"sabab": sabab},
+        )
+
+    async def search_orders(
+        self, admin_id: int, store_id: int, q: str
+    ) -> httpx.Response:
+        return await self._request(
+            "GET",
+            f"/api/admin/stores/{store_id}/orders/search",
+            headers=self._admin(admin_id),
+            params={"q": q},
+        )
+
+    async def create_self_store(
+        self, admin_id: int, nomi: str
+    ) -> httpx.Response:
+        return await self._request(
+            "POST",
+            "/api/admin/stores/self",
+            headers=self._admin(admin_id),
+            json={"nomi": nomi},
+        )
+
+    async def add_store_admin(
+        self, admin_id: int, store_id: int, new_admin_id: int
+    ) -> httpx.Response:
+        return await self._request(
+            "POST",
+            f"/api/admin/stores/{store_id}/admins",
+            headers=self._admin(admin_id),
+            json={"admin_telegram_id": new_admin_id},
+        )
+
 
 api = BotApi()

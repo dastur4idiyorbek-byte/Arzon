@@ -78,7 +78,21 @@ class Product(Base):
     olcham: Mapped[str | None] = mapped_column(String(64), nullable=True)
     rang: Mapped[str | None] = mapped_column(String(64), nullable=True)
     rasm_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # Bir nechta rasm (max 10) — /media/<file_id> ko'rinishidagi URL'lar ro'yxati.
+    rasm_urls: Mapped[list | None] = mapped_column(JSON, nullable=True)
     tavsif: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Chegirma: foiz (0 = yo'q), yakuniy narx (hisoblangan), muddat (ixtiyoriy).
+    skidka_foizi: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=0
+    )
+    yakuniy_narx: Mapped[float | None] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
+    skidka_muddati: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Ombor: qolgan dona. NULL = cheksiz. 0 = "Tugadi" (sotib bo'lmaydi).
+    miqdor: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # 'ommaviy' | 'mahfiy' — mahfiy do'konning kodi orqali ochiladi (rule 3).
     korinish: Mapped[str] = mapped_column(String(10), default="ommaviy")
 
@@ -133,6 +147,10 @@ class Order(Base):
     # BigInteger — Telegram ID'lar katta bo'lishi mumkin.
     tasdiqlagan_kim: Mapped[int | None] = mapped_column(
         BigInteger, nullable=True
+    )
+    # Bekor qilish sababi (admin kiritadi, mijozga yuboriladi).
+    bekor_sababi: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
     )
 
 
