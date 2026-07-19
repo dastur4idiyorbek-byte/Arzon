@@ -369,6 +369,42 @@ def create_store(
     }
 
 
+@router.delete("/stores/{store_id}")
+def delete_store(
+    store_id: int,
+    admin_id: int = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Do'konni butunlay o'chirish (phase 8.6) — faqat super-admin.
+
+    Mahsulotlar ORM cascade orqali, buyurtma/promo/unlocked yozuvlari esa
+    aniq (explicit) o'chiriladi — SQLite'да FK cascade majburiy emasligi uchun.
+    """
+    if not is_super_admin(admin_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Faqat super-admin do'kon o'chira oladi.",
+        )
+    store = db.get(Store, store_id)
+    if store is None:
+        raise HTTPException(status_code=404, detail="Do'kon topilmadi.")
+
+    nomi = store.nomi
+    product_ids = [p.id for p in store.products]
+
+    from ..models import PromoCode as _Promo
+    from ..models import UnlockedStore as _Unlocked
+
+    for model in (Order, _Promo, _Unlocked):
+        for row in db.scalars(select(model).where(model.store_id == store_id)):
+            db.delete(row)
+    db.delete(store)  # mahsulotlar relationship cascade bilan o'chadi
+    db.commit()
+    for pid in product_ids:
+        vector_store.remove_product(pid)
+    return {"ochirildi": True, "store_id": store_id, "nomi": nomi}
+
+
 class AddAdminRequest(BaseModel):
     admin_telegram_id: int
 

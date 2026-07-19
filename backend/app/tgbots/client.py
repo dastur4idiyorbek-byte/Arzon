@@ -181,5 +181,12 @@ class BotApi:
             json=data,
         )
 
+    async def delete_store(self, admin_id: int, store_id: int) -> httpx.Response:
+        return await self._request(
+            "DELETE",
+            f"/api/admin/stores/{store_id}",
+            headers=self._admin(admin_id),
+        )
+
 
 api = BotApi()

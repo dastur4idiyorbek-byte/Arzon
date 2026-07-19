@@ -338,3 +338,34 @@ def test_rule7_admin_cannot_confirm_other_store_code():
         json={"kod": order["kod"]},
     )
     assert r.status_code == 403, r.text
+
+
+# ===========================================================================
+# phase 8.6: do'konni o'chirish — faqat super-admin, to'liq tozalash
+# ===========================================================================
+def test_phase86_delete_store_super_admin_only():
+    store_a, _ = setup_two_stores()
+    sid = store_a["store_id"]
+    p = client.post(
+        f"/api/admin/stores/{sid}/products",
+        headers=admin_headers(ADMIN_A),
+        json={"nomi": "O'chadigan tovar", "narxi": 1000, "korinish": "ommaviy"},
+    ).json()
+
+    # Oddiy admin o'chira olmaydi -> 403.
+    r = client.delete(
+        f"/api/admin/stores/{sid}", headers=admin_headers(ADMIN_A)
+    )
+    assert r.status_code == 403, r.text
+
+    # Super-admin o'chiradi.
+    r2 = client.delete(
+        f"/api/admin/stores/{sid}", headers=admin_headers(SUPER)
+    )
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["ochirildi"] is True
+
+    # Do'kon va mahsulotlari katalogдан yo'qoladi.
+    cat = client.get("/api/products", headers=customer_headers(9911)).json()
+    assert "O'chadigan tovar" not in {x["nomi"] for x in cat}
+    assert sid not in {x["store_id"] for x in cat}

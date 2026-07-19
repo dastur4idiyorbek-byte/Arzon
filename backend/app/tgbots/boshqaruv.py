@@ -337,6 +337,76 @@ async def bekor(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 
+# --- Super-admin: do'konni o'chirish (phase 8.6) ---
+async def dokon_ochirish(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/dokon_ochirish — do'konни tanlab o'chirish (faqat super-admin)."""
+    stores = await api.my_stores(update.effective_user.id)
+    if not stores:
+        await update.message.reply_text(
+            "⛔️ Sizда ruxsat yo'q yoki do'konlar yo'q."
+        )
+        return
+    rows = [
+        [
+            InlineKeyboardButton(
+                f"🗑 {s['nomi']} (ID {s['id']})",
+                callback_data=f"delstore_{s['id']}",
+            )
+        ]
+        for s in stores
+    ]
+    await update.message.reply_text(
+        "Qaysi do'konни o'chirmoqchisiz?\n"
+        "⚠️ Do'kon bilan birga uning BARCHA mahsulot va buyurtmalari o'chadi!",
+        reply_markup=InlineKeyboardMarkup(rows),
+    )
+
+
+async def dokon_ochirish_tanlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    store_id = int(query.data.replace("delstore_", ""))
+    kb = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "✅ Ha, o'chirilsin", callback_data=f"delok_{store_id}"
+                ),
+                InlineKeyboardButton("❌ Bekor", callback_data="delcancel"),
+            ]
+        ]
+    )
+    await query.edit_message_text(
+        f"ID {store_id} do'konни butunlay o'chirishни tasdiqlaysizmi?\n"
+        "Bu amalni ORTGA QAYTARIB BO'LMAYDI.",
+        reply_markup=kb,
+    )
+
+
+async def dokon_ochirish_tasdiq(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    store_id = int(query.data.replace("delok_", ""))
+    r = await api.delete_store(update.effective_user.id, store_id)
+    if r.status_code == 200:
+        d = r.json()
+        await query.edit_message_text(
+            f"🗑 '{d['nomi']}' do'koni butunlay o'chirildi."
+        )
+    elif r.status_code == 403:
+        await query.edit_message_text(
+            "⛔️ Faqat super-admin do'kon o'chira oladi."
+        )
+    else:
+        await query.edit_message_text(f"❌ Xatolik: {r.text}")
+
+
+async def dokon_ochirish_bekor(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text("Bekor qilindi — hech narsa o'chirilmadi.")
+
+
 def build_application(token: str) -> Application:
     app = Application.builder().token(token).updater(None).build()
 
@@ -369,4 +439,14 @@ def build_application(token: str) -> Application:
     app.add_handler(CommandHandler("statistika", statistika))
     app.add_handler(CommandHandler("top_tovarlar", top_tovarlar))
     app.add_handler(CommandHandler("promo_yaratish", promo_yaratish))
+    app.add_handler(CommandHandler("dokon_ochirish", dokon_ochirish))
+    app.add_handler(
+        CallbackQueryHandler(dokon_ochirish_tanlash, pattern="^delstore_")
+    )
+    app.add_handler(
+        CallbackQueryHandler(dokon_ochirish_tasdiq, pattern="^delok_")
+    )
+    app.add_handler(
+        CallbackQueryHandler(dokon_ochirish_bekor, pattern="^delcancel$")
+    )
     return app
