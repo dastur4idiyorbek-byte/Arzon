@@ -8,7 +8,12 @@ if (tg) { tg.ready(); tg.expand(); }
 
 // Backend manzili — Vercel/Netlify'da build vaqtiда o'rnatiladi.
 // Lokal test uchun localhost:8000.
-const API = (window.ARZON_API_URL || "http://localhost:8000").replace(/\/$/, "");
+// config.js ARZON_API_URL ni belgilaydi. Bo'sh "" = same-origin (nisbiy so'rov).
+const API = (
+  typeof window.ARZON_API_URL === "string"
+    ? window.ARZON_API_URL
+    : "http://localhost:8000"
+).replace(/\/$/, "");
 const INIT_DATA = tg ? tg.initData : "";
 
 const cart = {}; // { product_id: {product, soni} }

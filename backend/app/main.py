@@ -6,10 +6,12 @@ Ishga tushirish:
 
 Jadvallar birinchi ishga tushirishда avtomatik yaratiladi (init_db).
 """
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from .config import settings
 from .database import init_db
@@ -55,3 +57,15 @@ app.include_router(bot.router)
 app.include_router(admin.router)
 # Instagram webhook
 app.include_router(instagram.router)
+
+# Mini App statik fayllari — backend orqali xizmat qilinadi.
+# Shunда bitta ommaviy manzil (tunnel) bilan ham API (/api/...), ham Mini App
+# (/app) ochiladi. Mini App API'ga same-origin (nisbiy) so'rov yuboradi.
+# miniapp/ papkasi loyiha ildizида (backend ildizdan --app-dir bilan ishga
+# tushiriladi, shuning uchun CWD = ildiz).
+if os.path.isdir("miniapp"):
+    app.mount(
+        "/app",
+        StaticFiles(directory="miniapp", html=True),
+        name="miniapp",
+    )
