@@ -6,6 +6,7 @@ Ishga tushirish:
 
 Jadvallar birinchi ishga tushirishда avtomatik yaratiladi (init_db).
 """
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -25,21 +26,32 @@ except ImportError:  # noqa: BLE001
     tgbots_router = None
 
 
+logger = logging.getLogger("arzon.main")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Ishga tushishда jadvallarni yaratamiz (agar mavjud bo'lmasa).
+    # Ishga tushishда jadvallarni yaratamiz (agar mavjud bo'lmasa) + migratsiya.
     init_db()
-    # SEED_DEMO=1 bo'lса va do'konlar bo'sh bo'lса — demo mahsulotlar qo'shamiz
-    # (cloud'da SQLite qayta ishga tushganда tozalangani uchun foydali).
-    if os.getenv("SEED_DEMO", "").strip().lower() in ("1", "true", "yes"):
-        from .database import SessionLocal
-        from .seed_data import seed_if_empty
 
-        db = SessionLocal()
-        try:
-            seed_if_empty(db)
-        finally:
-            db.close()
+    # DIQQAT: demo ma'lumotlar ishga tushishда AVTOMATIK qo'shilMAYDI.
+    # Demo faqat qo'lда `python backend/seed.py` bilan qo'shiladi (bir martalik).
+    # Bu real mahsulotlar restartда demo bilan almashib qolишининг oldini oladi.
+
+    # Produksiyada SQLite ishlatilса — ma'lumotlar saqlanmasligi mumkin (Render
+    # diski vaqtinchalik). Aniq ogohlantiramiz.
+    from .database import db_url as _effektiv_db
+
+    if _effektiv_db.startswith("sqlite") and (
+        os.getenv("RENDER") or os.getenv("RENDER_EXTERNAL_URL")
+    ):
+        logger.warning(
+            "⚠️  DIQQAT: SQLite ishlatilyapti (%s), lekin siz Render'dasiz — "
+            "ma'lumotlar har restartда YO'QOLADI! DATABASE_URL ni Neon "
+            "(postgresql://...) ga o'rnating.",
+            _effektiv_db,
+        )
+
     # Telegram botlarни webhook rejimда yoqamiz (bulutда, PowerShell'siz).
     if tgbots_router is not None:
         await tgbots_router.startup()

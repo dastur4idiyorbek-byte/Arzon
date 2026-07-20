@@ -9,13 +9,14 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port $PORT
     envVars:
-      # Demo mahsulotlarni avtomatik qo'shish (bo'sh baza uchun).
-      - key: SEED_DEMO
-        value: "1"
       - key: CORS_ORIGINS
         value: "*"
+      # DATABASE_URL — Neon ulanish satri. sync:false => Blueprint uni
+      # QAYTA YOZMAYDI (siz Render saytida kiritган Neon qiymati saqlanadi).
+      # DIQQAT: bu qiymat bo'sh bo'lса kod SQLite'ga tushadi va ma'lumot
+      # saqlanmaydi — shuning uchun uni albatta Neon satriga o'rnating.
       - key: DATABASE_URL
-        value: "sqlite:///./arzon.db"
+        sync: false
       # Quyidagilarni Render saytida qo'lда kiritasiz (Environment bo'limi):
       #   MINIAPP_BOT_TOKEN   = Savdo bot tokeni (initData tekshiruvi uchun)
       #   INTERNAL_API_TOKEN  = botlar bilan bir xil maxfiy token
