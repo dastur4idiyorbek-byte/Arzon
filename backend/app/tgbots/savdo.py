@@ -37,14 +37,19 @@ logger = logging.getLogger("arzon.savdo")
 
 # --- Bosh ekran taqdimoti (osongina tahrirlanadigan matn) ---
 WELCOME_TEXT = (
-    "🛍 ARZON ONLINE SAVDO\n\n"
-    "O'zbekistonda arzon narxda, sifatli mahsulotlarni qulay tarzda "
-    "xarid qiling!\n\n"
-    "💰 ARZON NARX — bozordagidan past narxlarda minglab mahsulot\n"
-    "✅ SIFATLI MAHSULOT — faqat tekshirilgan, ishonchli sotuvchilardan\n"
-    "🚀 QULAY VA TEZKOR — bir necha soniyada buyurtma, uyingizgacha yoki "
-    "qulay punktga yetkazib berish\n\n"
-    "Minglab mijozlar ARZON'ni tanlaydi — endi navbat sizda!"
+    "Sifatli mahsulotlar — hamyonbop narxlarda!\n\n"
+    "🛍 Bizda siz kundalik ehtiyoj uchun kerak bo'lgan mahsulotlarni qulay "
+    "narxlarda topasiz.\n\n"
+    "✨ Siz uchun:\n"
+    "• 🛒 Hamyonbop narxlar\n"
+    "• ✅ Sifat kafolati\n"
+    "• 🚚 Tezkor yetkazib berish\n"
+    "• 📦 Doimiy yangilanib boradigan mahsulotlar\n"
+    "• 💬 Buyurtma: Telegram va Instagram orqali\n\n"
+    "📢 Kanalimizni kuzatib boring va eng foydali chegirmalarni "
+    "birinchilardan bo'lib qo'lga kiriting!\n\n"
+    "ARZON ONLINE SAVDO\n"
+    "Arzon narx, sifatli tanlov!"
 )
 WELCOME_SHORT = "🛍 ARZON ONLINE SAVDO — Xush kelibsiz!"
 

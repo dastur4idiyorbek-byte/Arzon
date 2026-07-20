@@ -38,7 +38,16 @@ def _base_url() -> str:
 
 
 def _miniapp_url(base: str) -> str:
-    return os.getenv("MINIAPP_URL", "").strip() or (f"{base}/app/" if base else "")
+    """Mini App manzili — YAGONA manba.
+
+    Backend Mini App'ni o'zi /app da xizmat qiladi, shuning uchun ishonchli
+    manzil {base}/app/ (Render RENDER_EXTERNAL_URL). MINIAPP_URL faqat base
+    yo'q bo'lganда zaxira sifatida ishlatiladi. Bu ikkita tugmaning turli
+    URL'ga ishora qilishining oldini oladi (bug: ikkita kirish, biri bo'sh).
+    """
+    if base:
+        return f"{base}/app/"
+    return os.getenv("MINIAPP_URL", "").strip()
 
 
 async def _setup_one(name: str, app: Application, base: str) -> None:
@@ -71,13 +80,27 @@ async def startup() -> None:
 
     if settings.savdo_bot_token:
         try:
+            miniapp_url = _miniapp_url(base)
             await _setup_one(
                 "savdo",
-                savdo.build_application(
-                    settings.savdo_bot_token, _miniapp_url(base)
-                ),
+                savdo.build_application(settings.savdo_bot_token, miniapp_url),
                 base,
             )
+            # BotFather menyu tugmasini ham SHU manzilga sozlaymiz — shunда
+            # menyu tugmasi ham, "🛍 Katalog" tugmasi ham bir xil URL'ni ochadi.
+            if miniapp_url:
+                from telegram import MenuButtonWebApp, WebAppInfo
+
+                try:
+                    await registry.get("savdo").bot.set_chat_menu_button(
+                        menu_button=MenuButtonWebApp(
+                            text="🛍 Do'kon",
+                            web_app=WebAppInfo(url=miniapp_url),
+                        )
+                    )
+                    logger.info("Savdo boti menyu tugmasi o'rnatildi: %s", miniapp_url)
+                except Exception:  # noqa: BLE001
+                    logger.exception("Menyu tugmasini o'rnatib bo'lmadi.")
         except Exception:  # noqa: BLE001
             logger.exception("Savdo boti webhook o'rnatilmadi.")
     else:
