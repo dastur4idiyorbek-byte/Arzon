@@ -9,11 +9,13 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import Order, User
+from ..models import PickupPoint
 from ..schemas import (
     CheckoutRequest,
     CheckoutResponse,
     OrderOut,
     PhoneConfirmRequest,
+    PickupPointOut,
 )
 from ..security import get_current_user
 from ..services import catalog as catalog_service
@@ -45,7 +47,14 @@ def checkout(
 
     accessible = catalog_service.accessible_store_ids(db, user)
     orders = order_service.create_orders_from_cart(
-        db, user, payload.items, accessible, payload.promo_kod
+        db,
+        user,
+        payload.items,
+        accessible,
+        payload.promo_kod,
+        yetkazish_turi=payload.yetkazish_turi,
+        manzil=payload.manzil,
+        pickup_points=payload.pickup_points,
     )
 
     # Referal: birinchi xaridni belgilash (phase 4.4).
@@ -54,11 +63,20 @@ def checkout(
     # Yangi buyurtma haqida do'kon adminlariga xabar (spec2 task_1).
     # PTB o'rnatilmagan yoki botlar faol bo'lmagan muhitда jimgina o'tadi.
     try:
-        from ..models import Store
+        from ..models import PickupPoint, Store
         from ..tgbots import notify
 
         for o in orders:
             store = db.get(Store, o.store_id)
+            if o.yetkazish_turi == "pickup" and o.pickup_point_id:
+                pp = db.get(PickupPoint, o.pickup_point_id)
+                yetk = (
+                    f"🏬 Olib ketish: {pp.nomi}, {pp.manzil}"
+                    if pp
+                    else "🏬 Olib ketish"
+                )
+            else:
+                yetk = f"🚚 Kuryer: {o.manzil or '-'}"
             notify.notify_new_order(
                 admin_ids=list(store.admin_ids or []) if store else [],
                 order_id=o.id,
@@ -67,6 +85,7 @@ def checkout(
                 mahsulotlar=o.mahsulotlar,
                 mijoz_ism=user.ism,
                 mijoz_tel=user.tel,
+                yetkazish_txt=yetk,
             )
     except ImportError:
         pass
@@ -92,6 +111,27 @@ def my_orders(
         .order_by(Order.yaratilgan_vaqt.desc())
     ).all()
     return [OrderOut.model_validate(o) for o in rows]
+
+
+@router.get("/pickup-points", response_model=List[PickupPointOut])
+def pickup_points(
+    store_ids: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Berilgan do'konlar uchun olib ketish punktlari (Mini App checkout).
+
+    store_ids — vergul bilan ajratilган (masalan "1,3"). Faqat faol punktlar.
+    """
+    ids = [int(x) for x in store_ids.split(",") if x.strip().isdigit()]
+    if not ids:
+        return []
+    rows = db.scalars(
+        select(PickupPoint).where(
+            PickupPoint.store_id.in_(ids), PickupPoint.holat == "faol"
+        )
+    ).all()
+    return [PickupPointOut.model_validate(p) for p in rows]
 
 
 @router.post("/confirm-phone")

@@ -42,6 +42,7 @@ BTN_SECRET = "🔑 Mahfiy kod"
 BTN_STATS = "📊 Statistika"
 BTN_ORDERS = "📋 Buyurtmalar"
 BTN_SEARCH = "🔍 Buyurtma qidirish"
+BTN_PICKUP = "📍 Punktlar"
 # Faqat super-admin (do'kon/admin boshqaruvi)
 BTN_NEWSTORE = "🏪 Yangi do'kon"
 BTN_NEWADMIN = "➕ Yangi admin qo'shish"
@@ -56,7 +57,7 @@ BTN_SKIP = "⏭ O'tkazib yuborish"
 # Bosh menyu tugmalari — jarayon ichida bosilса "avval yakunlang" deyiladi.
 MENU_BUTTONS = {
     BTN_ADD, BTN_DEL, BTN_EDIT, BTN_PROMO, BTN_SECRET,
-    BTN_STATS, BTN_ORDERS, BTN_SEARCH,
+    BTN_STATS, BTN_ORDERS, BTN_SEARCH, BTN_PICKUP,
     BTN_NEWSTORE, BTN_NEWADMIN, BTN_DELSTORE,
 }
 
@@ -71,7 +72,8 @@ MENU_BUTTONS = {
     NA_ID,
     S_NOMI, S_ADMIN_ID,
     RAD_SABAB,
-) = range(21)
+    PP_NOMI, PP_MANZIL, PP_VAQT,
+) = range(24)
 
 # Ruxsat etilgan rasm nisbatlari.
 RATIOS = ["1:1", "4:3", "3:4", "9:16", "16:9"]
@@ -92,6 +94,7 @@ def menu_markup(uid: int) -> ReplyKeyboardMarkup:
         [KeyboardButton(BTN_DEL), KeyboardButton(BTN_SECRET)],
         [KeyboardButton(BTN_PROMO), KeyboardButton(BTN_STATS)],
         [KeyboardButton(BTN_ORDERS), KeyboardButton(BTN_SEARCH)],
+        [KeyboardButton(BTN_PICKUP)],
     ]
     if _is_super(uid):
         rows.append(
@@ -1442,6 +1445,106 @@ async def dokon_ochirish_bekor(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 # ---------------------------------------------------------------------------
+# 📍 Olib ketish punktlari (spec task_4)
+# ---------------------------------------------------------------------------
+async def pickup_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    store_id = await _resolve_store(update, context)
+    if store_id is None:
+        return ConversationHandler.END
+    context.user_data["pp_store"] = store_id
+    r = await api.list_pickup(update.effective_user.id, store_id)
+    items = r.json() if r.status_code == 200 else []
+    if items:
+        lines = ["📍 *Mavjud punktlar:*\n"]
+        rows = []
+        for p in items:
+            vaqt = f" ({p['ish_vaqti']})" if p.get("ish_vaqti") else ""
+            lines.append(f"• {p['nomi']} — {p['manzil']}{vaqt}")
+            rows.append(
+                [InlineKeyboardButton(f"🗑 {p['nomi']}", callback_data=f"ppdel_{p['id']}")]
+            )
+        await update.message.reply_text(
+            "\n".join(lines), parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(rows),
+        )
+    else:
+        await update.message.reply_text("Hozircha punkt yo'q.")
+    await update.message.reply_text(
+        "➕ Yangi punkt qo'shish uchun punkt NOMINI kiriting "
+        "(masalan: Chilonzor filiali):",
+        reply_markup=nav_markup(back=False),
+    )
+    return PP_NOMI
+
+
+async def pickup_nomi(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if _is_menu_press(update.message.text):
+        await _warn_finish_first(update)
+        return PP_NOMI
+    context.user_data["pp_nomi"] = update.message.text.strip()
+    await update.message.reply_text(
+        "Manzilni kiriting (masalan: Chilonzor 5, 12-uy):",
+        reply_markup=nav_markup(back=False),
+    )
+    return PP_MANZIL
+
+
+async def pickup_manzil(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if _is_menu_press(update.message.text):
+        await _warn_finish_first(update)
+        return PP_MANZIL
+    context.user_data["pp_manzil"] = update.message.text.strip()
+    await update.message.reply_text(
+        "Ish vaqtini kiriting (masalan: 9:00-20:00), "
+        f"bo'lmasa '{BTN_SKIP}' bosing:",
+        reply_markup=nav_markup([BTN_SKIP], back=False),
+    )
+    return PP_VAQT
+
+
+async def _pickup_save(update, context, ish_vaqti):
+    r = await api.add_pickup(
+        update.effective_user.id,
+        context.user_data["pp_store"],
+        {
+            "nomi": context.user_data["pp_nomi"],
+            "manzil": context.user_data["pp_manzil"],
+            "ish_vaqti": ish_vaqti,
+        },
+    )
+    msg = (
+        f"✅ Punkt qo'shildi: {context.user_data['pp_nomi']}"
+        if r.status_code == 200
+        else f"❌ {r.text[:300]}"
+    )
+    await _back_to_menu(update, msg)
+    context.user_data.clear()
+    return ConversationHandler.END
+
+
+async def pickup_vaqt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if _is_menu_press(update.message.text):
+        await _warn_finish_first(update)
+        return PP_VAQT
+    return await _pickup_save(update, context, update.message.text.strip())
+
+
+async def pickup_vaqt_skip(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await _pickup_save(update, context, None)
+
+
+async def pickup_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    pp_id = int(query.data.replace("ppdel_", ""))
+    r = await api.delete_pickup(update.effective_user.id, pp_id)
+    if r.status_code == 200:
+        await query.edit_message_text("🗑 Punkt o'chirildi.")
+    else:
+        await query.edit_message_text(f"❌ {r.text[:200]}")
+
+
+# ---------------------------------------------------------------------------
 # Application yig'ish
 # ---------------------------------------------------------------------------
 def _conv(entry_points, states, name: str) -> ConversationHandler:
@@ -1589,6 +1692,23 @@ def build_application(token: str) -> Application:
         "reject_order",
     )
 
+    # 📍 Punktlar (olib ketish)
+    pickup_conv = _conv(
+        [
+            MessageHandler(filters.Regex(f"^{BTN_PICKUP}$"), pickup_start),
+            CommandHandler("punktlar", pickup_start),
+        ],
+        {
+            PP_NOMI: [MessageHandler(TXT, pickup_nomi)],
+            PP_MANZIL: [MessageHandler(TXT, pickup_manzil)],
+            PP_VAQT: [
+                MessageHandler(filters.Regex(f"^{BTN_SKIP}$"), pickup_vaqt_skip),
+                MessageHandler(TXT, pickup_vaqt),
+            ],
+        },
+        "pickup",
+    )
+
     app.add_handler(CommandHandler("start", start))
     # 🏠 Bosh menyu — jarayondan tashqarida bosilса menyuni ko'rsatadi
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_HOME}$"), start))
@@ -1599,6 +1719,8 @@ def build_application(token: str) -> Application:
     app.add_handler(newadmin_conv)
     app.add_handler(store_conv)
     app.add_handler(reject_conv)
+    app.add_handler(pickup_conv)
+    app.add_handler(CallbackQueryHandler(pickup_delete, pattern="^ppdel_"))
 
     # Bir bosishli tugmalar / buyruqlar
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_DEL}$"), del_start))

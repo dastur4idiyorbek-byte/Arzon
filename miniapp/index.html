@@ -25,6 +25,17 @@
     <p id="cart-empty" class="empty">Savat bo'sh.</p>
     <div id="cart-summary" class="cart-summary" hidden>
       <input id="promo" type="text" placeholder="Promo kod (ixtiyoriy)" />
+
+      <div class="delivery">
+        <div class="deliv-label">Yetkazib berish turi:</div>
+        <div class="deliv-toggle">
+          <button id="deliv-kuryer" class="deliv-btn active" type="button">🚚 Kuryer</button>
+          <button id="deliv-pickup" class="deliv-btn" type="button">🏬 Punktdan olish</button>
+        </div>
+        <input id="manzil" type="text" placeholder="Yetkazish manzili (ko'cha, uy...)" />
+        <div id="pickup-container"></div>
+      </div>
+
       <div class="total">Jami: <span id="cart-total">0</span> so'm</div>
       <button id="btn-checkout" class="primary">Buyurtma berish</button>
     </div>

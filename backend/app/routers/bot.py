@@ -57,6 +57,16 @@ def bot_user(
     return user
 
 
+@router.get("/me")
+def bot_me(user: User = Depends(bot_user)):
+    """Onboarding uchun foydalanuvchi holati (telefon tasdiqlanganmi)."""
+    return {
+        "telegram_id": user.telegram_id,
+        "ism": user.ism,
+        "tel_tasdiqlangan": user.tel_tasdiqlangan,
+    }
+
+
 class BotChat(BaseModel):
     matn: str
 

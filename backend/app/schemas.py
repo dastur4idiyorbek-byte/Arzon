@@ -81,9 +81,24 @@ class CartItem(BaseModel):
     soni: int = Field(ge=1)
 
 
+class PickupPointOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    store_id: int
+    nomi: str
+    manzil: str
+    ish_vaqti: Optional[str] = None
+
+
 class CheckoutRequest(BaseModel):
     items: List[CartItem]
     promo_kod: Optional[str] = None
+    # Yetkazib berish: 'kuryer' (manzil kerak) yoki 'pickup' (punkt kerak).
+    yetkazish_turi: str = "kuryer"
+    manzil: Optional[str] = None  # kuryer uchun
+    # Punktdan olish: {store_id(str): pickup_point_id} — har do'kon uchun punkt.
+    pickup_points: Optional[dict] = None
 
 
 class OrderOut(BaseModel):
@@ -97,6 +112,9 @@ class OrderOut(BaseModel):
     mahsulotlar: list
     yaratilgan_vaqt: datetime
     amal_qilish_muddati: Optional[datetime] = None
+    yetkazish_turi: Optional[str] = "kuryer"
+    manzil: Optional[str] = None
+    pickup_point_id: Optional[int] = None
 
 
 class CheckoutResponse(BaseModel):

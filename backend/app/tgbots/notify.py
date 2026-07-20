@@ -56,6 +56,7 @@ def notify_new_order(
     mahsulotlar: list,
     mijoz_ism: str | None,
     mijoz_tel: str | None,
+    yetkazish_txt: str = "",
 ) -> None:
     """Yangi buyurtma haqida do'kon adminlariga xabar (spec2 task_1).
 
@@ -72,6 +73,7 @@ def notify_new_order(
         + (f" ({mijoz_tel})" if mijoz_tel else "")
         + f"\n\nMahsulotlar:\n{items}\n\n"
         f"Jami: {jami:,.0f} som"
+        + (f"\n{yetkazish_txt}" if yetkazish_txt else "")
     )
     for admin_id in admin_ids or []:
         _submit(_send_admin(admin_id, text, order_id))

@@ -55,6 +55,13 @@ class Settings(BaseSettings):
     # Mini App'ni jonli backend'ga ulash uchun CORS.
     cors_origins: str = "*"
 
+    # --- Majburiy kanalga obuna (Savdo boti onboarding) ---
+    # NEWS_CHANNEL_ID: @username yoki -100... raqamli ID. Bo'sh bo'lса — kanal
+    # tekshiruvi o'chiq (bot avvalgidek ishlaydi). Bot kanalда admin bo'lishi
+    # kerak (getChatMember ishlashi uchun).
+    news_channel_id: str = ""
+    news_channel_link: str = ""
+
     @property
     def super_admin_id_list(self) -> List[int]:
         return [

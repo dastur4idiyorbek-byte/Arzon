@@ -221,7 +221,8 @@ def test_rule8_phone_required_and_rule10_split_orders():
         "items": [
             {"product_id": pa["id"], "soni": 1},
             {"product_id": pb["id"], "soni": 2},
-        ]
+        ],
+        "manzil": "Toshkent, Chilonzor 1",
     }
 
     # Telefon tasdiqlanmagan -> checkout rad etiladi (rule 8, 2-bosqich).
@@ -285,14 +286,14 @@ def test_rule9_loyalty_aggregates_across_stores():
     r1 = client.post(
         "/api/checkout",
         headers=cust,
-        json={"items": [{"product_id": pa["id"], "soni": 1}]},
+        json={"items": [{"product_id": pa["id"], "soni": 1}], "manzil": "Uy 1"},
     ).json()
     kod1 = r1["buyurtmalar"][0]["kod"]
     # B do'konidan xarid -> tasdiqlanadi.
     r2 = client.post(
         "/api/checkout",
         headers=cust,
-        json={"items": [{"product_id": pb["id"], "soni": 1}]},
+        json={"items": [{"product_id": pb["id"], "soni": 1}], "manzil": "Uy 1"},
     ).json()
     kod2 = r2["buyurtmalar"][0]["kod"]
 
@@ -328,7 +329,7 @@ def test_rule7_admin_cannot_confirm_other_store_code():
     order = client.post(
         "/api/checkout",
         headers=cust,
-        json={"items": [{"product_id": p["id"], "soni": 1}]},
+        json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Uy 1"},
     ).json()["buyurtmalar"][0]
 
     # Admin B, A do'koni buyurtmasini tasdiqlashga urinadi -> 403.
@@ -395,7 +396,7 @@ def test_spec_discount_price_applied():
     client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700000001"})
     r = client.post(
         "/api/checkout", headers=cust,
-        json={"items": [{"product_id": p["id"], "soni": 1}]},
+        json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Uy 1"},
     )
     assert r.status_code == 200, r.text
     assert r.json()["buyurtmalar"][0]["jami_narx"] == 2560.0
@@ -431,14 +432,14 @@ def test_spec_stock_flow_accept_and_out_of_stock():
     # 2 dona so'ralsa — rad (faqat 1 qolgan).
     r2 = client.post(
         "/api/checkout", headers=cust,
-        json={"items": [{"product_id": p["id"], "soni": 2}]},
+        json={"items": [{"product_id": p["id"], "soni": 2}], "manzil": "Uy 1"},
     )
     assert r2.status_code == 400, r2.text
 
     # 1 dona — o'tadi.
     ok = client.post(
         "/api/checkout", headers=cust,
-        json={"items": [{"product_id": p["id"], "soni": 1}]},
+        json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Uy 1"},
     )
     assert ok.status_code == 200, ok.text
     order = ok.json()["buyurtmalar"][0]
@@ -471,7 +472,7 @@ def test_spec_stock_flow_accept_and_out_of_stock():
     client.post("/api/confirm-phone", headers=cust2, json={"tel": "+996700000003"})
     r3 = client.post(
         "/api/checkout", headers=cust2,
-        json={"items": [{"product_id": p["id"], "soni": 1}]},
+        json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Uy 1"},
     )
     assert r3.status_code == 400, r3.text
 
@@ -487,7 +488,7 @@ def test_spec_cancel_order_with_reason():
     client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700000004"})
     order = client.post(
         "/api/checkout", headers=cust,
-        json={"items": [{"product_id": p["id"], "soni": 1}]},
+        json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Uy 1"},
     ).json()["buyurtmalar"][0]
 
     r = client.post(
@@ -511,7 +512,7 @@ def test_spec_order_search_store_scoped():
     client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700123456"})
     order = client.post(
         "/api/checkout", headers=cust,
-        json={"items": [{"product_id": pa["id"], "soni": 1}]},
+        json={"items": [{"product_id": pa["id"], "soni": 1}], "manzil": "Uy 1"},
     ).json()["buyurtmalar"][0]
 
     # O'z do'konida kod bo'yicha topiladi.
@@ -622,3 +623,118 @@ def test_spec_image_aspect_ratio():
         json={"nomi": "Standart", "narxi": 100, "korinish": "ommaviy"},
     ).json()
     assert p2["rasm_nisbati"] == "1:1"
+
+
+# ===========================================================================
+# Yetkazib berish: kuryer manzil + punktdan olish (Savdo boti spec task_4)
+# ===========================================================================
+def test_delivery_courier_requires_address():
+    store_a, _ = setup_two_stores()
+    p = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/products",
+        headers=admin_headers(ADMIN_A),
+        json={"nomi": "Yetk tovar", "narxi": 5000, "korinish": "ommaviy"},
+    ).json()
+    cust = customer_headers(20001)
+    client.post("/api/confirm-phone", headers=cust, json={"tel": "+998900000010"})
+
+    # Kuryer, manzilsiz -> 400.
+    r = client.post(
+        "/api/checkout", headers=cust,
+        json={"items": [{"product_id": p["id"], "soni": 1}],
+              "yetkazish_turi": "kuryer"},
+    )
+    assert r.status_code == 400, r.text
+
+    # Kuryer, manzil bilan -> 200, buyurtмада manzil saqlanadi.
+    r2 = client.post(
+        "/api/checkout", headers=cust,
+        json={"items": [{"product_id": p["id"], "soni": 1}],
+              "yetkazish_turi": "kuryer", "manzil": "Chilonzor 5"},
+    )
+    assert r2.status_code == 200, r2.text
+    o = r2.json()["buyurtmalar"][0]
+    assert o["yetkazish_turi"] == "kuryer" and o["manzil"] == "Chilonzor 5"
+
+
+def test_delivery_pickup_flow():
+    store_a, store_b = setup_two_stores()
+    pa = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/products",
+        headers=admin_headers(ADMIN_A),
+        json={"nomi": "P-tovar", "narxi": 3000, "korinish": "ommaviy"},
+    ).json()
+
+    # Admin A punkt qo'shadi.
+    pp = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/pickup-points",
+        headers=admin_headers(ADMIN_A),
+        json={"nomi": "Filial 1", "manzil": "Yunusobod 3", "ish_vaqti": "9-18"},
+    )
+    assert pp.status_code == 200, pp.text
+    pp_id = pp.json()["id"]
+
+    # rule 7: Admin B, A'ning do'koniga punkt qo'sha olmaydi.
+    forb = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/pickup-points",
+        headers=admin_headers(ADMIN_B),
+        json={"nomi": "X", "manzil": "Y"},
+    )
+    assert forb.status_code == 403, forb.text
+
+    cust = customer_headers(20002)
+    client.post("/api/confirm-phone", headers=cust, json={"tel": "+998900000011"})
+
+    # Mijoz punktlar ro'yxatini ko'radi.
+    pts = client.get(
+        f"/api/pickup-points?store_ids={store_a['store_id']}", headers=cust
+    ).json()
+    assert any(x["id"] == pp_id for x in pts)
+
+    # Punkt tanlanmasa (pickup, lekin punktsiz) -> 400.
+    bad = client.post(
+        "/api/checkout", headers=cust,
+        json={"items": [{"product_id": pa["id"], "soni": 1}],
+              "yetkazish_turi": "pickup", "pickup_points": {}},
+    )
+    assert bad.status_code == 400, bad.text
+
+    # To'g'ri punkt bilan -> 200.
+    ok = client.post(
+        "/api/checkout", headers=cust,
+        json={"items": [{"product_id": pa["id"], "soni": 1}],
+              "yetkazish_turi": "pickup",
+              "pickup_points": {str(store_a["store_id"]): pp_id}},
+    )
+    assert ok.status_code == 200, ok.text
+    o = ok.json()["buyurtmalar"][0]
+    assert o["yetkazish_turi"] == "pickup" and o["pickup_point_id"] == pp_id
+
+    # Boshqa do'kon punkti bilan -> 400 (punkt do'konга tegishli emas).
+    pb = client.post(
+        f"/api/admin/stores/{store_b['store_id']}/products",
+        headers=admin_headers(ADMIN_B),
+        json={"nomi": "P-tovar-B", "narxi": 3000, "korinish": "ommaviy"},
+    ).json()
+    wrong = client.post(
+        "/api/checkout", headers=cust,
+        json={"items": [{"product_id": pb["id"], "soni": 1}],
+              "yetkazish_turi": "pickup",
+              "pickup_points": {str(store_b["store_id"]): pp_id}},
+    )
+    assert wrong.status_code == 400, wrong.text
+
+
+def test_bot_me_endpoint():
+    """Onboarding uchun /api/bot/me telefon holatini qaytaradi."""
+    import os
+    tok = os.environ["INTERNAL_API_TOKEN"]
+    h = {"X-Internal-Token": tok, "X-Telegram-User-Id": "20003"}
+    r = client.get("/api/bot/me", headers=h)
+    assert r.status_code == 200
+    assert r.json()["tel_tasdiqlangan"] is False
+    client.post(
+        "/api/bot/confirm-phone", headers=h, json={"tel": "+998900000012"}
+    )
+    r2 = client.get("/api/bot/me", headers=h)
+    assert r2.json()["tel_tasdiqlangan"] is True

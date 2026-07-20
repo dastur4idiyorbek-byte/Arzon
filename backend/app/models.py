@@ -144,6 +144,14 @@ class Order(Base):
     amal_qilish_muddati: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Yetkazib berish: 'kuryer' (manzilga) yoki 'pickup' (punktdan olish).
+    yetkazish_turi: Mapped[str] = mapped_column(String(10), default="kuryer")
+    # Kuryer uchun manzil matni.
+    manzil: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # Punktdan olish uchun tanlangan punkt.
+    pickup_point_id: Mapped[int | None] = mapped_column(
+        ForeignKey("pickup_points.id", ondelete="SET NULL"), nullable=True
+    )
     tasdiqlangan_vaqt: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -210,6 +218,19 @@ class PromoCode(Base):
         DateTime(timezone=True), nullable=True
     )
     ishlatilish_soni: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class PickupPoint(Base):
+    __tablename__ = "pickup_points"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    store_id: Mapped[int] = mapped_column(
+        ForeignKey("stores.id", ondelete="CASCADE"), index=True
+    )
+    nomi: Mapped[str] = mapped_column(String(255))
+    manzil: Mapped[str] = mapped_column(String(512))
+    ish_vaqti: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    holat: Mapped[str] = mapped_column(String(10), default="faol")
 
 
 class UnlockedStore(Base):

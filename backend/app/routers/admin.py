@@ -541,10 +541,11 @@ def delete_store(
     nomi = store.nomi
     product_ids = [p.id for p in store.products]
 
+    from ..models import PickupPoint as _Pickup
     from ..models import PromoCode as _Promo
     from ..models import UnlockedStore as _Unlocked
 
-    for model in (Order, _Promo, _Unlocked):
+    for model in (Order, _Promo, _Unlocked, _Pickup):
         for row in db.scalars(select(model).where(model.store_id == store_id)):
             db.delete(row)
     db.delete(store)  # mahsulotlar relationship cascade bilan o'chadi
@@ -583,6 +584,72 @@ def add_admin(
         store.admin_ids = ids
         db.commit()
     return {"store_id": store_id, "admin_ids": store.admin_ids}
+
+
+# ---------------------------------------------------------------------------
+# Olib ketish punktlari (spec task_4) — faqat shu do'kon admini (rule 7)
+# ---------------------------------------------------------------------------
+class PickupCreate(BaseModel):
+    nomi: str = Field(min_length=1, max_length=255)
+    manzil: str = Field(min_length=1, max_length=512)
+    ish_vaqti: Optional[str] = Field(default=None, max_length=255)
+
+
+@router.post("/stores/{store_id}/pickup-points")
+def add_pickup_point(
+    store_id: int,
+    payload: PickupCreate,
+    admin_id: int = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    check_store_access(admin_id, store_id, db)  # rule 7
+    from ..models import PickupPoint
+
+    pp = PickupPoint(
+        store_id=store_id,
+        nomi=payload.nomi.strip(),
+        manzil=payload.manzil.strip(),
+        ish_vaqti=(payload.ish_vaqti or "").strip() or None,
+    )
+    db.add(pp)
+    db.commit()
+    db.refresh(pp)
+    return {"id": pp.id, "nomi": pp.nomi, "xabar": "Punkt qo'shildi."}
+
+
+@router.get("/stores/{store_id}/pickup-points")
+def list_pickup_points(
+    store_id: int,
+    admin_id: int = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    check_store_access(admin_id, store_id, db)  # rule 7
+    from ..models import PickupPoint
+
+    rows = db.scalars(
+        select(PickupPoint).where(PickupPoint.store_id == store_id)
+    ).all()
+    return [
+        {"id": p.id, "nomi": p.nomi, "manzil": p.manzil, "ish_vaqti": p.ish_vaqti}
+        for p in rows
+    ]
+
+
+@router.delete("/pickup-points/{pp_id}")
+def delete_pickup_point(
+    pp_id: int,
+    admin_id: int = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    from ..models import PickupPoint
+
+    pp = db.get(PickupPoint, pp_id)
+    if pp is None:
+        raise HTTPException(status_code=404, detail="Punkt topilmadi.")
+    check_store_access(admin_id, pp.store_id, db)  # rule 7
+    db.delete(pp)
+    db.commit()
+    return {"ochirildi": True}
 
 
 class SelfStoreRequest(BaseModel):

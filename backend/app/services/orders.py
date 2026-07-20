@@ -59,16 +59,34 @@ def create_orders_from_cart(
     items: list,
     accessible_store_ids: set[int],
     promo_kod: str | None = None,
+    yetkazish_turi: str = "kuryer",
+    manzil: str | None = None,
+    pickup_points: dict | None = None,
 ) -> List[Order]:
     """Savatdan buyurtma(lar) yaratadi — do'kon bo'yicha guruhlab (rule 10).
 
     `accessible_store_ids` — mijoz ko'ra oladigan do'konlar (ommaviy + ochilgan
     mahfiy). Bu ro'yxatdan tashqari do'kon mahsuloti savatga tushmasligi kerak.
+
+    Yetkazib berish (spec task_4):
+      * 'kuryer' — manzil talab qilinadi.
+      * 'pickup' — har do'kon uchun o'sha do'konга tegishli punkt talab qilinadi.
     """
     if not items:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Savat bo'sh."
         )
+    if yetkazish_turi not in ("kuryer", "pickup"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="yetkazish_turi 'kuryer' yoki 'pickup' bo'lsin.",
+        )
+    if yetkazish_turi == "kuryer" and not (manzil or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Kuryer uchun manzil kiritilishi shart.",
+        )
+    pickup_points = pickup_points or {}
 
     # Mahsulotlarni yuklash.
     product_ids = [it.product_id for it in items]
@@ -141,6 +159,24 @@ def create_orders_from_cart(
         if promo_kod:
             jami = _apply_promo(db, store_id, promo_kod, jami)
 
+        # Yetkazib berish tekshiruvi (do'kon darajasида).
+        order_pickup_id = None
+        if yetkazish_turi == "pickup":
+            pid = pickup_points.get(str(store_id)) or pickup_points.get(store_id)
+            from ..models import PickupPoint
+
+            pp = db.get(PickupPoint, pid) if pid else None
+            if pp is None or pp.store_id != store_id:
+                store = db.get(Store, store_id)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        f"'{store.nomi if store else store_id}' do'koni uchun "
+                        "olib ketish punktini tanlang."
+                    ),
+                )
+            order_pickup_id = pp.id
+
         order = Order(
             store_id=store_id,
             user_id=user.id,
@@ -150,6 +186,9 @@ def create_orders_from_cart(
             kod=generate_order_code(db),
             amal_qilish_muddati=_now()
             + timedelta(days=settings.order_code_ttl_days),
+            yetkazish_turi=yetkazish_turi,
+            manzil=manzil.strip() if (yetkazish_turi == "kuryer" and manzil) else None,
+            pickup_point_id=order_pickup_id,
         )
         db.add(order)
         orders.append(order)

@@ -147,13 +147,77 @@ function changeQty(id, d) {
   renderCart();
 }
 
+/* ---------- Yetkazib berish (kuryer / punkt) ---------- */
+let deliveryType = "kuryer";
+let pickupData = {}; // { store_id: [pickup points] }
+let pickupChoice = {}; // { store_id: pickup_point_id }
+
+document.getElementById("deliv-kuryer").onclick = () => setDelivery("kuryer");
+document.getElementById("deliv-pickup").onclick = () => setDelivery("pickup");
+
+function setDelivery(type) {
+  deliveryType = type;
+  document.getElementById("deliv-kuryer").classList.toggle("active", type === "kuryer");
+  document.getElementById("deliv-pickup").classList.toggle("active", type === "pickup");
+  document.getElementById("manzil").style.display = type === "kuryer" ? "block" : "none";
+  const pc = document.getElementById("pickup-container");
+  pc.style.display = type === "pickup" ? "block" : "none";
+  if (type === "pickup") loadPickupPoints();
+}
+
+async function loadPickupPoints() {
+  const storeIds = [...new Set(Object.values(cart).map((c) => c.product.store_id))];
+  if (storeIds.length === 0) return;
+  const { ok, data } = await api("/api/pickup-points?store_ids=" + storeIds.join(","));
+  const pc = document.getElementById("pickup-container");
+  pickupData = {};
+  (ok && data ? data : []).forEach((p) => {
+    (pickupData[p.store_id] = pickupData[p.store_id] || []).push(p);
+  });
+  pc.innerHTML = "";
+  storeIds.forEach((sid) => {
+    const storeName = (Object.values(cart).find((c) => c.product.store_id === sid) || {}).product?.store_nomi || ("Do'kon " + sid);
+    const pts = pickupData[sid] || [];
+    const box = document.createElement("div");
+    box.className = "pickup-store";
+    if (pts.length === 0) {
+      box.innerHTML = `<div class="pickup-title">${storeName}</div><div class="empty">Bu do'konда punkt yo'q — kuryer tanlang.</div>`;
+    } else {
+      box.innerHTML = `<div class="pickup-title">${storeName}</div>`;
+      pts.forEach((p) => {
+        const id = `pp_${p.id}`;
+        const lbl = document.createElement("label");
+        lbl.className = "pickup-opt";
+        lbl.innerHTML = `<input type="radio" name="pp_${sid}" value="${p.id}"> <b>${p.nomi}</b> — ${p.manzil}${p.ish_vaqti ? " (" + p.ish_vaqti + ")" : ""}`;
+        lbl.querySelector("input").onchange = () => { pickupChoice[sid] = p.id; };
+        box.appendChild(lbl);
+      });
+    }
+    pc.appendChild(box);
+  });
+}
+
 document.getElementById("btn-checkout").onclick = async () => {
   const items = Object.values(cart).map((c) => ({ product_id: c.product.id, soni: c.soni }));
   if (items.length === 0) return;
   const promo = document.getElementById("promo").value.trim() || null;
+
+  const body = { items, promo_kod: promo, yetkazish_turi: deliveryType };
+  if (deliveryType === "kuryer") {
+    const manzil = document.getElementById("manzil").value.trim();
+    if (!manzil) { notify("Iltimos, yetkazish manzilini kiriting."); return; }
+    body.manzil = manzil;
+  } else {
+    const storeIds = [...new Set(Object.values(cart).map((c) => c.product.store_id))];
+    const missing = storeIds.filter((sid) => !pickupChoice[sid]);
+    if (missing.length > 0) { notify("Har bir do'kon uchun olib ketish punktini tanlang."); return; }
+    body.pickup_points = {};
+    storeIds.forEach((sid) => { body.pickup_points[sid] = pickupChoice[sid]; });
+  }
+
   const { ok, status, data } = await api("/api/checkout", {
     method: "POST",
-    body: { items, promo_kod: promo },
+    body,
   });
   if (ok) {
     // rule 10: bir nechta alohida buyurtma bo'lishi mumkin.

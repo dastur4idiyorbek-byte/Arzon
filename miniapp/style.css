@@ -78,6 +78,19 @@ body {
   background: var(--secondary-bg); color: var(--text); }
 .total { font-size: 18px; font-weight: 700; }
 
+/* Yetkazib berish */
+.delivery { display: flex; flex-direction: column; gap: 8px; }
+.deliv-label { font-size: 13px; color: var(--hint); }
+.deliv-toggle { display: flex; gap: 8px; }
+.deliv-btn {
+  flex: 1; padding: 10px; border-radius: 10px; border: 2px solid var(--secondary-bg);
+  background: var(--secondary-bg); color: var(--text); cursor: pointer; font-size: 14px;
+}
+.deliv-btn.active { border-color: var(--link); color: var(--link); font-weight: 700; }
+.pickup-store { background: var(--secondary-bg); border-radius: 10px; padding: 10px; margin-top: 6px; }
+.pickup-title { font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+.pickup-opt { display: block; font-size: 13px; padding: 6px 0; cursor: pointer; }
+
 button.primary {
   background: var(--button); color: var(--button-text); border: none;
   padding: 12px; border-radius: 12px; font-size: 15px; cursor: pointer; width: 100%;

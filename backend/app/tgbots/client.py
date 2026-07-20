@@ -42,6 +42,14 @@ class BotApi:
             return await client.request(method, f"{self.base}{path}", **kw)
 
     # --- Savdo (mijoz) ---
+    async def me(self, telegram_id: int) -> dict:
+        r = await self._request(
+            "GET",
+            "/api/bot/me",
+            headers=self._headers({"X-Telegram-User-Id": str(telegram_id)}),
+        )
+        return r.json() if r.status_code == 200 else {}
+
     async def chat(self, telegram_id: int, matn: str) -> str:
         r = await self._request(
             "POST",
@@ -244,6 +252,30 @@ class BotApi:
             "/api/admin/stores/self",
             headers=self._admin(admin_id),
             json={"nomi": nomi},
+        )
+
+    async def add_pickup(
+        self, admin_id: int, store_id: int, data: dict
+    ) -> httpx.Response:
+        return await self._request(
+            "POST",
+            f"/api/admin/stores/{store_id}/pickup-points",
+            headers=self._admin(admin_id),
+            json=data,
+        )
+
+    async def list_pickup(self, admin_id: int, store_id: int) -> httpx.Response:
+        return await self._request(
+            "GET",
+            f"/api/admin/stores/{store_id}/pickup-points",
+            headers=self._admin(admin_id),
+        )
+
+    async def delete_pickup(self, admin_id: int, pp_id: int) -> httpx.Response:
+        return await self._request(
+            "DELETE",
+            f"/api/admin/pickup-points/{pp_id}",
+            headers=self._admin(admin_id),
         )
 
     async def add_store_admin(

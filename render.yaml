@@ -33,3 +33,9 @@ services:
         sync: false
       - key: BOSHQARUV_BOT_TOKEN
         sync: false
+      # Majburiy kanalga obuna (ixtiyoriy — bo'sh bo'lса o'chiq).
+      # Bot kanalда ADMIN bo'lishi kerak. ID: @username yoki -100...
+      - key: NEWS_CHANNEL_ID
+        sync: false
+      - key: NEWS_CHANNEL_LINK
+        sync: false
