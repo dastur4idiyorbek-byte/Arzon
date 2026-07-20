@@ -598,6 +598,8 @@ EDIT_FIELDS = {
     "skidka": "📉 Skidka %",
     "miqdor": "📊 Miqdor",
     "tavsif": "📝 Tavsif",
+    "olcham": "📏 O'lchamlar",
+    "rang": "🎨 Ranglar",
     "korinish": "👁 Ko'rinish",
     "rasm": "🖼 Rasmlar",
     "nisbat": "📐 Rasm nisbati",
@@ -702,6 +704,14 @@ async def edit_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "skidka": "Yangi skidka foizini kiriting (0-99, 0 = chegirma yo'q):",
         "miqdor": "Yangi miqdorni kiriting (dona), cheksiz bo'lsa 'yo'q':",
         "tavsif": "Yangi tavsifni kiriting:",
+        "olcham": (
+            "O'lchamlarni vergul bilan kiriting (masalan: 40, 41, 42),\n"
+            "o'chirish uchun 'yo'q':"
+        ),
+        "rang": (
+            "Ranglarni vergul bilan kiriting (masalan: Qora, Oq, Ko'k),\n"
+            "o'chirish uchun 'yo'q':"
+        ),
     }
     await query.edit_message_text(prompts[field])
     await context.bot.send_message(
@@ -729,6 +739,10 @@ async def edit_value_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await _apply_edit(update, context, {"nomi": matn})
     if field == "tavsif":
         return await _apply_edit(update, context, {"tavsif": matn})
+    if field in ("olcham", "rang"):
+        # Vergul bilan ro'yxat ("40,41,42") — Mini App'да chip bo'lib chiqadi.
+        qiymat = None if matn.lower() in ("yo'q", "yoq", "yok") else matn
+        return await _apply_edit(update, context, {field: qiymat})
     if field == "narx":
         try:
             narx = float(matn.replace(" ", "").replace(",", "."))

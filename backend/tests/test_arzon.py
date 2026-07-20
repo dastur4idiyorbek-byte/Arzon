@@ -738,3 +738,40 @@ def test_bot_me_endpoint():
     )
     r2 = client.get("/api/bot/me", headers=h)
     assert r2.json()["tel_tasdiqlangan"] is True
+
+
+def test_miniapp_variant_selection_recorded():
+    """Mijoz tanlagan o'lcham/rang buyurtmaда saqlanadi (MiniApp task_3/4)."""
+    store_a, _ = setup_two_stores()
+    p = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/products",
+        headers=admin_headers(ADMIN_A),
+        json={
+            "nomi": "Krossovka",
+            "narxi": 150000,
+            "korinish": "ommaviy",
+            "olcham": "40, 41, 42",
+            "rang": "Qora, Oq",
+        },
+    ).json()
+    # Katalogда variant ro'yxatlari ko'rinadi.
+    cust = customer_headers(30001)
+    katalog = client.get("/api/products", headers=cust).json()
+    kp = next(x for x in katalog if x["id"] == p["id"])
+    assert kp["olcham"] == "40, 41, 42" and kp["rang"] == "Qora, Oq"
+
+    client.post("/api/confirm-phone", headers=cust, json={"tel": "+998900000013"})
+    # Buy Now uslubida bitta mahsulot, tanlangan variant bilan.
+    r = client.post(
+        "/api/checkout",
+        headers=cust,
+        json={
+            "items": [
+                {"product_id": p["id"], "soni": 1, "olcham": "41", "rang": "Qora"}
+            ],
+            "manzil": "Toshkent, Chilonzor 5",
+        },
+    )
+    assert r.status_code == 200, r.text
+    item = r.json()["buyurtmalar"][0]["mahsulotlar"][0]
+    assert item["olcham"] == "41" and item["rang"] == "Qora"

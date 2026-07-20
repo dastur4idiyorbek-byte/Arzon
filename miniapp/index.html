@@ -4,19 +4,43 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>ARZON</title>
+  <link rel="icon" type="image/png" href="assets/favicon.png" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <header class="app-header">
-    <h1>ARZON</h1>
+    <!-- Brend logotipi (task_1). Rasm topilmasa matnga qaytadi. -->
+    <img src="assets/logo.png" alt="ARZON" class="logo"
+         onerror="this.outerHTML='&lt;h1&gt;ARZON&lt;/h1&gt;'" />
     <button id="btn-code" class="code-btn" title="Mahfiy kod kiritish">🔑 Kod</button>
   </header>
 
   <!-- Bitta umumiy katalog (rule 1) — do'kon tanlash ekrani YO'Q -->
   <main id="view-katalog" class="view active">
+    <div class="search-bar">
+      <input id="search" type="search" placeholder="🔍 Mahsulot qidirish..." />
+      <select id="sort" title="Saralash">
+        <option value="">Saralash</option>
+        <option value="asc">Narx: arzon → qimmat</option>
+        <option value="desc">Narx: qimmat → arzon</option>
+      </select>
+    </div>
     <div id="catalog" class="catalog"></div>
     <p id="catalog-empty" class="empty" hidden>Hozircha mahsulot yo'q.</p>
+  </main>
+
+  <!-- Mahsulot batafsil sahifasi (task_3) -->
+  <main id="view-product" class="view">
+    <button id="btn-back-detail" class="back-btn">⬅️ Katalogga qaytish</button>
+    <div id="product-detail"></div>
+  </main>
+
+  <!-- Tezkor xarid — Buy Now oqimi (task_4) -->
+  <main id="view-buynow" class="view">
+    <button id="btn-back-buynow" class="back-btn">⬅️ Orqaga</button>
+    <h2>⚡ Tezkor xarid</h2>
+    <div id="buynow-box"></div>
   </main>
 
   <main id="view-savat" class="view">

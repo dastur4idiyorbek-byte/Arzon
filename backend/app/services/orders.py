@@ -113,14 +113,15 @@ def create_orders_from_cart(
                     "(mahfiy kod kerak)."
                 ),
             )
-        grouped.setdefault(product.store_id, []).append((product, it.soni))
+        grouped.setdefault(product.store_id, []).append((product, it))
 
     # Ombor tekshiruvi (task_2): tugagan yoki yetarli bo'lmagan mahsulot
     # savatdan o'tmaydi.
     from .catalog import sotuv_narxi as _sotuv_narxi
 
     for store_id, line_items in grouped.items():
-        for product, soni in line_items:
+        for product, it in line_items:
+            soni = it.soni
             if product.miqdor is not None:
                 if product.miqdor <= 0:
                     raise HTTPException(
@@ -140,7 +141,8 @@ def create_orders_from_cart(
     for store_id, line_items in grouped.items():
         jami = Decimal("0")
         mahsulotlar_json = []
-        for product, soni in line_items:
+        for product, it in line_items:
+            soni = it.soni
             # Chegirma faol bo'lса chegirmali narx bilan sotiladi.
             narx = Decimal(str(_sotuv_narxi(product)))
             jami += narx * soni
@@ -150,8 +152,9 @@ def create_orders_from_cart(
                     "nomi": product.nomi,
                     "narxi": float(narx),
                     "soni": soni,
-                    "olcham": product.olcham,
-                    "rang": product.rang,
+                    # Mijoz tanlagan variant ustun; bo'lmasa mahsulotdagi qiymat.
+                    "olcham": getattr(it, "olcham", None) or product.olcham,
+                    "rang": getattr(it, "rang", None) or product.rang,
                 }
             )
 

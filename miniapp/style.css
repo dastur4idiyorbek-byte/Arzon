@@ -3,9 +3,11 @@
   --text: var(--tg-theme-text-color, #111111);
   --hint: var(--tg-theme-hint-color, #888888);
   --link: var(--tg-theme-link-color, #2481cc);
-  --button: var(--tg-theme-button-color, #2481cc);
   --button-text: var(--tg-theme-button-text-color, #ffffff);
   --secondary-bg: var(--tg-theme-secondary-bg-color, #f4f4f5);
+  /* ARZON brend rangi — logotipdagi to'q sariq (task_1). */
+  --brand: #e8590c;
+  --brand-dark: #c84605;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -20,10 +22,11 @@ body {
 
 .app-header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 16px; position: sticky; top: 0; background: var(--bg);
+  padding: 10px 16px; position: sticky; top: 0; background: var(--bg);
   z-index: 10; border-bottom: 1px solid var(--secondary-bg);
 }
-.app-header h1 { font-size: 22px; letter-spacing: 1px; }
+.app-header .logo { height: 34px; display: block; }
+.app-header h1 { font-size: 22px; letter-spacing: 1px; color: var(--brand); }
 .code-btn {
   background: var(--secondary-bg); color: var(--text); border: none;
   padding: 8px 14px; border-radius: 20px; font-size: 14px; cursor: pointer;
@@ -33,34 +36,133 @@ body {
 .view.active { display: block; }
 .view h2 { font-size: 18px; margin-bottom: 12px; }
 
-/* Katalog */
+.back-btn {
+  background: var(--secondary-bg); color: var(--text); border: none;
+  padding: 8px 14px; border-radius: 10px; font-size: 14px; cursor: pointer;
+  margin-bottom: 12px;
+}
+
+/* Qidiruv va saralash (task_5) */
+.search-bar { display: flex; gap: 8px; margin-bottom: 12px; }
+.search-bar input {
+  flex: 1; padding: 10px 12px; border-radius: 10px;
+  border: 1px solid var(--secondary-bg); background: var(--secondary-bg);
+  color: var(--text); font-size: 14px;
+}
+.search-bar select {
+  max-width: 46%; padding: 10px 8px; border-radius: 10px;
+  border: 1px solid var(--secondary-bg); background: var(--secondary-bg);
+  color: var(--text); font-size: 13px;
+}
+
+/* Katalog kartasi (task_2) */
 .catalog { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .card {
   background: var(--secondary-bg); border-radius: 14px; overflow: hidden;
   display: flex; flex-direction: column;
 }
-.card img { width: 100%; aspect-ratio: 1; object-fit: cover; background: #ddd; }
-.card .no-img {
-  width: 100%; aspect-ratio: 1; display: flex; align-items: center;
+.card-img { position: relative; width: 100%; overflow: hidden; cursor: pointer; }
+.card-img img { width: 100%; height: 100%; object-fit: cover; display: block; background: #ddd; }
+.no-img {
+  width: 100%; height: 100%; display: flex; align-items: center;
   justify-content: center; font-size: 40px; background: #d9d9d9;
 }
-.card-body { padding: 10px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
-.card-name { font-weight: 600; font-size: 14px; }
-.card-store { font-size: 11px; color: var(--hint); }
-.card-price { font-weight: 700; margin-top: auto; }
+.no-img.big { border-radius: 14px; font-size: 64px; }
+.store-chip {
+  position: absolute; left: 6px; top: 6px; font-size: 10px;
+  background: rgba(0, 0, 0, 0.6); color: #fff;
+  padding: 3px 7px; border-radius: 10px; max-width: 85%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.badges { position: absolute; right: 6px; top: 6px; display: flex; gap: 4px; }
 .card-badge {
   font-size: 10px; color: #fff; background: #e0a800;
-  display: inline-block; margin-right: 4px;
-  padding: 2px 6px; border-radius: 8px;
+  display: inline-block; padding: 2px 6px; border-radius: 8px;
 }
-.card-badge.sale { background: #e53935; }
+.card-badge.sale { background: #e53935; font-weight: 700; }
 .card-badge.out { background: #757575; }
-.old-price { color: var(--hint); font-size: 12px; margin-right: 4px; }
-.card button:disabled { opacity: .5; cursor: default; }
-.card button {
-  margin: 0 10px 10px; background: var(--button); color: var(--button-text);
-  border: none; padding: 8px; border-radius: 10px; cursor: pointer; font-size: 13px;
+.out-overlay {
+  position: absolute; inset: 0; display: flex; align-items: center;
+  justify-content: center; background: rgba(255, 255, 255, 0.45);
+  color: #444; font-weight: 800; font-size: 18px; letter-spacing: 1px;
 }
+/* Tugagan mahsulot xiralashadi (task_2). */
+.card.sold-out .card-img img, .card.sold-out .no-img { filter: grayscale(1); opacity: 0.6; }
+.card.sold-out .card-body { opacity: 0.6; }
+
+.card-body { padding: 10px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
+.card-name { font-weight: 600; font-size: 14px; cursor: pointer; }
+.card-desc {
+  font-size: 11px; color: var(--hint); line-height: 1.35;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.card-store { font-size: 11px; color: var(--hint); }
+.card-price { margin-top: auto; font-size: 14px; }
+.card-price b { font-weight: 700; }
+.old-price { color: var(--hint); font-size: 12px; margin-right: 4px; }
+
+.card-actions { display: flex; gap: 6px; padding: 0 8px 8px; }
+.card-actions button {
+  flex: 1; border: none; padding: 8px 4px; border-radius: 10px;
+  cursor: pointer; font-size: 11.5px; white-space: nowrap;
+}
+.card-actions .act-cart { background: var(--bg); color: var(--brand); border: 1.5px solid var(--brand); }
+.card-actions .act-buy { background: var(--brand); color: #fff; font-weight: 600; }
+.card-actions button:disabled { opacity: 0.4; cursor: default; }
+
+/* Batafsil sahifa (task_3) */
+.carousel-wrap { position: relative; }
+.carousel {
+  display: flex; overflow-x: auto; scroll-snap-type: x mandatory;
+  border-radius: 14px; background: #ddd; width: 100%;
+  -webkit-overflow-scrolling: touch; scrollbar-width: none;
+}
+.carousel::-webkit-scrollbar { display: none; }
+.carousel img {
+  flex: 0 0 100%; width: 100%; object-fit: cover; scroll-snap-align: center;
+}
+.car-counter {
+  position: absolute; right: 10px; bottom: 10px; font-size: 12px;
+  background: rgba(0, 0, 0, 0.6); color: #fff; padding: 3px 9px;
+  border-radius: 12px;
+}
+.detail-body { padding: 14px 2px; display: flex; flex-direction: column; gap: 10px; }
+.detail-name { font-size: 19px; }
+.detail-price { font-size: 18px; }
+.detail-desc { font-size: 14px; color: var(--text); line-height: 1.5; white-space: pre-wrap; }
+.var-group { display: flex; flex-direction: column; gap: 6px; }
+.var-label { font-size: 13px; color: var(--hint); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  background: var(--secondary-bg); color: var(--text);
+  border: 1.5px solid var(--secondary-bg); border-radius: 10px;
+  padding: 8px 14px; font-size: 14px; cursor: pointer;
+}
+.chip.active { border-color: var(--brand); color: var(--brand); font-weight: 700; }
+.detail-actions { display: flex; gap: 8px; margin-top: 6px; }
+.detail-actions button { flex: 1; }
+
+/* Buy Now (task_4) */
+.bn-product {
+  background: var(--secondary-bg); border-radius: 12px; padding: 12px;
+  margin-bottom: 14px; display: flex; flex-direction: column; gap: 4px;
+}
+#buynow-box h3 { font-size: 15px; margin-bottom: 10px; }
+#buynow-box input[type="text"] {
+  width: 100%; padding: 11px; border-radius: 10px;
+  border: 1px solid var(--secondary-bg); background: var(--secondary-bg);
+  color: var(--text); margin-bottom: 10px;
+}
+.row2 { display: flex; gap: 8px; margin-top: 10px; }
+.row2 button { flex: 1; }
+.bn-summary {
+  background: var(--secondary-bg); border-radius: 12px; padding: 12px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.bn-row { display: flex; justify-content: space-between; font-size: 14px; gap: 10px; }
+.bn-row.total { border-top: 1px solid rgba(128, 128, 128, 0.25); padding-top: 8px; font-size: 16px; }
+.variant { color: var(--hint); font-size: 12px; }
 
 /* Savat */
 .cart-row {
@@ -81,20 +183,27 @@ body {
 /* Yetkazib berish */
 .delivery { display: flex; flex-direction: column; gap: 8px; }
 .deliv-label { font-size: 13px; color: var(--hint); }
-.deliv-toggle { display: flex; gap: 8px; }
+.deliv-toggle { display: flex; gap: 8px; margin-bottom: 8px; }
 .deliv-btn {
   flex: 1; padding: 10px; border-radius: 10px; border: 2px solid var(--secondary-bg);
   background: var(--secondary-bg); color: var(--text); cursor: pointer; font-size: 14px;
 }
-.deliv-btn.active { border-color: var(--link); color: var(--link); font-weight: 700; }
+.deliv-btn.active { border-color: var(--brand); color: var(--brand); font-weight: 700; }
 .pickup-store { background: var(--secondary-bg); border-radius: 10px; padding: 10px; margin-top: 6px; }
 .pickup-title { font-weight: 600; font-size: 13px; margin-bottom: 6px; }
 .pickup-opt { display: block; font-size: 13px; padding: 6px 0; cursor: pointer; }
 
 button.primary {
-  background: var(--button); color: var(--button-text); border: none;
+  background: var(--brand); color: #fff; border: none;
+  padding: 12px; border-radius: 12px; font-size: 15px; cursor: pointer; width: 100%;
+  font-weight: 600;
+}
+button.primary:active { background: var(--brand-dark); }
+button.ghost {
+  background: var(--bg); color: var(--brand); border: 1.5px solid var(--brand);
   padding: 12px; border-radius: 12px; font-size: 15px; cursor: pointer; width: 100%;
 }
+button.ghost:disabled, button.primary:disabled { opacity: 0.4; cursor: default; }
 
 /* Buyurtmalar */
 .order-card {
@@ -102,12 +211,12 @@ button.primary {
   margin-bottom: 10px;
 }
 .order-card .code { font-family: monospace; font-size: 18px; font-weight: 700; }
-.order-card .status { font-size: 12px; color: var(--link); }
+.order-card .status { font-size: 12px; color: var(--brand); }
 
 /* Chat */
 .chat-log { display: flex; flex-direction: column; gap: 8px; min-height: 50vh; }
 .msg { padding: 10px 12px; border-radius: 14px; max-width: 80%; font-size: 14px; }
-.msg.user { align-self: flex-end; background: var(--button); color: var(--button-text); }
+.msg.user { align-self: flex-end; background: var(--brand); color: #fff; }
 .msg.bot { align-self: flex-start; background: var(--secondary-bg); }
 .chat-input { display: flex; gap: 8px; position: sticky; bottom: 72px; padding-top: 8px; background: var(--bg); }
 .chat-input input { flex: 1; padding: 10px; border-radius: 20px; border: 1px solid var(--secondary-bg);
@@ -116,7 +225,7 @@ button.primary {
 
 /* Sodiqlik */
 .loyalty-box { background: var(--secondary-bg); border-radius: 14px; padding: 16px; }
-.loyalty-box .big { font-size: 32px; font-weight: 800; }
+.loyalty-box .big { font-size: 32px; font-weight: 800; color: var(--brand); }
 .ref-link { word-break: break-all; color: var(--link); font-size: 13px; margin-top: 8px; }
 
 /* Tabbar */
@@ -130,7 +239,8 @@ button.primary {
   align-items: center; gap: 2px; position: relative;
 }
 .tab span { font-size: 10px; }
-.tab.active { color: var(--link); }
+.tab.active { color: var(--brand); }
+/* Savat belgisi — son (task_5). */
 .tab b {
   position: absolute; top: 2px; right: 22px; background: #e53935; color: #fff;
   font-size: 10px; border-radius: 10px; padding: 0 5px;

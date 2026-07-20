@@ -79,6 +79,9 @@ class UnlockResponse(BaseModel):
 class CartItem(BaseModel):
     product_id: int
     soni: int = Field(ge=1)
+    # Mijoz tanlagan variant (mahsulotда o'lcham/rang ro'yxati bo'lsa).
+    olcham: Optional[str] = None
+    rang: Optional[str] = None
 
 
 class PickupPointOut(BaseModel):
