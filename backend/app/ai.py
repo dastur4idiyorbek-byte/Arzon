@@ -25,7 +25,7 @@ from . import vector_store
 #  shu yerda to'g'ridan-to'g'ri o'qiymiz — config.py'ni o'zgartirmasdan).
 load_dotenv()
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "") or settings.gemini_api_key
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 
 # --- Gemini klienti (google-genai SDK) ---
@@ -75,7 +75,7 @@ def _build_context(products: List[dict]) -> str:
         narx = p.get("narxi")
         line = f"- {p.get('nomi')}"
         if narx is not None:
-            line += f" — {narx} so'm"
+            line += f" — {narx} som"
         if p.get("olcham"):
             line += f", o'lcham: {p['olcham']}"
         if p.get("rang"):
@@ -149,3 +149,69 @@ def chat_reply(db: Session, user: User, matn: str) -> str:
 
     # 3) Zaxira javob (AI ulanmagan)
     return _fallback(context)
+
+
+# ===========================================================================
+# Chek/rasm tahlili — Gemini Flash (ACOM coin, rule 2 & rule 3)
+# ===========================================================================
+# DIQQAT (rule 2): bu funksiya faqat TAKLIF beradi — yakuniy qarorni HAR DOIM
+# super-admin Moliya Botида tugma bosib beradi. AI "mos" desa ham coin
+# avtomatik berilmaydi.
+def analyze_receipt(
+    image_bytes: bytes, mime_type: str, kutilgan_summa: float
+) -> dict:
+    """Chek rasmidan summa va sanani o'qiydi (Gemini Flash).
+
+    Qaytaradi: {"summa": float|None, "sana": str|None, "xulosa": str}
+    xulosa: 'mos_keladi' | 'mos_kelmaydi' | 'aniq_emas'
+    Barcha summalar Qirg'iziston somida (KGS).
+    """
+    natija = {"summa": None, "sana": None, "xulosa": "aniq_emas"}
+    if _gemini is None or not image_bytes:
+        return natija  # AI yo'q — super-admin qo'lда tekshiradi (rule 2)
+
+    try:
+        import json as _json
+
+        from google.genai import types
+
+        prompt = (
+            "Bu bank o'tkazmasi/to'lov cheki rasmi. Undan quyidagilarни ajratib ol:\n"
+            "- summa: o'tkazilgan pul miqdori (faqat son, Qirg'iziston somida, "
+            "vergul/probelsiz)\n"
+            "- sana: to'lov sanasi va vaqti (matn ko'rinishida)\n\n"
+            "Faqat JSON qaytar, boshqa matnsiz: "
+            '{"summa": <son yoki null>, "sana": "<matn yoki null>"}'
+        )
+        resp = _gemini.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=[
+                types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+                prompt,
+            ],
+            config=types.GenerateContentConfig(max_output_tokens=300),
+        )
+        text = (resp.text or "").strip()
+        # JSON blokни ajratib olamiz (```json ... ``` bo'lishi mumkin).
+        if "{" in text and "}" in text:
+            text = text[text.index("{") : text.rindex("}") + 1]
+        parsed = _json.loads(text)
+        summa = parsed.get("summa")
+        sana = parsed.get("sana")
+        if summa is not None:
+            try:
+                summa = float(str(summa).replace(" ", "").replace(",", ""))
+            except (ValueError, TypeError):
+                summa = None
+        natija["summa"] = summa
+        natija["sana"] = str(sana) if sana else None
+        # Mijoz kiritgan summa bilan solishtiramiz (1 som farqга yo'l qo'yamiz).
+        if summa is None:
+            natija["xulosa"] = "aniq_emas"
+        elif abs(summa - float(kutilgan_summa)) <= 1:
+            natija["xulosa"] = "mos_keladi"
+        else:
+            natija["xulosa"] = "mos_kelmaydi"
+    except Exception:  # noqa: BLE001
+        natija["xulosa"] = "aniq_emas"
+    return natija

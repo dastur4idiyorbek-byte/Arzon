@@ -28,7 +28,7 @@ from telegram.ext import (
 )
 
 from ..config import settings
-from . import daily, notify
+from . import confirm, daily, notify
 from .client import api
 
 # ---------------------------------------------------------------------------
@@ -43,6 +43,7 @@ BTN_STATS = "📊 Statistika"
 BTN_ORDERS = "📋 Buyurtmalar"
 BTN_SEARCH = "🔍 Buyurtma qidirish"
 BTN_PICKUP = "📍 Punktlar"
+BTN_WITHDRAW = "💰 Pul yechish"
 # Faqat super-admin (do'kon/admin boshqaruvi)
 BTN_NEWSTORE = "🏪 Yangi do'kon"
 BTN_NEWADMIN = "➕ Yangi admin qo'shish"
@@ -57,7 +58,7 @@ BTN_SKIP = "⏭ O'tkazib yuborish"
 # Bosh menyu tugmalari — jarayon ichida bosilса "avval yakunlang" deyiladi.
 MENU_BUTTONS = {
     BTN_ADD, BTN_DEL, BTN_EDIT, BTN_PROMO, BTN_SECRET,
-    BTN_STATS, BTN_ORDERS, BTN_SEARCH, BTN_PICKUP,
+    BTN_STATS, BTN_ORDERS, BTN_SEARCH, BTN_PICKUP, BTN_WITHDRAW,
     BTN_NEWSTORE, BTN_NEWADMIN, BTN_DELSTORE,
 }
 
@@ -73,7 +74,8 @@ MENU_BUTTONS = {
     S_NOMI, S_ADMIN_ID,
     RAD_SABAB,
     PP_NOMI, PP_MANZIL, PP_VAQT,
-) = range(24)
+    W_SUMMA, W_KARTA, W_CODE,
+) = range(27)
 
 # Ruxsat etilgan rasm nisbatlari.
 RATIOS = ["1:1", "4:3", "3:4", "9:16", "16:9"]
@@ -94,7 +96,7 @@ def menu_markup(uid: int) -> ReplyKeyboardMarkup:
         [KeyboardButton(BTN_DEL), KeyboardButton(BTN_SECRET)],
         [KeyboardButton(BTN_PROMO), KeyboardButton(BTN_STATS)],
         [KeyboardButton(BTN_ORDERS), KeyboardButton(BTN_SEARCH)],
-        [KeyboardButton(BTN_PICKUP)],
+        [KeyboardButton(BTN_PICKUP), KeyboardButton(BTN_WITHDRAW)],
     ]
     if _is_super(uid):
         rows.append(
@@ -1247,6 +1249,92 @@ async def mahfiy_kod_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
 
 
+# ---------------------------------------------------------------------------
+# 💰 Pul yechish (ACOM coin task_5 + task_8 tasdiqlash kodi)
+# ---------------------------------------------------------------------------
+async def withdraw_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    store_id = await _resolve_store(update, context)
+    if store_id is None:
+        return ConversationHandler.END
+    r = await api.store_balance(update.effective_user.id, store_id)
+    if r.status_code != 200:
+        await _back_to_menu(update, f"❌ {r.text[:200]}")
+        return ConversationHandler.END
+    d = r.json()
+    mavjud = d.get("yechish_mumkin", 0)
+    if mavjud <= 0:
+        await _back_to_menu(
+            update,
+            f"Kutilayotgan balans: {d.get('kutilayotgan_balans', 0):,.0f} som.\n"
+            "Hozircha yechish uchun mablag' yo'q.",
+        )
+        return ConversationHandler.END
+    context.user_data["w_store"] = store_id
+    await update.message.reply_text(
+        f"💰 Yechish mumkin: {mavjud:,.0f} som.\n"
+        "Yechmoqchi bo'lgan summani kiriting (som):",
+        reply_markup=cancel_markup(),
+    )
+    return W_SUMMA
+
+
+async def withdraw_summa(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if _is_menu_press(update.message.text):
+        await _warn_finish_first(update)
+        return W_SUMMA
+    try:
+        summa = float(update.message.text.strip().replace(" ", "").replace(",", "."))
+        assert summa > 0
+    except (ValueError, AssertionError):
+        await update.message.reply_text("Musbat raqam kiriting:")
+        return W_SUMMA
+    context.user_data["w_summa"] = summa
+    await update.message.reply_text(
+        "💳 Pul o'tkaziladigan karta raqamini kiriting:",
+        reply_markup=cancel_markup(),
+    )
+    return W_KARTA
+
+
+async def withdraw_karta(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if _is_menu_press(update.message.text):
+        await _warn_finish_first(update)
+        return W_KARTA
+    context.user_data["w_karta"] = update.message.text.strip()
+    kod = confirm.issue_code(context.user_data)
+    await update.message.reply_text(confirm.prompt_text(kod), parse_mode="HTML")
+    return W_CODE
+
+
+async def withdraw_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    natija = confirm.check_code(context.user_data, update.message.text)
+    if natija == "wrong":
+        await update.message.reply_text("Kod noto'g'ri, qaytadan urinib ko'ring:")
+        return W_CODE
+    if natija in ("expired", "toomany", "yoq"):
+        await _back_to_menu(
+            update, "So'rov bekor qilindi (kod xato yoki muddati o'tdi)."
+        )
+        return ConversationHandler.END
+    store_id = context.user_data.pop("w_store", None)
+    summa = context.user_data.pop("w_summa", 0)
+    karta = context.user_data.pop("w_karta", "")
+    r = await api.withdraw(update.effective_user.id, store_id, summa, karta)
+    if r.status_code == 200:
+        await _back_to_menu(
+            update,
+            f"✅ Pul yechish so'rovi ({summa:,.0f} som) yuborildi.\n"
+            "Super-admin tasdiqlab, pulni kartangizga o'tkazadi.",
+        )
+    else:
+        try:
+            xato = r.json().get("detail", r.text[:200])
+        except Exception:  # noqa: BLE001
+            xato = r.text[:200]
+        await _back_to_menu(update, f"❌ {xato}")
+    return ConversationHandler.END
+
+
 async def statistika(update: Update, context: ContextTypes.DEFAULT_TYPE):
     store_id = await _resolve_store(update, context)
     if store_id is None:
@@ -1726,6 +1814,20 @@ def build_application(token: str) -> Application:
     app.add_handler(CommandHandler("start", start))
     # 🏠 Bosh menyu — jarayondan tashqarida bosilса menyuni ko'rsatadi
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_HOME}$"), start))
+    # 💰 Pul yechish (ACOM coin)
+    withdraw_conv = _conv(
+        [
+            MessageHandler(filters.Regex(f"^{BTN_WITHDRAW}$"), withdraw_start),
+            CommandHandler("pul_yechish", withdraw_start),
+        ],
+        {
+            W_SUMMA: [MessageHandler(TXT, withdraw_summa)],
+            W_KARTA: [MessageHandler(TXT, withdraw_karta)],
+            W_CODE: [MessageHandler(TXT, withdraw_code)],
+        },
+        "withdraw",
+    )
+
     app.add_handler(add_conv)
     app.add_handler(edit_conv)
     app.add_handler(promo_conv)
@@ -1734,6 +1836,7 @@ def build_application(token: str) -> Application:
     app.add_handler(store_conv)
     app.add_handler(reject_conv)
     app.add_handler(pickup_conv)
+    app.add_handler(withdraw_conv)
     app.add_handler(CallbackQueryHandler(pickup_delete, pattern="^ppdel_"))
 
     # Bir bosishli tugmalar / buyruqlar

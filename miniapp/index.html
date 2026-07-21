@@ -13,7 +13,14 @@
     <!-- Brend logotipi (task_1). Rasm topilmasa matnga qaytadi. -->
     <img src="assets/logo.png" alt="ARZON" class="logo"
          onerror="this.outerHTML='&lt;h1&gt;ARZON&lt;/h1&gt;'" />
-    <button id="btn-code" class="code-btn" title="Mahfiy kod kiritish">🔑 Kod</button>
+    <div class="header-right">
+      <!-- ACOM coin balansi -->
+      <span id="balance-chip" class="balance-chip" title="ACOM balansingiz" hidden>
+        <img src="assets/acom_coin.png" alt="ACOM" class="coin-ico" />
+        <b id="balance-val">0</b>
+      </span>
+      <button id="btn-code" class="code-btn" title="Mahfiy kod kiritish">🔑 Kod</button>
+    </div>
   </header>
 
   <!-- Bitta umumiy katalog (rule 1) — do'kon tanlash ekrani YO'Q -->
@@ -60,7 +67,7 @@
         <div id="pickup-container"></div>
       </div>
 
-      <div class="total">Jami: <span id="cart-total">0</span> so'm</div>
+      <div class="total">Jami: <span id="cart-total">0</span> som</div>
       <button id="btn-checkout" class="primary">Buyurtma berish</button>
     </div>
   </main>

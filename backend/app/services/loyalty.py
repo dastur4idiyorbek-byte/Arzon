@@ -18,6 +18,22 @@ OLTIN_THRESHOLD = 10
 # Maxsus referal sovg'asi (phase 4.4).
 REFERAL_SOVGA_THRESHOLD = 100
 
+# ACOM coin bonuslari (task_6) — jismoniy sovg'a o'rniga coin (KGS bilan 1:1).
+KUMUSH_BONUS = 500
+OLTIN_BONUS = 1000
+REFERAL_BONUS = 500
+
+
+def _notify(telegram_id: int | None, text: str) -> None:
+    if not telegram_id:
+        return
+    try:
+        from ..tgbots import notify
+
+        notify.notify_customer(telegram_id, text)
+    except Exception:  # noqa: BLE001
+        pass
+
 
 def count_purchases(db: Session, user: User) -> int:
     """Mijozning barcha do'konlar bo'yicha tasdiqlangan xaridlari (rule 9).
@@ -69,8 +85,18 @@ def evaluate_loyalty(db: Session, user: User) -> LoyaltyCard | None:
 
     if yangi:
         db.add(yangi)
+        # task_6: yangi kartaга yetganда coin bonusi (jismoniy sovg'a o'rniga).
+        from . import coin as coin_service
+
+        bonus = OLTIN_BONUS if yangi.turi == "oltin" else KUMUSH_BONUS
+        coin_service.add_bonus(db, user, bonus, coin_service.T_SODIQLIK_BONUS)
         db.commit()
         db.refresh(yangi)
+        _notify(
+            user.telegram_id,
+            f"🎁 Tabriklaymiz! Siz '{yangi.turi}' kartaga ega bo'ldingiz va "
+            f"{bonus:,.0f} ACOM ({bonus:,.0f} som) bonus oldingiz!",
+        )
         return yangi
 
     # Mavjud eng yuqori karta.
@@ -153,4 +179,18 @@ def mark_referral_purchased(db: Session, user: User) -> None:
     )
     if ref:
         ref.holat = "xarid_qilgan"
+        # task_6: taklif qilgan mijozga coin bonusi.
+        from . import coin as coin_service
+
+        referrer = db.get(User, ref.referred_by)
+        if referrer:
+            coin_service.add_bonus(
+                db, referrer, REFERAL_BONUS, coin_service.T_REFERAL_BONUS
+            )
+            _notify(
+                referrer.telegram_id,
+                f"🎉 Sizning taklifingiz bilan kelgan do'stingiz birinchi "
+                f"xaridini qildi! Sizga {REFERAL_BONUS:,.0f} ACOM "
+                f"({REFERAL_BONUS:,.0f} som) bonus qo'shildi.",
+            )
         db.commit()

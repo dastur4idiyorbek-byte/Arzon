@@ -68,11 +68,20 @@ function effPrice(p) {
 function priceHtml(p) {
   const sotuv = effPrice(p);
   return sotuv < p.narxi
-    ? `<s class="old-price">${money(p.narxi)}</s> <b>${money(sotuv)}</b> so'm`
-    : `<b>${money(p.narxi)}</b> so'm`;
+    ? `<s class="old-price">${money(p.narxi)}</s> <b>${money(sotuv)}</b> som`
+    : `<b>${money(p.narxi)}</b> som`;
 }
 
 const savedManzil = () => localStorage.getItem("arzon_manzil") || "";
+
+/* ---------- ACOM coin balansi (header) ---------- */
+async function loadBalance() {
+  const { ok, data } = await api("/api/balance");
+  const chip = document.getElementById("balance-chip");
+  if (!ok || !data) { chip.hidden = true; return; }
+  document.getElementById("balance-val").textContent = money(data.coin_balans || 0);
+  chip.hidden = false;
+}
 
 /* ---------- Katalog (rule 1: bitta ro'yxat, do'kon tanlash yo'q) ---------- */
 async function loadCatalog() {
@@ -301,7 +310,7 @@ function renderCart() {
     row.innerHTML = `
       <div class="grow">
         <div>${esc(product.nomi)}${variant ? ` <span class="variant">(${esc(variant)})</span>` : ""}</div>
-        <div class="card-store">${esc(product.store_nomi || "")} · ${money(birNarx)} so'm</div>
+        <div class="card-store">${esc(product.store_nomi || "")} · ${money(birNarx)} som</div>
       </div>
       <div class="qty">
         <button data-a="minus">−</button><span>${soni}</span><button data-a="plus">+</button>
@@ -422,6 +431,7 @@ async function submitCheckout(body, onSuccess) {
     const kodlar = data.buyurtmalar.map((o) => o.kod).join(", ");
     notify(`✅ ${data.buyurtmalar.length} ta buyurtma yaratildi. Kod(lar): ${kodlar}`);
     if (onSuccess) onSuccess();
+    loadBalance(); // coin yechildi — balansni yangilaymiz
     loadOrders();
     switchView("buyurtmalar");
   } else if (status === 428) {
@@ -532,11 +542,11 @@ function renderBuyStep(step) {
     <div class="bn-summary">
       <div class="bn-row"><span>Soni:</span><b>${buyNow.soni} dona</b></div>
       ${variant ? `<div class="bn-row"><span>Variant:</span><b>${esc(variant)}</b></div>` : ""}
-      <div class="bn-row"><span>Narx:</span><b>${money(sotuv)} so'm</b></div>
+      <div class="bn-row"><span>Narx:</span><b>${money(sotuv)} som</b></div>
       ${p.skidka_foizi > 0 ? `<div class="bn-row"><span>Chegirma:</span><b>-${p.skidka_foizi}%</b></div>` : ""}
       ${buyNow.promo ? `<div class="bn-row"><span>Promo:</span><b>${esc(buyNow.promo)} (tekshiriladi)</b></div>` : ""}
       <div class="bn-row"><span>Yetkazish:</span><b>${yetk}</b></div>
-      <div class="bn-row total"><span>Jami:</span><b>${money(jami)} so'm</b></div>
+      <div class="bn-row total"><span>Jami:</span><b>${money(jami)} som</b></div>
     </div>
     <div class="row2">
       <button id="bn-back" class="ghost">← Orqaga</button>
@@ -594,7 +604,7 @@ async function loadOrders() {
     el.className = "order-card";
     el.innerHTML = `
       <div class="code">${esc(o.kod)}</div>
-      <div>${money(o.jami_narx)} so'm</div>
+      <div>${money(o.jami_narx)} som</div>
       <div class="status">Holat: ${esc(o.holat)}</div>`;
     box.appendChild(el);
   });
@@ -664,4 +674,5 @@ function notify(text) {
 
 /* ---------- Boshlash ---------- */
 loadCatalog();
+loadBalance();
 renderCart();

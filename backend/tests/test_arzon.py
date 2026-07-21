@@ -1026,3 +1026,114 @@ def test_coin_withdraw_and_report():
         assert rep2["bugun_yechish_summa"] - rep0["bugun_yechish_summa"] == 5000.0
     finally:
         db.close()
+
+
+def _bot_headers(telegram_id: int) -> dict:
+    return {**INTERNAL, "X-Telegram-User-Id": str(telegram_id)}
+
+
+def test_moliya_super_admin_only():
+    """verification #6: Moliya endpointlariга faqat super-admin kira oladi."""
+    # Oddiy admin -> 403.
+    r = client.get("/api/moliya/topups", headers=admin_headers(ADMIN_A))
+    assert r.status_code == 403, r.text
+    # Super-admin -> 200.
+    r2 = client.get("/api/moliya/topups", headers=admin_headers(SUPER))
+    assert r2.status_code == 200, r2.text
+
+
+def test_moliya_topup_full_flow():
+    """rule 2: to'ldirish so'rovi -> super tasdiqlaydi -> balans oshadi."""
+    # Mijoz mavjud bo'lsin.
+    tid = 50001
+    client.post("/api/bot/confirm-phone", headers=_bot_headers(tid),
+                json={"tel": "+996700500001"})
+    # To'ldirish so'rovi (bot endpointi orqali).
+    r = client.post("/api/bot/coin/topup", headers=_bot_headers(tid),
+                    json={"summa": 7500, "ai_summa": 7500, "ai_xulosa": "mos_keladi"})
+    assert r.status_code == 200, r.text
+    sorov_id = r.json()["sorov_id"]
+    # Coin hali berilmagan.
+    assert get_balance(tid) == 0.0
+    # Moliya ro'yxatida ko'rinadi.
+    lst = client.get("/api/moliya/topups", headers=admin_headers(SUPER)).json()
+    assert any(x["id"] == sorov_id for x in lst)
+    # Tasdiqlash.
+    a = client.post(f"/api/moliya/topups/{sorov_id}/approve",
+                    headers=admin_headers(SUPER))
+    assert a.status_code == 200, a.text
+    assert get_balance(tid) == 7500.0
+
+
+def test_admin_withdraw_flow():
+    """task_5: admin pul yechish so'rovi -> super to'landi -> balans kamayadi."""
+    store_a, _ = setup_two_stores()
+    p = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/products",
+        headers=admin_headers(ADMIN_A),
+        json={"nomi": "Yechim tovar", "narxi": 8000, "korinish": "ommaviy"},
+    ).json()
+    cust = customer_headers(50002)
+    client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700500002"})
+    give_balance(50002, 10000)
+    client.post("/api/checkout", headers=cust,
+                json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Bishkek 1"})
+    # Admin balansi 7600 (8000 - 5%). Yechish so'rovi.
+    w = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/withdraw",
+        headers=admin_headers(ADMIN_A),
+        json={"summa": 5000, "karta_raqami": "1234567890"},
+    )
+    assert w.status_code == 200, w.text
+    wid = w.json()["sorov_id"]
+    # Super to'landi deb belgilaydi.
+    paid = client.post(f"/api/moliya/withdraws/{wid}/paid",
+                       headers=admin_headers(SUPER))
+    assert paid.status_code == 200, paid.text
+    # Balans 2600 (7600 - 5000).
+    bal = client.get(f"/api/admin/stores/{store_a['store_id']}/balance",
+                     headers=admin_headers(ADMIN_A)).json()
+    assert bal["kutilayotgan_balans"] == 2600.0
+
+
+def test_miniapp_balance_endpoint():
+    """Mini App header uchun /api/balance (initData)."""
+    give_balance(50003, 3300)
+    r = client.get("/api/balance", headers=customer_headers(50003))
+    assert r.status_code == 200
+    assert r.json()["coin_balans"] == 3300.0
+
+
+def test_coin_referral_bonus():
+    """task_6: taklif qilgan mijoz do'sti birinchi xarid qilganда coin bonusi."""
+    from app.services import loyalty as loyalty_service
+
+    # Taklif qiluvchi A mavjud bo'lsin.
+    a_tid = 60001
+    client.post("/api/bot/confirm-phone", headers=_bot_headers(a_tid),
+                json={"tel": "+996700600001"})
+    assert get_balance(a_tid) == 0.0
+
+    # B (taklif qilingan) A havolasi orqali keladi.
+    b_tid = 60002
+    client.post("/api/bot/confirm-phone", headers=_bot_headers(b_tid),
+                json={"tel": "+996700600002"})
+    r = client.post("/api/bot/register-referral", headers=_bot_headers(b_tid),
+                    json={"referrer_telegram_id": a_tid})
+    assert r.status_code == 200, r.text
+
+    # B birinchi xaridini qiladi.
+    store_a, _ = setup_two_stores()
+    p = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/products",
+        headers=admin_headers(ADMIN_A),
+        json={"nomi": "Ref tovar", "narxi": 1000, "korinish": "ommaviy"},
+    ).json()
+    give_balance(b_tid, 5000)
+    ok = client.post("/api/checkout", headers=customer_headers(b_tid),
+                     json={"items": [{"product_id": p["id"], "soni": 1}],
+                           "manzil": "Bishkek 1"})
+    assert ok.status_code == 200, ok.text
+
+    # A ga referal bonus (500 coin) qo'shildi.
+    assert get_balance(a_tid) == float(loyalty_service.REFERAL_BONUS)

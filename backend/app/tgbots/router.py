@@ -23,7 +23,7 @@ from telegram import Update
 from telegram.ext import Application
 
 from ..config import settings
-from . import boshqaruv, daily, registry, savdo
+from . import boshqaruv, daily, moliya, registry, savdo
 
 logger = logging.getLogger("arzon.tgbots")
 
@@ -118,6 +118,19 @@ async def startup() -> None:
             logger.exception("Boshqaruv boti webhook o'rnatilmadi.")
     else:
         logger.info("BOSHQARUV_BOT_TOKEN yo'q — boshqaruv boti o'chiq.")
+
+    # Moliya Boti (faqat super-admin — ACOM coin so'rovlari).
+    if settings.moliya_bot_token:
+        try:
+            await _setup_one(
+                "moliya",
+                moliya.build_application(settings.moliya_bot_token),
+                base,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("Moliya boti webhook o'rnatilmadi.")
+    else:
+        logger.info("MOLIYA_BOT_TOKEN yo'q — moliya boti o'chiq.")
 
 
 def _schedule_daily(app: Application | None) -> None:

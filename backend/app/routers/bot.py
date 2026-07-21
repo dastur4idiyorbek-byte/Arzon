@@ -136,3 +136,100 @@ def bot_register_referral(
     """Referal havola orqali kelgan foydalanuvchini ro'yxatga olish (phase 4.4)."""
     loyalty_service.register_referral(db, user, payload.referrer_telegram_id)
     return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# ACOM coin — mijoz tomoni (Savdo Boti / Mini App)
+# ---------------------------------------------------------------------------
+from ..services import coin as coin_service  # noqa: E402
+
+
+@router.get("/coin/balance")
+def bot_coin_balance(
+    user: User = Depends(bot_user),
+    db: Session = Depends(get_db),
+):
+    """Mijoz balansi + platforma karta ma'lumoti (to'ldirish uchun)."""
+    hisob = coin_service.get_platforma_hisob(db)
+    return {
+        "coin_balans": float(coin_service.balance(user)),
+        "platforma_hisob": (
+            {"karta_raqami": hisob.karta_raqami, "hisob_egasi": hisob.hisob_egasi}
+            if hisob
+            else None
+        ),
+    }
+
+
+class BotTopup(BaseModel):
+    summa: float
+    chek_rasm_url: str | None = None
+    ai_summa: float | None = None
+    ai_sana: str | None = None
+    ai_xulosa: str | None = None
+
+
+@router.post("/coin/topup")
+def bot_coin_topup(
+    payload: BotTopup,
+    user: User = Depends(bot_user),
+    db: Session = Depends(get_db),
+):
+    """To'ldirish so'rovi (rule 2 — coin hali berilmaydi). Moliyaга xabar ketadi."""
+    sorov = coin_service.create_topup_request(
+        db,
+        user,
+        payload.summa,
+        chek_rasm_url=payload.chek_rasm_url,
+        ai_summa=payload.ai_summa,
+        ai_sana=payload.ai_sana,
+        ai_xulosa=payload.ai_xulosa,
+    )
+    try:
+        from ..tgbots import notify
+
+        notify.notify_moliya_topup(
+            sorov_id=sorov.id,
+            ism=user.ism,
+            telegram_id=user.telegram_id,
+            summa=float(sorov.som_summasi),
+            ai_summa=float(sorov.ai_ochigan_summa)
+            if sorov.ai_ochigan_summa is not None
+            else None,
+            ai_sana=sorov.ai_ochigan_sana,
+            ai_xulosa=sorov.ai_xulosasi,
+            chek_rel_url=sorov.chek_rasm_url,
+        )
+    except ImportError:
+        pass
+    return {"sorov_id": sorov.id, "holat": sorov.holat}
+
+
+class BotRefund(BaseModel):
+    summa: float
+    karta_raqami: str
+
+
+@router.post("/coin/refund")
+def bot_coin_refund(
+    payload: BotRefund,
+    user: User = Depends(bot_user),
+    db: Session = Depends(get_db),
+):
+    """Balansni qaytarib olish so'rovi. Moliyaга xabar ketadi."""
+    sorov = coin_service.create_coin_refund(
+        db, user, payload.summa, payload.karta_raqami
+    )
+    try:
+        from ..tgbots import notify
+
+        notify.notify_moliya_refund(
+            sorov_id=sorov.id,
+            ism=user.ism,
+            telegram_id=user.telegram_id,
+            summa=float(sorov.sorolgan_summa),
+            karta=sorov.karta_raqami,
+        )
+    except ImportError:
+        pass
+    return {"sorov_id": sorov.id, "holat": sorov.holat}

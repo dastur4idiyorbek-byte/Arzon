@@ -288,5 +288,142 @@ class BotApi:
             json={"admin_telegram_id": new_admin_id},
         )
 
+    # --- ACOM coin: mijoz (Savdo) ---
+    async def coin_balance(self, telegram_id: int) -> dict:
+        r = await self._request(
+            "GET",
+            "/api/bot/coin/balance",
+            headers=self._headers({"X-Telegram-User-Id": str(telegram_id)}),
+        )
+        return r.json() if r.status_code == 200 else {}
+
+    async def coin_topup(
+        self,
+        telegram_id: int,
+        summa: float,
+        *,
+        chek_rasm_url: str | None = None,
+        ai_summa: float | None = None,
+        ai_sana: str | None = None,
+        ai_xulosa: str | None = None,
+    ) -> httpx.Response:
+        return await self._request(
+            "POST",
+            "/api/bot/coin/topup",
+            headers=self._headers({"X-Telegram-User-Id": str(telegram_id)}),
+            json={
+                "summa": summa,
+                "chek_rasm_url": chek_rasm_url,
+                "ai_summa": ai_summa,
+                "ai_sana": ai_sana,
+                "ai_xulosa": ai_xulosa,
+            },
+        )
+
+    async def coin_refund(
+        self, telegram_id: int, summa: float, karta: str
+    ) -> httpx.Response:
+        return await self._request(
+            "POST",
+            "/api/bot/coin/refund",
+            headers=self._headers({"X-Telegram-User-Id": str(telegram_id)}),
+            json={"summa": summa, "karta_raqami": karta},
+        )
+
+    # --- ACOM coin: admin (Boshqaruv) pul yechish ---
+    async def store_balance(self, admin_id: int, store_id: int) -> httpx.Response:
+        return await self._request(
+            "GET",
+            f"/api/admin/stores/{store_id}/balance",
+            headers=self._admin(admin_id),
+        )
+
+    async def withdraw(
+        self, admin_id: int, store_id: int, summa: float, karta: str
+    ) -> httpx.Response:
+        return await self._request(
+            "POST",
+            f"/api/admin/stores/{store_id}/withdraw",
+            headers=self._admin(admin_id),
+            json={"summa": summa, "karta_raqami": karta},
+        )
+
+    # --- ACOM coin: super-admin (Moliya) ---
+    async def moliya_topups(self, admin_id: int, holat: str = "kutilmoqda") -> list:
+        r = await self._request(
+            "GET", "/api/moliya/topups", headers=self._admin(admin_id),
+            params={"holat": holat},
+        )
+        return r.json() if r.status_code == 200 else []
+
+    async def moliya_topup_approve(self, admin_id: int, sorov_id: int) -> httpx.Response:
+        return await self._request(
+            "POST", f"/api/moliya/topups/{sorov_id}/approve",
+            headers=self._admin(admin_id),
+        )
+
+    async def moliya_topup_reject(
+        self, admin_id: int, sorov_id: int, sabab: str
+    ) -> httpx.Response:
+        return await self._request(
+            "POST", f"/api/moliya/topups/{sorov_id}/reject",
+            headers=self._admin(admin_id), json={"sabab": sabab},
+        )
+
+    async def moliya_withdraws(self, admin_id: int, holat: str = "kutilmoqda") -> list:
+        r = await self._request(
+            "GET", "/api/moliya/withdraws", headers=self._admin(admin_id),
+            params={"holat": holat},
+        )
+        return r.json() if r.status_code == 200 else []
+
+    async def moliya_withdraw_paid(self, admin_id: int, sorov_id: int) -> httpx.Response:
+        return await self._request(
+            "POST", f"/api/moliya/withdraws/{sorov_id}/paid",
+            headers=self._admin(admin_id),
+        )
+
+    async def moliya_refunds(self, admin_id: int, holat: str = "kutilmoqda") -> list:
+        r = await self._request(
+            "GET", "/api/moliya/refunds", headers=self._admin(admin_id),
+            params={"holat": holat},
+        )
+        return r.json() if r.status_code == 200 else []
+
+    async def moliya_refund_approve(self, admin_id: int, sorov_id: int) -> httpx.Response:
+        return await self._request(
+            "POST", f"/api/moliya/refunds/{sorov_id}/approve",
+            headers=self._admin(admin_id),
+        )
+
+    async def moliya_refund_reject(
+        self, admin_id: int, sorov_id: int, sabab: str
+    ) -> httpx.Response:
+        return await self._request(
+            "POST", f"/api/moliya/refunds/{sorov_id}/reject",
+            headers=self._admin(admin_id), json={"sabab": sabab},
+        )
+
+    async def moliya_report(self, admin_id: int) -> dict:
+        r = await self._request(
+            "GET", "/api/moliya/report", headers=self._admin(admin_id)
+        )
+        return r.json() if r.status_code == 200 else {}
+
+    async def moliya_get_platforma(self, admin_id: int) -> dict | None:
+        r = await self._request(
+            "GET", "/api/moliya/platforma-hisob", headers=self._admin(admin_id)
+        )
+        return r.json() if r.status_code == 200 else None
+
+    async def moliya_set_platforma(
+        self, admin_id: int, karta: str, egasi: str
+    ) -> httpx.Response:
+        return await self._request(
+            "POST", "/api/moliya/platforma-hisob",
+            headers=self._admin(admin_id),
+            json={"karta_raqami": karta, "hisob_egasi": egasi},
+        )
+
 
 api = BotApi()

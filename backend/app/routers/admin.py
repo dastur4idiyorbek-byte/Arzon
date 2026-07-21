@@ -707,6 +707,66 @@ def my_stores(
     ids = get_admin_store_ids(admin_id, db)
     stores = db.scalars(select(Store).where(Store.id.in_(ids or {-1}))).all()
     return [
-        {"id": s.id, "nomi": s.nomi, "holat": s.holat}
+        {
+            "id": s.id,
+            "nomi": s.nomi,
+            "holat": s.holat,
+            "kutilayotgan_balans": float(s.kutilayotgan_balans or 0),
+        }
         for s in stores
     ]
+
+
+# ---------------------------------------------------------------------------
+# ACOM coin — admin pul yechish (task_5)
+# ---------------------------------------------------------------------------
+@router.get("/stores/{store_id}/balance")
+def store_balance(
+    store_id: int,
+    admin_id: int = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Do'kon kutilayotgan balansi + yechish mumkin bo'lgan summa."""
+    from ..services import coin as coin_service
+
+    store = check_store_access(admin_id, store_id, db)  # rule 7
+    mavjud = coin_service.store_balance(store) - coin_service.pending_withdraw_total(
+        db, store_id
+    )
+    return {
+        "kutilayotgan_balans": float(coin_service.store_balance(store)),
+        "yechish_mumkin": float(mavjud),
+    }
+
+
+class WithdrawRequest(BaseModel):
+    summa: float = Field(gt=0)
+    karta_raqami: str = Field(min_length=4, max_length=32)
+
+
+@router.post("/stores/{store_id}/withdraw")
+def create_withdraw(
+    store_id: int,
+    payload: WithdrawRequest,
+    admin_id: int = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Pul yechish so'rovi (minimal chegara yo'q — rule 6). Moliyaга xabar."""
+    from ..services import coin as coin_service
+
+    store = check_store_access(admin_id, store_id, db)  # rule 7
+    sorov = coin_service.create_withdraw(
+        db, store, payload.summa, payload.karta_raqami, admin_id
+    )
+    try:
+        from ..tgbots import notify
+
+        notify.notify_moliya_withdraw(
+            sorov_id=sorov.id,
+            store_nomi=store.nomi,
+            summa=float(sorov.sorolgan_summa),
+            karta=sorov.karta_raqami,
+        )
+    except ImportError:
+        pass
+    return {"sorov_id": sorov.id, "holat": sorov.holat}

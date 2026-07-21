@@ -22,19 +22,39 @@ _TG_API = "https://api.telegram.org"
 
 @router.get("/media/{file_id}")
 async def media(file_id: str):
-    # Rasmlar Boshqaruv Botiga yuboriladi — o'sha bot tokeni bilan olinadi.
-    token = settings.boshqaruv_bot_token
-    if not token or len(file_id) > 200:
+    # Rasm turli botlarga yuborilishi mumkin: mahsulot rasmi -> Boshqaruv,
+    # to'ldirish cheki -> Savdo boti. file_id bot tokeniga bog'liq, shuning
+    # uchun mavjud tokenlarни navbat bilan sinaymiz (birinchi ishlaganи).
+    tokens = [
+        t
+        for t in (
+            settings.boshqaruv_bot_token,
+            settings.savdo_bot_token,
+            settings.moliya_bot_token,
+        )
+        if t
+    ]
+    # Takrorlarни olib tashlaymiz (tartibни saqlab).
+    seen: set[str] = set()
+    tokens = [t for t in tokens if not (t in seen or seen.add(t))]
+    if not tokens or len(file_id) > 200:
         raise HTTPException(status_code=404, detail="Rasm topilmadi.")
 
+    file_path = None
+    token = None
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            r = await client.get(
-                f"{_TG_API}/bot{token}/getFile", params={"file_id": file_id}
-            )
-            data = r.json() if r.status_code == 200 else {}
-            file_path = (data.get("result") or {}).get("file_path")
-            if not data.get("ok") or not file_path:
+            for t in tokens:
+                r = await client.get(
+                    f"{_TG_API}/bot{t}/getFile", params={"file_id": file_id}
+                )
+                data = r.json() if r.status_code == 200 else {}
+                fp = (data.get("result") or {}).get("file_path")
+                if data.get("ok") and fp:
+                    file_path = fp
+                    token = t
+                    break
+            if not file_path:
                 raise HTTPException(status_code=404, detail="Rasm topilmadi.")
             f = await client.get(f"{_TG_API}/file/bot{token}/{file_path}")
             if f.status_code != 200:

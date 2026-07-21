@@ -16,7 +16,17 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import settings
 from .database import init_db
-from .routers import admin, bot, chat, instagram, loyalty, media, orders, products
+from .routers import (
+    admin,
+    bot,
+    chat,
+    instagram,
+    loyalty,
+    media,
+    moliya,
+    orders,
+    products,
+)
 
 # Telegram webhook botlari — python-telegram-bot o'rnatilgan bo'lsagina.
 # (Minimal o'rnatishда backend botlarsiz ham ishlayveradi.)
@@ -93,6 +103,8 @@ app.include_router(loyalty.router)
 app.include_router(bot.router)
 # Admin endpointlari (Boshqaruv Boti — internal token + check_store_access)
 app.include_router(admin.router)
+# Moliya endpointlari (Moliya Boti — faqat super-admin, ACOM coin)
+app.include_router(moliya.router)
 # Instagram webhook
 app.include_router(instagram.router)
 # Telegram rasm proksisi (mahsulot rasmlari Mini App uchun)

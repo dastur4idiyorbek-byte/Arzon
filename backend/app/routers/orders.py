@@ -134,6 +134,17 @@ def pickup_points(
     return [PickupPointOut.model_validate(p) for p in rows]
 
 
+@router.get("/balance")
+def balance(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Mini App uchun mijoz ACOM coin balansi (header'да ko'rsatiladi)."""
+    from ..services import coin as coin_service
+
+    return {"coin_balans": float(coin_service.balance(user))}
+
+
 @router.post("/confirm-phone")
 def confirm_phone(
     payload: PhoneConfirmRequest,

@@ -13,3 +13,6 @@ psycopg2-binary==2.9.10
 # Telegram botlar (webhook rejimi — bulutда, backend ichida ishlaydi).
 # [job-queue] — kunlik hisobot uchun (APScheduler).
 python-telegram-bot[job-queue]==22.8
+# Gemini Flash — chek/rasm tahlili (ACOM coin). Kalit bo'lmasa ishlamaydi,
+# lekin backend baribir ishlaydi (super-admin qo'lда tekshiradi).
+google-genai==1.16.1

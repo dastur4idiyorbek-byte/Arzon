@@ -34,6 +34,13 @@ services:
         sync: false
       - key: BOSHQARUV_BOT_TOKEN
         sync: false
+      # Moliya Boti (faqat super-admin — ACOM coin so'rovlari).
+      - key: MOLIYA_BOT_TOKEN
+        sync: false
+      # Gemini Flash — chek/rasm tahlili (ixtiyoriy; bo'sh bo'lса super-admin
+      # qo'lда tekshiradi). Mijoz chatи uchun emas — u Claude API.
+      - key: GEMINI_API_KEY
+        sync: false
       # Majburiy kanalga obuna (ixtiyoriy — bo'sh bo'lса o'chiq).
       # Bot kanalда ADMIN bo'lishi kerak. ID: @username yoki -100...
       - key: NEWS_CHANNEL_ID

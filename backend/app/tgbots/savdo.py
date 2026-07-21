@@ -26,11 +26,13 @@ from telegram.ext import (
     CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
+    ConversationHandler,
     MessageHandler,
     filters,
 )
 
 from ..config import settings
+from . import confirm
 from .client import api
 
 logger = logging.getLogger("arzon.savdo")
@@ -57,9 +59,14 @@ WELCOME_SHORT = "🛍 ARZON ONLINE SAVDO — Xush kelibsiz!"
 BTN_CATALOG = "🛍 Katalog"
 BTN_ORDERS = "📦 Buyurtmalarim"
 BTN_LOYALTY = "🎁 Sodiqlik kartam"
+BTN_BALANCE = "💰 Balansim"
 BTN_FAV = "❤️ Sevimlilar"
 BTN_HELP = "❓ Yordam"
 BTN_ASK = "💬 Savol berish"
+BTN_HOME = "🏠 Bosh menyu"
+
+# ACOM coin balans oqimi holatlari.
+(TOPUP_SUMMA, TOPUP_CODE, TOPUP_CHEK, REFUND_SUMMA, REFUND_KARTA, REFUND_CODE) = range(6)
 
 
 def main_menu(miniapp_url: str) -> ReplyKeyboardMarkup:
@@ -70,8 +77,9 @@ def main_menu(miniapp_url: str) -> ReplyKeyboardMarkup:
     )
     rows = [
         [catalog_btn, KeyboardButton(BTN_ORDERS)],
-        [KeyboardButton(BTN_LOYALTY), KeyboardButton(BTN_FAV)],
-        [KeyboardButton(BTN_HELP), KeyboardButton(BTN_ASK)],
+        [KeyboardButton(BTN_BALANCE), KeyboardButton(BTN_LOYALTY)],
+        [KeyboardButton(BTN_FAV), KeyboardButton(BTN_HELP)],
+        [KeyboardButton(BTN_ASK)],
     ]
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
@@ -304,6 +312,250 @@ async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
+# ---------------------------------------------------------------------------
+# 💰 Balansim — ACOM coin (1 ACOM = 1 som, KGS)
+# ---------------------------------------------------------------------------
+def _menu_kb(context) -> ReplyKeyboardMarkup:
+    return main_menu(context.bot_data.get("miniapp_url", ""))
+
+
+async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await _gate(update, context):
+        return
+    data = await api.coin_balance(update.effective_user.id)
+    bal = data.get("coin_balans", 0) or 0
+    kb = InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("➕ Hisobni to'ldirish", callback_data="bal_topup")],
+            [InlineKeyboardButton("↩️ Balansni qaytarish", callback_data="bal_refund")],
+        ]
+    )
+    await update.message.reply_text(
+        f"🪙 ACOM balansingiz: <b>{bal:,.0f}</b> ACOM ({bal:,.0f} som)\n\n"
+        "1 ACOM = 1 som. Xaridlar shu balansdan amalga oshadi.",
+        reply_markup=kb,
+        parse_mode="HTML",
+    )
+
+
+def _home_kb() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup([[KeyboardButton(BTN_HOME)]], resize_keyboard=True)
+
+
+# --- To'ldirish oqimi (task_1 + task_8) ---
+async def topup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    if not await _gate(update, context):
+        return ConversationHandler.END
+    await query.message.reply_text(
+        "➕ To'ldirmoqchi bo'lgan summani <b>somda (KGS)</b> kiriting (masalan 10000):",
+        reply_markup=_home_kb(),
+        parse_mode="HTML",
+    )
+    return TOPUP_SUMMA
+
+
+async def topup_summa(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if update.message.text == BTN_HOME:
+        return await _cancel_to_menu(update, context)
+    try:
+        summa = float(update.message.text.strip().replace(" ", "").replace(",", ""))
+        assert summa > 0
+    except (ValueError, AssertionError):
+        await update.message.reply_text("Iltimos, musbat raqam kiriting (masalan 10000):")
+        return TOPUP_SUMMA
+    limit = settings.bir_martalik_toldirish_limit
+    if summa > limit:
+        await update.message.reply_text(
+            f"Bir martalik to'ldirish chegarasi: {limit:,.0f} som. "
+            "Kichikroq summa kiriting:"
+        )
+        return TOPUP_SUMMA
+    context.user_data["topup_summa"] = summa
+    kod = confirm.issue_code(context.user_data)
+    await update.message.reply_text(confirm.prompt_text(kod), parse_mode="HTML")
+    return TOPUP_CODE
+
+
+async def topup_code(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if update.message.text == BTN_HOME:
+        return await _cancel_to_menu(update, context)
+    natija = confirm.check_code(context.user_data, update.message.text)
+    if natija == "wrong":
+        await update.message.reply_text("Kod noto'g'ri, qaytadan urinib ko'ring:")
+        return TOPUP_CODE
+    if natija == "expired":
+        await update.message.reply_text(
+            "Kodning muddati tugadi. To'ldirishni boshidan boshlang (💰 Balansim).",
+            reply_markup=_menu_kb(context),
+        )
+        return ConversationHandler.END
+    if natija in ("toomany", "yoq"):
+        await update.message.reply_text(
+            "Juda ko'p noto'g'ri urinish. So'rov bekor qilindi.",
+            reply_markup=_menu_kb(context),
+        )
+        return ConversationHandler.END
+    # ok — platforma karta ko'rsatiladi.
+    summa = context.user_data.get("topup_summa", 0)
+    data = await api.coin_balance(update.effective_user.id)
+    hisob = data.get("platforma_hisob")
+    if hisob:
+        karta_txt = (
+            f"💳 <b>{hisob['karta_raqami']}</b> — {hisob['hisob_egasi']} nomiga\n"
+            f"<b>{summa:,.0f} som</b> o'tkazing va chekni (rasm) yuboring."
+        )
+    else:
+        karta_txt = (
+            "⚠️ Platforma karta hali sozlanmagan. Iltimos, administrator bilan "
+            "bog'laning. Chekni baribir yuborishingiz mumkin."
+        )
+    await update.message.reply_text(karta_txt, parse_mode="HTML", reply_markup=_home_kb())
+    await update.message.reply_text("📸 To'lov chekini (rasm) yuboring:")
+    return TOPUP_CHEK
+
+
+async def topup_chek(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if update.message.text and update.message.text == BTN_HOME:
+        return await _cancel_to_menu(update, context)
+    if not update.message.photo:
+        await update.message.reply_text("Iltimos, chek RASMINI yuboring:")
+        return TOPUP_CHEK
+
+    summa = context.user_data.pop("topup_summa", 0)
+    photo = update.message.photo[-1]
+    file_id = photo.file_id
+    await context.bot.send_chat_action(update.effective_chat.id, "typing")
+
+    # Chekni yuklab, Gemini bilan tahlil qilamiz (rule 2 — faqat taklif).
+    ai_summa = ai_sana = ai_xulosa = None
+    try:
+        import asyncio
+
+        from .. import ai as ai_module
+
+        tg_file = await photo.get_file()
+        raw = bytes(await tg_file.download_as_bytearray())
+        loop = asyncio.get_running_loop()
+        natija = await loop.run_in_executor(
+            None, ai_module.analyze_receipt, raw, "image/jpeg", summa
+        )
+        ai_summa = natija.get("summa")
+        ai_sana = natija.get("sana")
+        ai_xulosa = natija.get("xulosa")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Chek tahlilида xato: %s", e)
+
+    r = await api.coin_topup(
+        update.effective_user.id,
+        summa,
+        chek_rasm_url=f"/media/{file_id}",
+        ai_summa=ai_summa,
+        ai_sana=ai_sana,
+        ai_xulosa=ai_xulosa,
+    )
+    confirm.clear(context.user_data)
+    if r.status_code == 200:
+        await update.message.reply_text(
+            "✅ So'rovingiz qabul qilindi! Super-admin chekni tekshirib "
+            "tasdiqlaydi. Tasdiqlangач balansingizga coin qo'shiladi.",
+            reply_markup=_menu_kb(context),
+        )
+    else:
+        try:
+            xato = r.json().get("detail", "Xatolik")
+        except Exception:  # noqa: BLE001
+            xato = "Xatolik"
+        await update.message.reply_text(f"❌ {xato}", reply_markup=_menu_kb(context))
+    return ConversationHandler.END
+
+
+# --- Qaytarish oqimi (task_8) ---
+async def refund_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    if not await _gate(update, context):
+        return ConversationHandler.END
+    data = await api.coin_balance(update.effective_user.id)
+    bal = data.get("coin_balans", 0) or 0
+    await query.message.reply_text(
+        f"↩️ Joriy balans: {bal:,.0f} som.\n"
+        "Qaytarib olmoqchi bo'lgan summani kiriting:",
+        reply_markup=_home_kb(),
+    )
+    return REFUND_SUMMA
+
+
+async def refund_summa(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if update.message.text == BTN_HOME:
+        return await _cancel_to_menu(update, context)
+    try:
+        summa = float(update.message.text.strip().replace(" ", "").replace(",", ""))
+        assert summa > 0
+    except (ValueError, AssertionError):
+        await update.message.reply_text("Iltimos, musbat raqam kiriting:")
+        return REFUND_SUMMA
+    data = await api.coin_balance(update.effective_user.id)
+    bal = data.get("coin_balans", 0) or 0
+    if summa > bal:
+        await update.message.reply_text(
+            f"Balansingiz yetarli emas (joriy: {bal:,.0f} som). Kichikroq summa kiriting:"
+        )
+        return REFUND_SUMMA
+    context.user_data["refund_summa"] = summa
+    await update.message.reply_text("💳 Pul qaytariladigan karta raqamini kiriting:")
+    return REFUND_KARTA
+
+
+async def refund_karta(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if update.message.text == BTN_HOME:
+        return await _cancel_to_menu(update, context)
+    context.user_data["refund_karta"] = update.message.text.strip()
+    kod = confirm.issue_code(context.user_data)
+    await update.message.reply_text(confirm.prompt_text(kod), parse_mode="HTML")
+    return REFUND_CODE
+
+
+async def refund_code(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if update.message.text == BTN_HOME:
+        return await _cancel_to_menu(update, context)
+    natija = confirm.check_code(context.user_data, update.message.text)
+    if natija == "wrong":
+        await update.message.reply_text("Kod noto'g'ri, qaytadan urinib ko'ring:")
+        return REFUND_CODE
+    if natija in ("expired", "toomany", "yoq"):
+        await update.message.reply_text(
+            "So'rov bekor qilindi (kod xato yoki muddati o'tdi). Qaytadan urinib ko'ring.",
+            reply_markup=_menu_kb(context),
+        )
+        return ConversationHandler.END
+    summa = context.user_data.pop("refund_summa", 0)
+    karta = context.user_data.pop("refund_karta", "")
+    r = await api.coin_refund(update.effective_user.id, summa, karta)
+    if r.status_code == 200:
+        await update.message.reply_text(
+            "✅ Qaytarish so'rovingiz yuborildi! Super-admin tasdiqlagach "
+            "kartangizga o'tkaziladi.",
+            reply_markup=_menu_kb(context),
+        )
+    else:
+        try:
+            xato = r.json().get("detail", "Xatolik")
+        except Exception:  # noqa: BLE001
+            xato = "Xatolik"
+        await update.message.reply_text(f"❌ {xato}", reply_markup=_menu_kb(context))
+    return ConversationHandler.END
+
+
+async def _cancel_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    confirm.clear(context.user_data)
+    for k in ("topup_summa", "refund_summa", "refund_karta"):
+        context.user_data.pop(k, None)
+    await update.message.reply_text("Bosh menyu 👇", reply_markup=_menu_kb(context))
+    return ConversationHandler.END
+
+
 async def text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Oddiy matn — AI chat (onboarding eshigidan keyin)."""
     if not await _gate(update, context):
@@ -328,6 +580,36 @@ def build_application(token: str, miniapp_url: str) -> Application:
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_FAV}$"), favorites))
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_HELP}$"), help_cmd))
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_ASK}$"), ask))
+
+    # 💰 Balansim — coin balansi va to'ldirish/qaytarish oqimlari (ACOM coin).
+    TXT = filters.TEXT & ~filters.COMMAND
+    balance_conv = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(topup_start, pattern="^bal_topup$"),
+            CallbackQueryHandler(refund_start, pattern="^bal_refund$"),
+        ],
+        states={
+            TOPUP_SUMMA: [MessageHandler(TXT, topup_summa)],
+            TOPUP_CODE: [MessageHandler(TXT, topup_code)],
+            TOPUP_CHEK: [
+                MessageHandler(filters.PHOTO, topup_chek),
+                MessageHandler(TXT, topup_chek),
+            ],
+            REFUND_SUMMA: [MessageHandler(TXT, refund_summa)],
+            REFUND_KARTA: [MessageHandler(TXT, refund_karta)],
+            REFUND_CODE: [MessageHandler(TXT, refund_code)],
+        },
+        fallbacks=[
+            CommandHandler("start", start),
+            MessageHandler(filters.Regex(f"^{BTN_HOME}$"), _cancel_to_menu),
+        ],
+        name="balance_flow",
+        persistent=False,
+    )
+    app.add_handler(balance_conv)
+    app.add_handler(MessageHandler(filters.Regex(f"^{BTN_BALANCE}$"), balance))
+    app.add_handler(MessageHandler(filters.Regex(f"^{BTN_HOME}$"), start))
+
     # Katalog tugmasi WebApp bo'lса Telegram o'zi ochadi; matn kelса — eslatma.
     app.add_handler(
         MessageHandler(filters.Regex(f"^{BTN_CATALOG}$"), _catalog_hint)
