@@ -19,7 +19,6 @@ from telegram import (
     KeyboardButton,
     ReplyKeyboardMarkup,
     Update,
-    WebAppInfo,
 )
 from telegram.ext import (
     Application,
@@ -56,7 +55,6 @@ WELCOME_TEXT = (
 WELCOME_SHORT = "🛍 ARZON ONLINE SAVDO — Xush kelibsiz!"
 
 # --- Menyu tugmalari ---
-BTN_CATALOG = "🛍 Katalog"
 BTN_ORDERS = "📦 Buyurtmalarim"
 BTN_LOYALTY = "🎁 Sodiqlik kartam"
 BTN_BALANCE = "💰 Balansim"
@@ -118,17 +116,13 @@ def _usul_detail(usul: dict, summa: float) -> str:
     return f"<b>{summa:,.0f} som</b> o'tkazing va chekni yuboring."
 
 
-def main_menu(miniapp_url: str) -> ReplyKeyboardMarkup:
-    catalog_btn = (
-        KeyboardButton(BTN_CATALOG, web_app=WebAppInfo(url=miniapp_url))
-        if miniapp_url
-        else KeyboardButton(BTN_CATALOG)
-    )
+def main_menu(miniapp_url: str = "") -> ReplyKeyboardMarkup:
+    # Katalog (Do'kon) tugmasi bosh menyudan olib tashlandi — do'konga kirish
+    # faqat pastdagi ko'k menyu tugmasi (BotFather MenuButtonWebApp) orqali.
     rows = [
-        [catalog_btn, KeyboardButton(BTN_ORDERS)],
-        [KeyboardButton(BTN_BALANCE), KeyboardButton(BTN_LOYALTY)],
-        [KeyboardButton(BTN_FAV), KeyboardButton(BTN_HELP)],
-        [KeyboardButton(BTN_ASK)],
+        [KeyboardButton(BTN_ORDERS), KeyboardButton(BTN_BALANCE)],
+        [KeyboardButton(BTN_LOYALTY), KeyboardButton(BTN_FAV)],
+        [KeyboardButton(BTN_HELP), KeyboardButton(BTN_ASK)],
     ]
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
@@ -344,8 +338,10 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     await update.message.reply_text(
         "❓ *Yordam*\n\n"
-        "🛍 Katalog — mahsulotlarni ko'rish va buyurtma berish\n"
+        "🛒 Do'kon — pastdagi ko'k menyu tugmasi orqali oching (mahsulotlarni "
+        "ko'rish va buyurtma berish)\n"
         "📦 Buyurtmalarim — buyurtmalaringiz holati\n"
+        "💰 Balansim — ACOM hisobingiz\n"
         "🎁 Sodiqlik kartam — chegirma va referal\n"
         "💬 Savol berish — menга yozing, javob beraman\n\n"
         "Savolingiz bo'lsa — shu yerга yozing!",
@@ -703,23 +699,7 @@ def build_application(token: str, miniapp_url: str) -> Application:
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_BALANCE}$"), balance))
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_HOME}$"), start))
 
-    # Katalog tugmasi WebApp bo'lса Telegram o'zi ochadi; matn kelса — eslatma.
-    app.add_handler(
-        MessageHandler(filters.Regex(f"^{BTN_CATALOG}$"), _catalog_hint)
-    )
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, text_message)
     )
     return app
-
-
-async def _catalog_hint(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await _gate(update, context):
-        return
-    url = context.bot_data.get("miniapp_url", "")
-    if url:
-        await update.message.reply_text(
-            "🛍 Katalogni ochish uchun tugmani bosing 👆 (Mini App)."
-        )
-    else:
-        await update.message.reply_text("Katalog hozircha sozlanmoqda.")
