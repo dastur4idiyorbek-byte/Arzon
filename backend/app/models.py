@@ -60,6 +60,11 @@ class Store(Base):
         String(10), nullable=True
     )
     holat: Mapped[str] = mapped_column(String(10), default="faol")
+    # Do'kon (admin) kutilayotgan balansi — xariddan tushган sof summa (KGS).
+    # Pul yechilганда kamayadi. NULL bardoshli: kodда `or 0`.
+    kutilayotgan_balans: Mapped[float | None] = mapped_column(
+        Numeric(14, 2), nullable=True, default=0
+    )
 
     products: Mapped[list["Product"]] = relationship(
         back_populates="store", cascade="all, delete-orphan"
@@ -115,6 +120,10 @@ class User(Base):
     tel: Mapped[str | None] = mapped_column(String(32), nullable=True)
     # Kontaktni ulashish orqali tasdiqlanadi (rule 8, 2-bosqich).
     tel_tasdiqlangan: Mapped[bool] = mapped_column(Boolean, default=False)
+    # ACOM coin balansi (KGS bilan 1:1). NULL bardoshli: kodда `or 0`.
+    coin_balans: Mapped[float | None] = mapped_column(
+        Numeric(14, 2), nullable=True, default=0
+    )
     yaratilgan_vaqt: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now
     )
@@ -252,4 +261,117 @@ class UnlockedStore(Base):
 
     __table_args__ = (
         UniqueConstraint("user_id", "store_id", name="uq_unlocked_user_store"),
+    )
+
+
+# ===========================================================================
+# ACOM coin tizimi (ichki hisob-kitob birligi, 1 ACOM = 1 KGS)
+# ===========================================================================
+class PlatformaHisob(Base):
+    """Platforma biznes karta ma'lumotlari — mijoz balans to'ldirishда o'tkazadi.
+
+    Bitta yozuv (super-admin sozlaydi). Bir nechta bo'lsa oxirgisi ishlatiladi.
+    """
+
+    __tablename__ = "platforma_hisob"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    karta_raqami: Mapped[str] = mapped_column(String(32))
+    hisob_egasi: Mapped[str] = mapped_column(String(255))
+    yangilangan_vaqt: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now
+    )
+
+
+class CoinToldirishSorovi(Base):
+    """Balansni to'ldirish so'rovi — chek rasmi + AI xulosasi bilan."""
+
+    __tablename__ = "coin_toldirish_sorovlari"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    som_summasi: Mapped[float] = mapped_column(Numeric(14, 2))  # KGS
+    chek_rasm_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # Gemini Flash o'qigan (TAKLIF — rule 2, yakuniy qaror emas).
+    ai_ochigan_summa: Mapped[float | None] = mapped_column(
+        Numeric(14, 2), nullable=True
+    )
+    ai_ochigan_sana: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # mos_keladi / mos_kelmaydi / aniq_emas
+    ai_xulosasi: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # kutilmoqda / tasdiqlandi / rad_etildi
+    holat: Mapped[str] = mapped_column(String(20), default="kutilmoqda")
+    tasdiqlagan_admin: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    rad_sababi: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    yaratilgan_vaqt: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now
+    )
+
+
+class PulYechishSorovi(Base):
+    """Admin (do'kon) pul yechish so'rovi — kutilayotgan balansdan."""
+
+    __tablename__ = "pul_yechish_sorovlari"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    store_id: Mapped[int] = mapped_column(
+        ForeignKey("stores.id", ondelete="CASCADE"), index=True
+    )
+    sorolgan_summa: Mapped[float] = mapped_column(Numeric(14, 2))  # KGS
+    karta_raqami: Mapped[str] = mapped_column(String(32))
+    # kutilmoqda / yopildi / rad_etildi
+    holat: Mapped[str] = mapped_column(String(20), default="kutilmoqda")
+    soragan_admin: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    yaratilgan_vaqt: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now
+    )
+    yopilgan_vaqt: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class CoinQaytarishSorovi(Base):
+    """Mijoz ishlatilmagan balansini qaytarib olish so'rovi."""
+
+    __tablename__ = "coin_qaytarish_sorovlari"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    sorolgan_summa: Mapped[float] = mapped_column(Numeric(14, 2))  # KGS
+    karta_raqami: Mapped[str] = mapped_column(String(32))
+    # kutilmoqda / yopildi / rad_etildi
+    holat: Mapped[str] = mapped_column(String(20), default="kutilmoqda")
+    yaratilgan_vaqt: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now
+    )
+    yopilgan_vaqt: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class CoinHarakati(Base):
+    """Barcha coin harakatlari — umumiy tarix (hisobot SUM() bilan hisoblanadi)."""
+
+    __tablename__ = "coin_harakatlari"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    store_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stores.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # toldirish / xarid / bekor_qilish_qaytarish / pul_yechish /
+    # qaytarib_olish / referal_bonus / sodiqlik_bonus / komissiya
+    turi: Mapped[str] = mapped_column(String(30), index=True)
+    summa: Mapped[float] = mapped_column(Numeric(14, 2))  # KGS
+    order_id: Mapped[int | None] = mapped_column(
+        ForeignKey("orders.id", ondelete="SET NULL"), nullable=True
+    )
+    vaqt: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, index=True
     )

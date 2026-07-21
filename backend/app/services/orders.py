@@ -196,6 +196,25 @@ def create_orders_from_cart(
         db.add(order)
         orders.append(order)
 
+    # ACOM coin bilan to'lash (rule 1: naqd yo'q; rule 3: balans yetsa darhol).
+    from . import coin as coin_service
+
+    db.flush()  # order.id larini olamiz (harakat yozuvlari uchun)
+    grand_total = sum((coin_service._dec(o.jami_narx) for o in orders), coin_service._dec(0))
+    mavjud = coin_service.balance(user)
+    if mavjud < grand_total:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=(
+                f"Balansingiz yetarli emas (joriy: {mavjud:,.0f} som, "
+                f"kerak: {grand_total:,.0f} som). Hisobingizni to'ldiring."
+            ),
+        )
+    # Rule 4: har buyurtma uchun darhol hisob-kitob (yechish + komissiya + admin).
+    for o in orders:
+        store = db.get(Store, o.store_id)
+        coin_service.settle_purchase(db, user, store, o.jami_narx, o.id)
+
     db.commit()
     for o in orders:
         db.refresh(o)
@@ -292,9 +311,17 @@ def cancel_order(
         )
     order.holat = "bekor_qilindi"
     order.bekor_sababi = (sabab or "").strip()[:255] or None
+
+    # Rule 5 / task_4: coin darhol qaytariladi (mijozга to'liq, adminдан sof).
+    from . import coin as coin_service
+
+    user = db.get(User, order.user_id)
+    store = db.get(Store, order.store_id)
+    if user and store:
+        coin_service.refund_purchase(db, user, store, order.jami_narx, order.id)
+
     db.commit()
     db.refresh(order)
-    user = db.get(User, order.user_id)
     return {
         "order": order,
         "user_telegram_id": user.telegram_id if user else None,

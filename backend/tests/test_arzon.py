@@ -48,6 +48,41 @@ def admin_headers(admin_id: int) -> dict:
     return {**INTERNAL, "X-Admin-Id": str(admin_id)}
 
 
+def give_balance(telegram_id: int, amount: float) -> None:
+    """Testда mijozga ACOM coin balansи beradi (checkout coin bilan ishlaydi).
+
+    Foydalanuvchi mavjud bo'lmasa yaratiladi. Xaridlar endi balansdan yechiladi
+    (ACOM_Coin_Tizimi rule 1/3), shuning uchun checkout testlari balans talab qiladi.
+    """
+    from decimal import Decimal
+
+    from app.models import User
+
+    db = SessionLocal()
+    try:
+        u = db.query(User).filter(User.telegram_id == telegram_id).first()
+        if u is None:
+            u = User(telegram_id=telegram_id)
+            db.add(u)
+            db.commit()
+            db.refresh(u)
+        u.coin_balans = Decimal(str(amount))
+        db.commit()
+    finally:
+        db.close()
+
+
+def get_balance(telegram_id: int) -> float:
+    from app.models import User
+
+    db = SessionLocal()
+    try:
+        u = db.query(User).filter(User.telegram_id == telegram_id).first()
+        return float(u.coin_balans or 0) if u else 0.0
+    finally:
+        db.close()
+
+
 # ---------------------------------------------------------------------------
 # Fixtures uchun sodda o'rnatuvchi: ikkita do'kon + adminlar + mahsulotlar
 # ---------------------------------------------------------------------------
@@ -222,7 +257,7 @@ def test_rule8_phone_required_and_rule10_split_orders():
             {"product_id": pa["id"], "soni": 1},
             {"product_id": pb["id"], "soni": 2},
         ],
-        "manzil": "Toshkent, Chilonzor 1",
+        "manzil": "Bishkek, Chuy 1",
     }
 
     # Telefon tasdiqlanmagan -> checkout rad etiladi (rule 8, 2-bosqich).
@@ -231,9 +266,10 @@ def test_rule8_phone_required_and_rule10_split_orders():
 
     # Kontaktni ulashish.
     conf = client.post(
-        "/api/confirm-phone", headers=cust, json={"tel": "+998901234567"}
+        "/api/confirm-phone", headers=cust, json={"tel": "+996700111222"}
     )
     assert conf.status_code == 200
+    give_balance(888, 100000)  # ACOM coin balansi (xarid balansdan yechiladi)
 
     # Endi checkout ikkita alohida buyurtma yaratadi (rule 10).
     ok = client.post("/api/checkout", headers=cust, json=cart)
@@ -280,7 +316,8 @@ def test_rule9_loyalty_aggregates_across_stores():
     ).json()
 
     cust = customer_headers(4321)
-    client.post("/api/confirm-phone", headers=cust, json={"tel": "+998900000000"})
+    client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700000000"})
+    give_balance(4321, 100000)
 
     # A do'konidan xarid -> tasdiqlanadi.
     r1 = client.post(
@@ -325,7 +362,8 @@ def test_rule7_admin_cannot_confirm_other_store_code():
         json={"nomi": "X-Tovar", "narxi": 5000, "korinish": "ommaviy"},
     ).json()
     cust = customer_headers(6060)
-    client.post("/api/confirm-phone", headers=cust, json={"tel": "+998911112233"})
+    client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700112233"})
+    give_balance(6060, 100000)
     order = client.post(
         "/api/checkout",
         headers=cust,
@@ -394,6 +432,7 @@ def test_spec_discount_price_applied():
     # Checkout ham chegirmali narxда hisoblaydi.
     cust = customer_headers(3311)
     client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700000001"})
+    give_balance(3311, 100000)
     r = client.post(
         "/api/checkout", headers=cust,
         json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Uy 1"},
@@ -428,6 +467,7 @@ def test_spec_stock_flow_accept_and_out_of_stock():
 
     cust = customer_headers(4411)
     client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700000002"})
+    give_balance(4411, 100000)
 
     # 2 dona so'ralsa — rad (faqat 1 qolgan).
     r2 = client.post(
@@ -470,6 +510,7 @@ def test_spec_stock_flow_accept_and_out_of_stock():
     # Endi sotib bo'lmaydi.
     cust2 = customer_headers(4412)
     client.post("/api/confirm-phone", headers=cust2, json={"tel": "+996700000003"})
+    give_balance(4412, 100000)
     r3 = client.post(
         "/api/checkout", headers=cust2,
         json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Uy 1"},
@@ -486,6 +527,7 @@ def test_spec_cancel_order_with_reason():
     ).json()
     cust = customer_headers(5511)
     client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700000004"})
+    give_balance(5511, 100000)
     order = client.post(
         "/api/checkout", headers=cust,
         json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Uy 1"},
@@ -510,6 +552,7 @@ def test_spec_order_search_store_scoped():
     ).json()
     cust = customer_headers(6611)
     client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700123456"})
+    give_balance(6611, 100000)
     order = client.post(
         "/api/checkout", headers=cust,
         json={"items": [{"product_id": pa["id"], "soni": 1}], "manzil": "Uy 1"},
@@ -636,7 +679,8 @@ def test_delivery_courier_requires_address():
         json={"nomi": "Yetk tovar", "narxi": 5000, "korinish": "ommaviy"},
     ).json()
     cust = customer_headers(20001)
-    client.post("/api/confirm-phone", headers=cust, json={"tel": "+998900000010"})
+    client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700000010"})
+    give_balance(20001, 100000)
 
     # Kuryer, manzilsiz -> 400.
     r = client.post(
@@ -669,7 +713,7 @@ def test_delivery_pickup_flow():
     pp = client.post(
         f"/api/admin/stores/{store_a['store_id']}/pickup-points",
         headers=admin_headers(ADMIN_A),
-        json={"nomi": "Filial 1", "manzil": "Yunusobod 3", "ish_vaqti": "9-18"},
+        json={"nomi": "Filial 1", "manzil": "Bishkek, Ala-Too 3", "ish_vaqti": "9-18"},
     )
     assert pp.status_code == 200, pp.text
     pp_id = pp.json()["id"]
@@ -683,7 +727,8 @@ def test_delivery_pickup_flow():
     assert forb.status_code == 403, forb.text
 
     cust = customer_headers(20002)
-    client.post("/api/confirm-phone", headers=cust, json={"tel": "+998900000011"})
+    client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700000011"})
+    give_balance(20002, 100000)
 
     # Mijoz punktlar ro'yxatini ko'radi.
     pts = client.get(
@@ -760,7 +805,8 @@ def test_miniapp_variant_selection_recorded():
     kp = next(x for x in katalog if x["id"] == p["id"])
     assert kp["olcham"] == "40, 41, 42" and kp["rang"] == "Qora, Oq"
 
-    client.post("/api/confirm-phone", headers=cust, json={"tel": "+998900000013"})
+    client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700000013"})
+    give_balance(30001, 500000)
     # Buy Now uslubida bitta mahsulot, tanlangan variant bilan.
     r = client.post(
         "/api/checkout",
@@ -769,9 +815,214 @@ def test_miniapp_variant_selection_recorded():
             "items": [
                 {"product_id": p["id"], "soni": 1, "olcham": "41", "rang": "Qora"}
             ],
-            "manzil": "Toshkent, Chilonzor 5",
+            "manzil": "Bishkek, Chuy 5",
         },
     )
     assert r.status_code == 200, r.text
     item = r.json()["buyurtmalar"][0]["mahsulotlar"][0]
     assert item["olcham"] == "41" and item["rang"] == "Qora"
+
+
+# ===========================================================================
+# ACOM coin tizimi (ACOM_Coin_Tizimi_Prompt_1)
+# ===========================================================================
+def test_coin_purchase_settlement():
+    """rule 4: 1000 som xarid, 5% komissiya -> mijozdan 1000, adminga 950."""
+    store_a, _ = setup_two_stores()
+    p = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/products",
+        headers=admin_headers(ADMIN_A),
+        json={"nomi": "Coin tovar", "narxi": 1000, "korinish": "ommaviy"},
+    ).json()
+    cust = customer_headers(40001)
+    client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700400001"})
+    give_balance(40001, 5000)
+
+    r = client.post(
+        "/api/checkout", headers=cust,
+        json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Bishkek 1"},
+    )
+    assert r.status_code == 200, r.text
+    # Mijozdan to'liq 1000 yechildi.
+    assert get_balance(40001) == 4000.0
+
+    # Admin (do'kon) balansi 950 (1000 - 5%).
+    from app.database import SessionLocal
+    from app.models import Store
+    from app.services import coin as coin_service
+    db = SessionLocal()
+    try:
+        s = db.get(Store, store_a["store_id"])
+        assert float(coin_service.store_balance(s)) == 950.0
+    finally:
+        db.close()
+
+
+def test_coin_insufficient_balance_blocks_checkout():
+    """rule 3: balans yetmasa xarid amalga oshmaydi (402)."""
+    store_a, _ = setup_two_stores()
+    p = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/products",
+        headers=admin_headers(ADMIN_A),
+        json={"nomi": "Qimmat tovar", "narxi": 5000, "korinish": "ommaviy"},
+    ).json()
+    cust = customer_headers(40002)
+    client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700400002"})
+    give_balance(40002, 1000)  # kerakli 5000 dan kam
+
+    r = client.post(
+        "/api/checkout", headers=cust,
+        json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Bishkek 1"},
+    )
+    assert r.status_code == 402, r.text
+    # Balans o'zgarmagan, buyurtma yaratilmagan.
+    assert get_balance(40002) == 1000.0
+    orders = client.get("/api/orders", headers=cust).json()
+    assert all(o["jami_narx"] != 5000 for o in orders)
+
+
+def test_coin_refund_on_cancel():
+    """rule 5 / task_4: bekor qilinganда darhol teskari o'zgaradi."""
+    store_a, _ = setup_two_stores()
+    p = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/products",
+        headers=admin_headers(ADMIN_A),
+        json={"nomi": "Qaytar tovar", "narxi": 2000, "korinish": "ommaviy"},
+    ).json()
+    cust = customer_headers(40003)
+    client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700400003"})
+    give_balance(40003, 5000)
+
+    order = client.post(
+        "/api/checkout", headers=cust,
+        json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Bishkek 1"},
+    ).json()["buyurtmalar"][0]
+    assert get_balance(40003) == 3000.0  # 5000 - 2000
+
+    from app.database import SessionLocal
+    from app.models import Store
+    from app.services import coin as coin_service
+    db = SessionLocal()
+    try:
+        s = db.get(Store, store_a["store_id"])
+        assert float(coin_service.store_balance(s)) == 1900.0  # 2000 - 5%
+    finally:
+        db.close()
+
+    # Bekor qilish -> mijozga 2000 qaytadi, admindan 1900 ayiriladi.
+    r = client.post(
+        f"/api/admin/orders/{order['id']}/cancel",
+        headers=admin_headers(ADMIN_A),
+        json={"sabab": "Omborда yo'q"},
+    )
+    assert r.status_code == 200, r.text
+    assert get_balance(40003) == 5000.0  # to'liq qaytdi
+    db = SessionLocal()
+    try:
+        s = db.get(Store, store_a["store_id"])
+        assert float(coin_service.store_balance(s)) == 0.0
+    finally:
+        db.close()
+
+
+def test_coin_topup_requires_approval():
+    """rule 2: to'ldirish so'rovi darhol coin bermaydi; tasdiqlangach beradi."""
+    from app.database import SessionLocal
+    from app.models import User
+    from app.services import coin as coin_service
+
+    # Foydalanuvchi yaratamiz.
+    cust = customer_headers(40004)
+    client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700400004"})
+    assert get_balance(40004) == 0.0
+
+    db = SessionLocal()
+    try:
+        u = db.query(User).filter(User.telegram_id == 40004).first()
+        sorov = coin_service.create_topup_request(db, u, 10000, ai_summa=10000,
+                                                   ai_xulosa="mos_keladi")
+        # Hali coin berilmagan (AI mos desa ham).
+        assert coin_service.balance(u) == 0
+        assert sorov.holat == "kutilmoqda"
+        # Super-admin tasdiqlaydi.
+        coin_service.approve_topup(db, sorov, admin_id=SUPER)
+        db.refresh(u)
+        assert float(coin_service.balance(u)) == 10000.0
+    finally:
+        db.close()
+    assert get_balance(40004) == 10000.0
+
+
+def test_coin_topup_daily_limit():
+    """task_1: kunlik so'rovlar chegarasi (3) oshsa rad etiladi."""
+    from app.database import SessionLocal
+    from app.models import User
+    from app.services import coin as coin_service
+    from fastapi import HTTPException
+
+    cust = customer_headers(40005)
+    client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700400005"})
+    db = SessionLocal()
+    try:
+        u = db.query(User).filter(User.telegram_id == 40005).first()
+        for _ in range(settings.kunlik_toldirish_soni_limit):
+            coin_service.create_topup_request(db, u, 1000)
+        # Keyingisi rad etiladi.
+        try:
+            coin_service.create_topup_request(db, u, 1000)
+            assert False, "kunlik chegara ishlamadi"
+        except HTTPException as e:
+            assert e.status_code == 400
+    finally:
+        db.close()
+
+
+def test_coin_withdraw_and_report():
+    """task_5 + task_2: pul yechish balansdan ayiriladi; hisobot to'g'ri."""
+    from app.database import SessionLocal
+    from app.models import Store
+    from app.services import coin as coin_service
+
+    store_a, _ = setup_two_stores()
+    p = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/products",
+        headers=admin_headers(ADMIN_A),
+        json={"nomi": "Hisobot tovar", "narxi": 10000, "korinish": "ommaviy"},
+    ).json()
+    # Testlar umumiy bazani baham ko'radi — hisobotда DELTA tekshiramiz.
+    db = SessionLocal()
+    try:
+        rep0 = coin_service.overall_report(db)
+    finally:
+        db.close()
+
+    cust = customer_headers(40006)
+    client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700400006"})
+    give_balance(40006, 20000)
+    client.post(
+        "/api/checkout", headers=cust,
+        json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Bishkek 1"},
+    )
+    # Admin balansi 9500 (10000 - 5%).
+    db = SessionLocal()
+    try:
+        s = db.get(Store, store_a["store_id"])
+        assert float(coin_service.store_balance(s)) == 9500.0
+        rep1 = coin_service.overall_report(db)
+        assert rep1["bugun_xarid_summa"] - rep0["bugun_xarid_summa"] == 10000.0
+        # Komissiya har doim xarid summasining 5% (identifikatsiya).
+        assert rep1["bugun_komissiya"] == round(rep1["bugun_xarid_summa"] * 0.05, 2)
+        # Pul yechish so'rovi.
+        w = coin_service.create_withdraw(db, s, 5000, "1234567890123456", ADMIN_A)
+        assert w.holat == "kutilmoqda"
+        # Yechishдан oldin balans o'zgarmaydi.
+        db.refresh(s)
+        assert float(coin_service.store_balance(s)) == 9500.0
+        # To'landi deb belgilash -> balans 4500.
+        coin_service.mark_withdraw_paid(db, w)
+        db.refresh(s)
+        assert float(coin_service.store_balance(s)) == 4500.0
+        rep2 = coin_service.overall_report(db)
+        assert rep2["bugun_yechish_summa"] - rep0["bugun_yechish_summa"] == 5000.0
+    finally:
+        db.close()

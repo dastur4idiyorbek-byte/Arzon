@@ -21,15 +21,27 @@ class Settings(BaseSettings):
     # --- Telegram botlar ---
     savdo_bot_token: str = ""
     boshqaruv_bot_token: str = ""
+    # Moliya Boti — faqat super-admin (ACOM coin so'rovlarини tasdiqlaydi).
+    moliya_bot_token: str = ""
 
     # --- Telegram Mini App / initData tekshiruvi ---
     # initData HMAC imzosi Savdo Boti tokeni asosida tekshiriladi.
     # Odatda savdo_bot_token bilan bir xil, lekin alohida sozlash mumkin.
     miniapp_bot_token: str = ""
 
-    # --- Claude AI ---
+    # --- Claude AI (mijoz bilan suhbat — rule 3) ---
     anthropic_api_key: str = ""
     claude_model: str = "claude-sonnet-4-6"
+
+    # --- Gemini AI (chek/rasm tahlili — rule 3, alohida kalit) ---
+    gemini_api_key: str = ""
+
+    # --- ACOM coin tizimi (barcha summalar KGS, 1 ACOM = 1 KGS) ---
+    # Platforma komissiyasi (foiz) — xaridда adminга sof summa tushadi.
+    komissiya_foizi: int = 5
+    # To'ldirish xavfsizlik chegaralari (KGSда).
+    bir_martalik_toldirish_limit: int = 300000
+    kunlik_toldirish_soni_limit: int = 3
 
     # --- ChromaDB ---
     chroma_persist_dir: str = "./chroma_data"
