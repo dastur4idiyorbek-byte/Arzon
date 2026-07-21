@@ -25,7 +25,7 @@ body {
   padding: 10px 16px; position: sticky; top: 0; background: var(--bg);
   z-index: 10; border-bottom: 1px solid var(--secondary-bg);
 }
-.app-header .logo { height: 34px; display: block; }
+.app-header .logo { height: 42px; width: auto; display: block; border-radius: 8px; }
 .app-header h1 { font-size: 22px; letter-spacing: 1px; color: var(--brand); }
 .code-btn {
   background: var(--secondary-bg); color: var(--text); border: none;
