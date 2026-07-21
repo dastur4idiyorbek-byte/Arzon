@@ -100,6 +100,29 @@
     <button class="tab" data-view="sodiqlik">🎁<span>Sodiqlik</span></button>
   </nav>
 
+  <!-- Balans to'ldirish oynasi (task_3) — balans yetmasa shu yerда ochiladi -->
+  <div id="topup-modal" class="modal-overlay" hidden>
+    <div class="modal">
+      <button id="topup-close" class="modal-close" aria-label="Yopish">✕</button>
+      <h3>🪙 Balansni to'ldirish</h3>
+      <p id="topup-msg" class="topup-msg"></p>
+
+      <label class="topup-label">To'ldirish summasi (som):</label>
+      <input id="topup-amount" type="number" min="1" inputmode="numeric" />
+
+      <label class="topup-label">To'lov usulini tanlang:</label>
+      <div id="topup-methods" class="topup-methods"></div>
+      <div id="topup-detail" class="topup-detail" hidden></div>
+
+      <label class="topup-label">To'lov chekini yuklang:</label>
+      <input id="topup-file" type="file" accept="image/*" />
+
+      <button id="topup-submit" class="primary" style="margin-top:12px">
+        Yuborish
+      </button>
+    </div>
+  </div>
+
   <script src="config.js"></script>
   <script src="app.js"></script>
 </body>

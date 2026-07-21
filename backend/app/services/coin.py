@@ -24,6 +24,7 @@ from ..models import (
     CoinToldirishSorovi,
     Order,
     PlatformaHisob,
+    PlatformaTolovUsuli,
     PulYechishSorovi,
     Store,
     User,
@@ -203,6 +204,7 @@ def create_topup_request(
     ai_summa=None,
     ai_sana: Optional[str] = None,
     ai_xulosa: Optional[str] = None,
+    tolov_usuli_id: Optional[int] = None,
 ) -> CoinToldirishSorovi:
     """To'ldirish so'rovini yaratadi (rule 2 — coin hali BERILMAYDI)."""
     xato = check_topup_limits(db, user, summa)
@@ -216,11 +218,113 @@ def create_topup_request(
         ai_ochigan_sana=ai_sana,
         ai_xulosasi=ai_xulosa,
         holat="kutilmoqda",
+        tolov_usuli_id=tolov_usuli_id,
     )
     db.add(sorov)
     db.commit()
     db.refresh(sorov)
     return sorov
+
+
+# ---------------------------------------------------------------------------
+# To'lov usullari (karta / telefon / QR / crypto) — super-admin sozlaydi
+# ---------------------------------------------------------------------------
+def list_active_tolov_usullari(db: Session) -> list[PlatformaTolovUsuli]:
+    return db.scalars(
+        select(PlatformaTolovUsuli)
+        .where(PlatformaTolovUsuli.faol.is_(True))
+        .order_by(PlatformaTolovUsuli.tartib_raqami, PlatformaTolovUsuli.id)
+    ).all()
+
+
+def list_all_tolov_usullari(db: Session) -> list[PlatformaTolovUsuli]:
+    return db.scalars(
+        select(PlatformaTolovUsuli).order_by(
+            PlatformaTolovUsuli.tartib_raqami, PlatformaTolovUsuli.id
+        )
+    ).all()
+
+
+def get_tolov_usuli(db: Session, usul_id: int) -> Optional[PlatformaTolovUsuli]:
+    return db.get(PlatformaTolovUsuli, usul_id)
+
+
+def create_tolov_usuli(
+    db: Session,
+    turi: str,
+    nomi: str,
+    *,
+    qiymat: Optional[str] = None,
+    egasi: Optional[str] = None,
+    qr_rasm_url: Optional[str] = None,
+    izoh: Optional[str] = None,
+) -> PlatformaTolovUsuli:
+    if turi not in ("karta", "telefon", "qr_kod", "crypto"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="turi: karta / telefon / qr_kod / crypto",
+        )
+    maxt = db.scalar(
+        select(func.coalesce(func.max(PlatformaTolovUsuli.tartib_raqami), 0))
+    )
+    usul = PlatformaTolovUsuli(
+        turi=turi,
+        nomi=nomi.strip()[:50],
+        qiymat=(qiymat or "").strip() or None,
+        egasi=(egasi or "").strip()[:100] or None,
+        qr_rasm_url=(qr_rasm_url or "").strip() or None,
+        izoh=(izoh or "").strip() or None,
+        faol=True,
+        tartib_raqami=int(maxt) + 1,
+    )
+    db.add(usul)
+    db.commit()
+    db.refresh(usul)
+    return usul
+
+
+def update_tolov_usuli(db: Session, usul_id: int, **maydonlar) -> PlatformaTolovUsuli:
+    usul = db.get(PlatformaTolovUsuli, usul_id)
+    if usul is None:
+        raise HTTPException(status_code=404, detail="To'lov usuli topilmadi.")
+    for k, v in maydonlar.items():
+        if v is not None and hasattr(usul, k):
+            setattr(usul, k, v)
+    db.commit()
+    db.refresh(usul)
+    return usul
+
+
+def toggle_tolov_usuli(db: Session, usul_id: int) -> PlatformaTolovUsuli:
+    usul = db.get(PlatformaTolovUsuli, usul_id)
+    if usul is None:
+        raise HTTPException(status_code=404, detail="To'lov usuli topilmadi.")
+    usul.faol = not usul.faol
+    db.commit()
+    db.refresh(usul)
+    return usul
+
+
+def delete_tolov_usuli(db: Session, usul_id: int) -> None:
+    usul = db.get(PlatformaTolovUsuli, usul_id)
+    if usul is None:
+        raise HTTPException(status_code=404, detail="To'lov usuli topilmadi.")
+    db.delete(usul)
+    db.commit()
+
+
+def tolov_usuli_dict(usul: PlatformaTolovUsuli) -> dict:
+    return {
+        "id": usul.id,
+        "turi": usul.turi,
+        "nomi": usul.nomi,
+        "qiymat": usul.qiymat,
+        "egasi": usul.egasi,
+        "qr_rasm_url": usul.qr_rasm_url,
+        "izoh": usul.izoh,
+        "faol": bool(usul.faol),
+        "tartib_raqami": usul.tartib_raqami,
+    }
 
 
 def approve_topup(db: Session, sorov: CoinToldirishSorovi, admin_id: int) -> User:

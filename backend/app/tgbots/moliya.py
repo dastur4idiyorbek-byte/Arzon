@@ -3,7 +3,7 @@
 Menyu:
     🔔 To'ldirish so'rovlari    💸 Pul yechish so'rovlari
     ↩️ Qaytarish so'rovlari      📊 Umumiy hisobot
-    💳 Platforma karta
+    💳 To'lov usullari
 
 Rule 2: yakuniy qaror HAR DOIM shu yerда super-admin tugma bosishи bilan
 beriladi — AI xulosasidan qat'i nazar. Barcha summalar KGS (Qirg'iziston somi).
@@ -38,11 +38,35 @@ BTN_TOPUPS = "🔔 To'ldirish so'rovlari"
 BTN_WITHDRAWS = "💸 Pul yechish so'rovlari"
 BTN_REFUNDS = "↩️ Qaytarish so'rovlari"
 BTN_REPORT = "📊 Umumiy hisobot"
-BTN_CARD = "💳 Platforma karta"
+BTN_METHODS = "💳 To'lov usullari"
 BTN_HOME = "🏠 Bosh menyu"
 
 # Conversation holatlari.
-R_SABAB, C_KARTA, C_EGASI = range(3)
+(R_SABAB, M_TURI, M_STEP, M_QR, ME_NOMI, ME_QIYMAT) = range(6)
+
+_TURI_EMOJI = {"karta": "💳", "telefon": "📱", "qr_kod": "🔳", "crypto": "₿"}
+
+# Har tur uchun so'raladigan maydonlar ketma-ketligi (task_2).
+_FIELD_SEQ = {
+    "karta": [
+        ("nomi", "Bank/usul nomini kiriting (masalan Optima Bank):"),
+        ("qiymat", "Karta raqamini kiriting:"),
+        ("egasi", "Karta egasining ismini kiriting:"),
+    ],
+    "telefon": [
+        ("nomi", "Xizmat nomini kiriting (Elsom / O'Dengi / Balance.kg...):"),
+        ("qiymat", "Telefon raqamini kiriting:"),
+        ("egasi", "Egasining ismini kiriting:"),
+    ],
+    "crypto": [
+        ("nomi", "Coin turini kiriting (masalan USDT):"),
+        ("qiymat", "Crypto manzilini (adres) kiriting:"),
+        ("izoh", "Tarmoq/izoh kiriting (masalan 'Faqat TRC20 tarmog'idan'):"),
+    ],
+    "qr_kod": [
+        ("nomi", "Usul nomini kiriting (masalan MBANK QR):"),
+    ],
+}
 
 
 def _is_super(uid: int) -> bool:
@@ -54,7 +78,7 @@ def menu_markup() -> ReplyKeyboardMarkup:
         [
             [KeyboardButton(BTN_TOPUPS), KeyboardButton(BTN_WITHDRAWS)],
             [KeyboardButton(BTN_REFUNDS), KeyboardButton(BTN_REPORT)],
-            [KeyboardButton(BTN_CARD)],
+            [KeyboardButton(BTN_METHODS)],
         ],
         resize_keyboard=True,
     )
@@ -294,42 +318,212 @@ async def report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Platforma karta sozlash
+# 💳 To'lov usullari boshqaruvi (task_2)
 # ---------------------------------------------------------------------------
-async def card_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    if not await _guard(update):
-        return ConversationHandler.END
-    joriy = await api.moliya_get_platforma(update.effective_user.id)
-    joriy_txt = (
-        f"\n\nJoriy: {joriy['karta_raqami']} — {joriy['hisob_egasi']}"
-        if joriy
-        else ""
+def _usul_row_kb(usul: dict) -> InlineKeyboardMarkup:
+    faol = usul.get("faol")
+    toggle_txt = "🔴 Nofaol qilish" if faol else "🟢 Faollashtirish"
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("✏️ Tahrirlash", callback_data=f"med_{usul['id']}"),
+                InlineKeyboardButton(toggle_txt, callback_data=f"mtog_{usul['id']}"),
+            ],
+            [InlineKeyboardButton("🗑 O'chirish", callback_data=f"mdel_{usul['id']}")],
+        ]
     )
+
+
+def _usul_line(usul: dict) -> str:
+    emoji = _TURI_EMOJI.get(usul.get("turi"), "💰")
+    holat = "🟢 faol" if usul.get("faol") else "🔴 nofaol"
+    qiymat = f" — {usul['qiymat']}" if usul.get("qiymat") else ""
+    return f"{emoji} <b>{usul.get('nomi')}</b>{qiymat} ({holat})"
+
+
+async def methods(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await _guard(update):
+        return
+    rows = await api.moliya_tolov_usullari(update.effective_user.id)
     await update.message.reply_text(
-        "💳 Platforma karta raqamini kiriting (mijozlar shunga pul o'tkazadi):"
-        + joriy_txt,
+        "💳 To'lov usullari" + ("" if rows else "\n\nHozircha usul yo'q."),
         reply_markup=ReplyKeyboardMarkup(
             [[KeyboardButton(BTN_HOME)]], resize_keyboard=True
         ),
     )
-    return C_KARTA
+    for u in rows:
+        await update.message.reply_text(
+            _usul_line(u), parse_mode="HTML", reply_markup=_usul_row_kb(u)
+        )
+    await update.message.reply_text(
+        "➕ Yangi to'lov usuli qo'shish:",
+        reply_markup=InlineKeyboardMarkup(
+            [[InlineKeyboardButton("➕ Yangi usul qo'shish", callback_data="madd")]]
+        ),
+    )
 
 
-async def card_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def method_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    if not _is_super(update.effective_user.id):
+        await query.answer("Faqat super-admin.", show_alert=True)
+        return
+    await query.answer()
+    usul_id = int(query.data.replace("mtog_", ""))
+    r = await api.moliya_toggle_tolov(update.effective_user.id, usul_id)
+    if r.status_code == 200:
+        u = r.json()
+        await _edit(query, _usul_line(u))
+        try:
+            await query.edit_message_reply_markup(reply_markup=_usul_row_kb(u))
+        except Exception:  # noqa: BLE001
+            pass
+    else:
+        await _edit(query, f"❌ Xatolik: {r.text[:200]}")
+
+
+async def method_delete(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    if not _is_super(update.effective_user.id):
+        await query.answer("Faqat super-admin.", show_alert=True)
+        return
+    await query.answer()
+    usul_id = int(query.data.replace("mdel_", ""))
+    r = await api.moliya_delete_tolov(update.effective_user.id, usul_id)
+    await _edit(query, "🗑 O'chirildi." if r.status_code == 200 else f"❌ {r.text[:200]}")
+
+
+# --- Yangi usul qo'shish ---
+async def method_add_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    if not _is_super(update.effective_user.id):
+        await query.answer("Faqat super-admin.", show_alert=True)
+        return ConversationHandler.END
+    await query.answer()
+    kb = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("💳 Karta", callback_data="mnew_karta"),
+                InlineKeyboardButton("📱 Telefon", callback_data="mnew_telefon"),
+            ],
+            [
+                InlineKeyboardButton("🔳 QR kod", callback_data="mnew_qr_kod"),
+                InlineKeyboardButton("₿ Crypto", callback_data="mnew_crypto"),
+            ],
+        ]
+    )
+    await query.message.reply_text("Yangi usul turini tanlang:", reply_markup=kb)
+    return M_TURI
+
+
+async def method_type(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    turi = query.data.replace("mnew_", "")
+    context.user_data["m"] = {"turi": turi, "step": 0, "data": {}}
+    field, prompt = _FIELD_SEQ[turi][0]
+    await query.message.reply_text(
+        prompt,
+        reply_markup=ReplyKeyboardMarkup(
+            [[KeyboardButton(BTN_HOME)]], resize_keyboard=True
+        ),
+    )
+    return M_STEP
+
+
+async def method_step(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if update.message.text == BTN_HOME:
+        context.user_data.pop("m", None)
+        return await _to_menu(update)
+    m = context.user_data.get("m")
+    if not m:
+        return ConversationHandler.END
+    turi = m["turi"]
+    seq = _FIELD_SEQ[turi]
+    field, _ = seq[m["step"]]
+    m["data"][field] = update.message.text.strip()
+    m["step"] += 1
+
+    if m["step"] < len(seq):
+        _, prompt = seq[m["step"]]
+        await update.message.reply_text(prompt)
+        return M_STEP
+    # Maydonlar tugadi.
+    if turi == "qr_kod":
+        await update.message.reply_text("🔳 QR kod rasmini yuboring:")
+        return M_QR
+    return await _method_save(update, context)
+
+
+async def method_qr(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if update.message.text and update.message.text == BTN_HOME:
+        context.user_data.pop("m", None)
+        return await _to_menu(update)
+    if not update.message.photo:
+        await update.message.reply_text("Iltimos, QR kod RASMINI yuboring:")
+        return M_QR
+    file_id = update.message.photo[-1].file_id
+    context.user_data["m"]["data"]["qr_rasm_url"] = f"/media/{file_id}"
+    return await _method_save(update, context)
+
+
+async def _method_save(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    m = context.user_data.pop("m", None)
+    if not m:
+        return ConversationHandler.END
+    payload = {"turi": m["turi"], **m["data"]}
+    r = await api.moliya_create_tolov(update.effective_user.id, payload)
+    msg = (
+        "✅ To'lov usuli qo'shildi!"
+        if r.status_code == 200
+        else f"❌ Xatolik: {r.text[:200]}"
+    )
+    await update.effective_message.reply_text(msg, reply_markup=menu_markup())
+    return ConversationHandler.END
+
+
+# --- Usulni tahrirlash (nomi + qiymat) ---
+async def method_edit_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    if not _is_super(update.effective_user.id):
+        await query.answer("Faqat super-admin.", show_alert=True)
+        return ConversationHandler.END
+    await query.answer()
+    context.user_data["edit_usul"] = int(query.data.replace("med_", ""))
+    await query.message.reply_text(
+        "✏️ Yangi nomni kiriting (o'zgartirmaslik uchun '-'):",
+        reply_markup=ReplyKeyboardMarkup(
+            [[KeyboardButton(BTN_HOME)]], resize_keyboard=True
+        ),
+    )
+    return ME_NOMI
+
+
+async def method_edit_nomi(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if update.message.text == BTN_HOME:
         return await _to_menu(update)
-    context.user_data["p_karta"] = update.message.text.strip()
-    await update.message.reply_text("Hisob egasining to'liq ismini kiriting:")
-    return C_EGASI
+    matn = update.message.text.strip()
+    context.user_data["edit_nomi"] = None if matn == "-" else matn
+    await update.message.reply_text("Yangi qiymatni kiriting (karta/tel/manzil), '-' = o'zgartirmaslik:")
+    return ME_QIYMAT
 
 
-async def card_owner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def method_edit_qiymat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if update.message.text == BTN_HOME:
         return await _to_menu(update)
-    egasi = update.message.text.strip()
-    karta = context.user_data.pop("p_karta", "")
-    r = await api.moliya_set_platforma(update.effective_user.id, karta, egasi)
-    msg = "✅ Platforma karta saqlandi." if r.status_code == 200 else f"❌ {r.text[:200]}"
+    matn = update.message.text.strip()
+    usul_id = context.user_data.pop("edit_usul", None)
+    data = {}
+    nomi = context.user_data.pop("edit_nomi", None)
+    if nomi:
+        data["nomi"] = nomi
+    if matn != "-":
+        data["qiymat"] = matn
+    if not data:
+        await update.message.reply_text("O'zgarish yo'q.", reply_markup=menu_markup())
+        return ConversationHandler.END
+    r = await api.moliya_update_tolov(update.effective_user.id, usul_id, data)
+    msg = "✅ Yangilandi." if r.status_code == 200 else f"❌ {r.text[:200]}"
     await update.message.reply_text(msg, reply_markup=menu_markup())
     return ConversationHandler.END
 
@@ -377,31 +571,48 @@ def build_application(token: str) -> Application:
         name="moliya_reject",
         persistent=False,
     )
-    # Platforma karta sozlash.
-    card_conv = ConversationHandler(
-        entry_points=[
-            MessageHandler(filters.Regex(f"^{BTN_CARD}$"), card_start),
-        ],
+    # Yangi to'lov usuli qo'shish (turini tanlash -> maydonlar -> saqlash).
+    method_add_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(method_add_start, pattern="^madd$")],
         states={
-            C_KARTA: [MessageHandler(TXT, card_number)],
-            C_EGASI: [MessageHandler(TXT, card_owner)],
+            M_TURI: [CallbackQueryHandler(method_type, pattern="^mnew_")],
+            M_STEP: [MessageHandler(TXT, method_step)],
+            M_QR: [
+                MessageHandler(filters.PHOTO, method_qr),
+                MessageHandler(TXT, method_qr),
+            ],
         },
         fallbacks=[CommandHandler("start", start)],
-        name="moliya_card",
+        name="moliya_method_add",
+        persistent=False,
+    )
+    # Usulni tahrirlash (nomi + qiymat).
+    method_edit_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(method_edit_start, pattern="^med_")],
+        states={
+            ME_NOMI: [MessageHandler(TXT, method_edit_nomi)],
+            ME_QIYMAT: [MessageHandler(TXT, method_edit_qiymat)],
+        },
+        fallbacks=[CommandHandler("start", start)],
+        name="moliya_method_edit",
         persistent=False,
     )
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_HOME}$"), start))
     app.add_handler(reject_conv)
-    app.add_handler(card_conv)
+    app.add_handler(method_add_conv)
+    app.add_handler(method_edit_conv)
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_TOPUPS}$"), topups))
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_WITHDRAWS}$"), withdraws))
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_REFUNDS}$"), refunds))
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_REPORT}$"), report))
+    app.add_handler(MessageHandler(filters.Regex(f"^{BTN_METHODS}$"), methods))
 
     # Inline callbacklar (menyu ro'yxati va push xabarlaridан).
     app.add_handler(CallbackQueryHandler(topup_approve, pattern="^mt_ok_"))
     app.add_handler(CallbackQueryHandler(withdraw_paid, pattern="^mw_ok_"))
     app.add_handler(CallbackQueryHandler(refund_approve, pattern="^mr_ok_"))
+    app.add_handler(CallbackQueryHandler(method_toggle, pattern="^mtog_"))
+    app.add_handler(CallbackQueryHandler(method_delete, pattern="^mdel_"))
     return app

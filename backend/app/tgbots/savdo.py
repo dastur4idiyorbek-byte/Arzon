@@ -66,7 +66,56 @@ BTN_ASK = "💬 Savol berish"
 BTN_HOME = "🏠 Bosh menyu"
 
 # ACOM coin balans oqimi holatlari.
-(TOPUP_SUMMA, TOPUP_CODE, TOPUP_CHEK, REFUND_SUMMA, REFUND_KARTA, REFUND_CODE) = range(6)
+(
+    TOPUP_SUMMA, TOPUP_METHOD, TOPUP_CODE, TOPUP_CHEK,
+    REFUND_SUMMA, REFUND_KARTA, REFUND_CODE,
+) = range(7)
+
+# To'lov usuli turlari uchun emoji.
+_USUL_EMOJI = {"karta": "💳", "telefon": "📱", "qr_kod": "🔳", "crypto": "₿"}
+
+
+def _base_url() -> str:
+    import os
+
+    return (
+        os.getenv("WEBHOOK_BASE_URL", "").strip()
+        or os.getenv("RENDER_EXTERNAL_URL", "").strip()
+    ).rstrip("/")
+
+
+def _usul_detail(usul: dict, summa: float) -> str:
+    """Tanlangan to'lov usuli bo'yicha to'lov ko'rsatmasi matni (task_1)."""
+    turi = usul.get("turi")
+    nomi = usul.get("nomi", "")
+    qiymat = usul.get("qiymat") or ""
+    egasi = usul.get("egasi") or ""
+    izoh = usul.get("izoh") or ""
+    if turi == "karta":
+        return (
+            f"💳 <b>{qiymat}</b> — {egasi} nomiga\n"
+            f"<b>{summa:,.0f} som</b> o'tkazing va chekni (rasm) yuboring."
+        )
+    if turi == "telefon":
+        return (
+            f"📱 <b>{qiymat}</b> raqamiga {nomi} orqali\n"
+            f"<b>{summa:,.0f} som</b> o'tkazing va chekni (rasm) yuboring."
+        )
+    if turi == "qr_kod":
+        return (
+            f"🔳 Yuqoridagi QR kodni ({nomi}) skanerlab,\n"
+            f"<b>{summa:,.0f} som</b> o'tkazing va chekni (rasm) yuboring."
+        )
+    if turi == "crypto":
+        base = (
+            f"₿ <b>{qiymat}</b> manziliga\n"
+            f"<b>{summa:,.0f} som</b>ga teng miqdorda o'tkazing."
+        )
+        if izoh:
+            base += f"\n⚠️ {izoh}"
+        base += "\nSo'ng chekni (skrinshot) yuboring."
+        return base
+    return f"<b>{summa:,.0f} som</b> o'tkazing va chekni yuboring."
 
 
 def main_menu(miniapp_url: str) -> ReplyKeyboardMarkup:
@@ -373,8 +422,39 @@ async def topup_summa(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         )
         return TOPUP_SUMMA
     context.user_data["topup_summa"] = summa
+
+    # task_1: to'lov usulini tanlash. Faqat bitta bo'lsa — o'tkazib yuboriladi.
+    usullar = await api.coin_tolov_usullari(update.effective_user.id)
+    context.user_data["topup_usullar"] = usullar
+    if len(usullar) > 1:
+        rows = [
+            [InlineKeyboardButton(
+                f"{_USUL_EMOJI.get(u['turi'], '💰')} {u['nomi']}",
+                callback_data=f"tu_{u['id']}",
+            )]
+            for u in usullar
+        ]
+        await update.message.reply_text(
+            "To'lov usulini tanlang:", reply_markup=InlineKeyboardMarkup(rows)
+        )
+        return TOPUP_METHOD
+    # 0 yoki 1 ta usul — to'g'ridan-to'g'ri kodга o'tamiz.
+    context.user_data["topup_usul"] = usullar[0] if usullar else None
     kod = confirm.issue_code(context.user_data)
     await update.message.reply_text(confirm.prompt_text(kod), parse_mode="HTML")
+    return TOPUP_CODE
+
+
+async def topup_method(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    usul_id = int(query.data.replace("tu_", ""))
+    usullar = context.user_data.get("topup_usullar", [])
+    context.user_data["topup_usul"] = next(
+        (u for u in usullar if u["id"] == usul_id), None
+    )
+    kod = confirm.issue_code(context.user_data)
+    await query.message.reply_text(confirm.prompt_text(kod), parse_mode="HTML")
     return TOPUP_CODE
 
 
@@ -397,21 +477,29 @@ async def topup_code(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             reply_markup=_menu_kb(context),
         )
         return ConversationHandler.END
-    # ok — platforma karta ko'rsatiladi.
+    # ok — tanlangan to'lov usuli tafsilotlarini ko'rsatamiz.
     summa = context.user_data.get("topup_summa", 0)
-    data = await api.coin_balance(update.effective_user.id)
-    hisob = data.get("platforma_hisob")
-    if hisob:
-        karta_txt = (
-            f"💳 <b>{hisob['karta_raqami']}</b> — {hisob['hisob_egasi']} nomiga\n"
-            f"<b>{summa:,.0f} som</b> o'tkazing va chekni (rasm) yuboring."
+    usul = context.user_data.get("topup_usul")
+    if usul:
+        # QR kod bo'lsa — rasmni yuboramiz.
+        if usul.get("turi") == "qr_kod" and usul.get("qr_rasm_url"):
+            base = _base_url()
+            url = usul["qr_rasm_url"]
+            if url.startswith("/media/") and base:
+                url = f"{base}{url}"
+            try:
+                await context.bot.send_photo(update.effective_chat.id, url)
+            except Exception:  # noqa: BLE001
+                pass
+        await update.message.reply_text(
+            _usul_detail(usul, summa), parse_mode="HTML", reply_markup=_home_kb()
         )
     else:
-        karta_txt = (
-            "⚠️ Platforma karta hali sozlanmagan. Iltimos, administrator bilan "
-            "bog'laning. Chekni baribir yuborishingiz mumkin."
+        await update.message.reply_text(
+            "⚠️ To'lov usuli hali sozlanmagan. Administrator bilan bog'laning. "
+            "Chekni baribir yuborishingiz mumkin.",
+            reply_markup=_home_kb(),
         )
-    await update.message.reply_text(karta_txt, parse_mode="HTML", reply_markup=_home_kb())
     await update.message.reply_text("📸 To'lov chekini (rasm) yuboring:")
     return TOPUP_CHEK
 
@@ -447,6 +535,7 @@ async def topup_chek(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     except Exception as e:  # noqa: BLE001
         logger.warning("Chek tahlilида xato: %s", e)
 
+    usul = context.user_data.get("topup_usul")
     r = await api.coin_topup(
         update.effective_user.id,
         summa,
@@ -454,8 +543,11 @@ async def topup_chek(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         ai_summa=ai_summa,
         ai_sana=ai_sana,
         ai_xulosa=ai_xulosa,
+        tolov_usuli_id=usul["id"] if usul else None,
     )
     confirm.clear(context.user_data)
+    for k in ("topup_usul", "topup_usullar"):
+        context.user_data.pop(k, None)
     if r.status_code == 200:
         await update.message.reply_text(
             "✅ So'rovingiz qabul qilindi! Super-admin chekni tekshirib "
@@ -590,6 +682,7 @@ def build_application(token: str, miniapp_url: str) -> Application:
         ],
         states={
             TOPUP_SUMMA: [MessageHandler(TXT, topup_summa)],
+            TOPUP_METHOD: [CallbackQueryHandler(topup_method, pattern="^tu_")],
             TOPUP_CODE: [MessageHandler(TXT, topup_code)],
             TOPUP_CHEK: [
                 MessageHandler(filters.PHOTO, topup_chek),

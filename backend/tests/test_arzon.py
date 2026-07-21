@@ -1137,3 +1137,69 @@ def test_coin_referral_bonus():
 
     # A ga referal bonus (500 coin) qo'shildi.
     assert get_balance(a_tid) == float(loyalty_service.REFERAL_BONUS)
+
+
+def test_moliya_payment_methods_crud():
+    """task_2 + verification #1,#2: usul qo'shish, faol/nofaol, mijozга ko'rinish."""
+    # Super yangi crypto usul qo'shadi.
+    r = client.post("/api/moliya/tolov-usullari", headers=admin_headers(SUPER),
+                    json={"turi": "crypto", "nomi": "USDT", "qiymat": "TXy9ab3F",
+                          "izoh": "Faqat TRC20"})
+    assert r.status_code == 200, r.text
+    mid = r.json()["id"]
+    assert r.json()["faol"] is True
+
+    # Mijoz faol usullar ro'yxatida ko'radi.
+    active = client.get("/api/tolov-usullari", headers=customer_headers(70001)).json()
+    assert any(u["id"] == mid and u["turi"] == "crypto" for u in active)
+
+    # Nofaol qilinса — mijozга ko'rinmaydi (verification #2).
+    client.post(f"/api/moliya/tolov-usullari/{mid}/toggle", headers=admin_headers(SUPER))
+    active2 = client.get("/api/tolov-usullari", headers=customer_headers(70001)).json()
+    assert not any(u["id"] == mid for u in active2)
+
+    # Oddiy admin usul qo'sha olmaydi (faqat super).
+    forb = client.post("/api/moliya/tolov-usullari", headers=admin_headers(ADMIN_A),
+                       json={"turi": "karta", "nomi": "X"})
+    assert forb.status_code == 403, forb.text
+
+
+def test_miniapp_topup_request_upload():
+    """task_3 + verification #5: Mini App'дан chek yuklash -> so'rov yaratiladi."""
+    # To'lov usuli mavjud bo'lsin.
+    m = client.post("/api/moliya/tolov-usullari", headers=admin_headers(SUPER),
+                    json={"turi": "karta", "nomi": "Optima", "qiymat": "5000****1234",
+                          "egasi": "Aziz"}).json()
+    tid = 70002
+    client.post("/api/confirm-phone", headers=customer_headers(tid),
+                json={"tel": "+996700700002"})
+    # Kichik soxta JPEG bayti.
+    img = b"\xff\xd8\xff\xe0\x00\x10JFIF" + b"\x00" * 50
+    r = client.post(
+        "/api/topup-request",
+        headers=customer_headers(tid),
+        data={"summa": "8000", "tolov_usuli_id": str(m["id"])},
+        files={"chek": ("chek.jpg", img, "image/jpeg")},
+    )
+    assert r.status_code == 200, r.text
+    sorov_id = r.json()["sorov_id"]
+    # Coin hali berilmagan (rule 2).
+    assert get_balance(tid) == 0.0
+    # Moliya ro'yxatида ko'rinadi, to'lov usuli bilan.
+    lst = client.get("/api/moliya/topups", headers=admin_headers(SUPER)).json()
+    assert any(x["id"] == sorov_id for x in lst)
+
+
+def test_topup_single_method_autoselect():
+    """verification #3: faqat bitta faol usul bo'lса — mijoz ro'yxatда bittasini oladi."""
+    # Barcha eski usullarni nofaol qilamiz, bitta faol qoldiramiz.
+    allm = client.get("/api/moliya/tolov-usullari", headers=admin_headers(SUPER)).json()
+    for u in allm:
+        if u["faol"]:
+            client.post(f"/api/moliya/tolov-usullari/{u['id']}/toggle",
+                        headers=admin_headers(SUPER))
+    only = client.post("/api/moliya/tolov-usullari", headers=admin_headers(SUPER),
+                       json={"turi": "telefon", "nomi": "Elsom",
+                             "qiymat": "+996700123456", "egasi": "Ali"}).json()
+    active = client.get("/api/tolov-usullari", headers=customer_headers(70003)).json()
+    assert len(active) == 1 and active[0]["id"] == only["id"]

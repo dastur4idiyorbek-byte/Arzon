@@ -282,3 +282,85 @@ def _notify(telegram_id: int | None, text: str) -> None:
         notify.notify_customer(telegram_id, text)
     except ImportError:
         pass
+
+
+# ---------------------------------------------------------------------------
+# To'lov usullari boshqaruvi (task_2)
+# ---------------------------------------------------------------------------
+@router.get("/tolov-usullari")
+def list_tolov_usullari(
+    _: int = Depends(require_super),
+    db: Session = Depends(get_db),
+):
+    return [
+        coin_service.tolov_usuli_dict(u)
+        for u in coin_service.list_all_tolov_usullari(db)
+    ]
+
+
+class TolovUsuliBody(BaseModel):
+    turi: str
+    nomi: str = Field(min_length=1, max_length=50)
+    qiymat: str | None = None
+    egasi: str | None = None
+    qr_rasm_url: str | None = None
+    izoh: str | None = None
+
+
+@router.post("/tolov-usullari")
+def create_tolov_usuli(
+    payload: TolovUsuliBody,
+    _: int = Depends(require_super),
+    db: Session = Depends(get_db),
+):
+    u = coin_service.create_tolov_usuli(
+        db,
+        payload.turi,
+        payload.nomi,
+        qiymat=payload.qiymat,
+        egasi=payload.egasi,
+        qr_rasm_url=payload.qr_rasm_url,
+        izoh=payload.izoh,
+    )
+    return coin_service.tolov_usuli_dict(u)
+
+
+class TolovUsuliUpdate(BaseModel):
+    nomi: str | None = None
+    qiymat: str | None = None
+    egasi: str | None = None
+    qr_rasm_url: str | None = None
+    izoh: str | None = None
+
+
+@router.patch("/tolov-usullari/{usul_id}")
+def update_tolov_usuli(
+    usul_id: int,
+    payload: TolovUsuliUpdate,
+    _: int = Depends(require_super),
+    db: Session = Depends(get_db),
+):
+    u = coin_service.update_tolov_usuli(
+        db, usul_id, **payload.model_dump(exclude_none=True)
+    )
+    return coin_service.tolov_usuli_dict(u)
+
+
+@router.post("/tolov-usullari/{usul_id}/toggle")
+def toggle_tolov_usuli(
+    usul_id: int,
+    _: int = Depends(require_super),
+    db: Session = Depends(get_db),
+):
+    u = coin_service.toggle_tolov_usuli(db, usul_id)
+    return coin_service.tolov_usuli_dict(u)
+
+
+@router.delete("/tolov-usullari/{usul_id}")
+def delete_tolov_usuli(
+    usul_id: int,
+    _: int = Depends(require_super),
+    db: Session = Depends(get_db),
+):
+    coin_service.delete_tolov_usuli(db, usul_id)
+    return {"status": "ok"}

@@ -75,13 +75,121 @@ function priceHtml(p) {
 const savedManzil = () => localStorage.getItem("arzon_manzil") || "";
 
 /* ---------- ACOM coin balansi (header) ---------- */
+let currentBalance = 0;
+
 async function loadBalance() {
   const { ok, data } = await api("/api/balance");
   const chip = document.getElementById("balance-chip");
   if (!ok || !data) { chip.hidden = true; return; }
-  document.getElementById("balance-val").textContent = money(data.coin_balans || 0);
+  currentBalance = data.coin_balans || 0;
+  document.getElementById("balance-val").textContent = money(currentBalance);
   chip.hidden = false;
 }
+
+/* ---------- Balans to'ldirish oynasi (task_3) ---------- */
+let topupMethods = [];
+let topupSelected = null;
+
+async function apiUpload(path, formData) {
+  const res = await fetch(API + path, {
+    method: "POST",
+    headers: { "X-Telegram-Init-Data": INIT_DATA }, // Content-Type'ni brauzer qo'yadi
+    body: formData,
+  });
+  let data = null;
+  try { data = await res.json(); } catch (_) {}
+  return { ok: res.ok, status: res.status, data };
+}
+
+function usulDetailHtml(u, summa) {
+  const q = esc(u.qiymat || ""), nomi = esc(u.nomi || ""),
+        egasi = esc(u.egasi || ""), izoh = esc(u.izoh || "");
+  const s = `<b>${money(summa)} som</b>`;
+  if (u.turi === "karta")
+    return `💳 <b>${q}</b> — ${egasi} nomiga ${s} o'tkazing.`;
+  if (u.turi === "telefon")
+    return `📱 <b>${q}</b> raqamiga ${nomi} orqali ${s} o'tkazing.`;
+  if (u.turi === "qr_kod")
+    return `${u.qr_rasm_url ? `<img src="${esc(u.qr_rasm_url)}" class="qr-img">` : ""}
+      🔳 Yuqoridagi QR kodni (${nomi}) skanerlab, ${s} o'tkazing.`;
+  if (u.turi === "crypto")
+    return `₿ <b>${q}</b> manziliga ${s}ga teng miqdorda o'tkazing.${izoh ? `<br>⚠️ ${izoh}` : ""}`;
+  return `${s} o'tkazing.`;
+}
+
+async function openTopupModal(farq) {
+  document.getElementById("topup-modal").hidden = false;
+  const needed = money(Math.max(0, farq));
+  document.getElementById("topup-msg").innerHTML =
+    `Balansingiz yetarli emas.<br>Joriy: <b>${money(currentBalance)} som</b>. ` +
+    `Yetishmayapti: <b>${needed} som</b>.`;
+  const amt = document.getElementById("topup-amount");
+  amt.value = Math.max(1, Math.ceil(farq)); // farq oldindan to'ldiriladi
+  topupSelected = null;
+  document.getElementById("topup-detail").hidden = true;
+
+  const box = document.getElementById("topup-methods");
+  box.innerHTML = "Yuklanmoqda...";
+  const { ok, data } = await api("/api/tolov-usullari");
+  topupMethods = ok && Array.isArray(data) ? data : [];
+  box.innerHTML = "";
+  if (topupMethods.length === 0) {
+    box.innerHTML = `<p class="empty">To'lov usullari hali sozlanmagan.</p>`;
+  }
+  const emoji = { karta: "💳", telefon: "📱", qr_kod: "🔳", crypto: "₿" };
+  topupMethods.forEach((u) => {
+    const b = document.createElement("button");
+    b.className = "method-btn";
+    b.innerHTML = `${emoji[u.turi] || "💰"} ${esc(u.nomi)}`;
+    b.onclick = () => selectMethod(u, b);
+    box.appendChild(b);
+  });
+  // Bitta usul bo'lsa — avtomatik tanlanadi.
+  if (topupMethods.length === 1) selectMethod(topupMethods[0], box.firstChild);
+}
+
+function selectMethod(u, btn) {
+  topupSelected = u;
+  document.querySelectorAll("#topup-methods .method-btn").forEach((x) =>
+    x.classList.remove("active"));
+  if (btn) btn.classList.add("active");
+  const d = document.getElementById("topup-detail");
+  d.innerHTML = usulDetailHtml(u, Number(document.getElementById("topup-amount").value) || 0);
+  d.hidden = false;
+}
+
+function closeTopupModal() {
+  document.getElementById("topup-modal").hidden = true;
+  document.getElementById("topup-file").value = "";
+}
+
+document.getElementById("topup-close").onclick = closeTopupModal;
+document.getElementById("topup-amount").addEventListener("input", () => {
+  if (topupSelected) selectMethod(topupSelected,
+    document.querySelector("#topup-methods .method-btn.active"));
+});
+
+document.getElementById("topup-submit").onclick = async () => {
+  const summa = Number(document.getElementById("topup-amount").value);
+  if (!summa || summa <= 0) { notify("Summani kiriting."); return; }
+  const file = document.getElementById("topup-file").files[0];
+  if (!file) { notify("To'lov chekini (rasm) yuklang."); return; }
+  const fd = new FormData();
+  fd.append("summa", summa);
+  if (topupSelected) fd.append("tolov_usuli_id", topupSelected.id);
+  fd.append("chek", file);
+  const btn = document.getElementById("topup-submit");
+  btn.disabled = true; btn.textContent = "Yuborilmoqda...";
+  const { ok, data } = await apiUpload("/api/topup-request", fd);
+  btn.disabled = false; btn.textContent = "Yuborish";
+  if (ok) {
+    closeTopupModal();
+    notify("✅ So'rovingiz yuborildi! Super-admin chekni tekshirib tasdiqlaydi. " +
+      "Tasdiqlangach balansingiz to'ladi.");
+  } else {
+    notify((data && data.detail) || "Yuborishда xatolik.");
+  }
+};
 
 /* ---------- Katalog (rule 1: bitta ro'yxat, do'kon tanlash yo'q) ---------- */
 async function loadCatalog() {
@@ -415,13 +523,15 @@ document.getElementById("btn-checkout").onclick = async () => {
     storeIds.forEach((sid) => { body.pickup_points[sid] = pickupChoice[sid]; });
   }
 
+  const neededTotal = Object.values(cart).reduce(
+    (s, c) => s + effPrice(c.product) * c.soni, 0);
   await submitCheckout(body, () => {
     Object.keys(cart).forEach((k) => delete cart[k]);
     renderCart();
-  });
+  }, neededTotal);
 };
 
-async function submitCheckout(body, onSuccess) {
+async function submitCheckout(body, onSuccess, neededTotal) {
   if (body.yetkazish_turi === "kuryer" && body.manzil) {
     localStorage.setItem("arzon_manzil", body.manzil);
   }
@@ -436,6 +546,11 @@ async function submitCheckout(body, onSuccess) {
     switchView("buyurtmalar");
   } else if (status === 428) {
     notify("Iltimos, avval Savdo Botiда telefon raqamingizni tasdiqlang ('Kontaktni ulashish').");
+  } else if (status === 402) {
+    // task_3: balans yetmasa — ilova ichida to'ldirish oynasi (farq oldindan).
+    await loadBalance();
+    const farq = (neededTotal || 0) - currentBalance;
+    openTopupModal(farq > 0 ? farq : (neededTotal || 0));
   } else {
     notify((data && data.detail) || "Buyurtma berishда xatolik.");
   }
@@ -564,7 +679,7 @@ function renderBuyStep(step) {
     };
     if (buyNow.deliv === "kuryer") body.manzil = buyNow.manzil;
     else body.pickup_points = { [p.store_id]: buyNow.ppid };
-    await submitCheckout(body, () => { buyNow = null; });
+    await submitCheckout(body, () => { buyNow = null; }, sotuv * buyNow.soni);
   };
 }
 

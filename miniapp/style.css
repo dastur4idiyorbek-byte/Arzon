@@ -254,3 +254,40 @@ button.ghost:disabled, button.primary:disabled { opacity: 0.4; cursor: default; 
 }
 
 .empty { text-align: center; color: var(--hint); padding: 30px 0; }
+
+/* Balans to'ldirish oynasi (task_3) */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.55);
+  display: flex; align-items: flex-end; justify-content: center;
+  z-index: 100; padding: 0;
+}
+.modal-overlay[hidden] { display: none; }
+.modal {
+  background: var(--bg); color: var(--text); width: 100%; max-width: 480px;
+  border-radius: 18px 18px 0 0; padding: 20px 16px 28px;
+  max-height: 92vh; overflow-y: auto; position: relative;
+}
+.modal h3 { font-size: 18px; margin-bottom: 10px; }
+.modal-close {
+  position: absolute; right: 12px; top: 12px; background: var(--secondary-bg);
+  border: none; color: var(--text); width: 32px; height: 32px; border-radius: 50%;
+  font-size: 16px; cursor: pointer;
+}
+.topup-msg { font-size: 14px; color: var(--text); margin-bottom: 14px; line-height: 1.5; }
+.topup-label { display: block; font-size: 13px; color: var(--hint); margin: 12px 0 6px; }
+.modal input[type="number"], .modal input[type="file"] {
+  width: 100%; padding: 11px; border-radius: 10px;
+  border: 1px solid var(--secondary-bg); background: var(--secondary-bg); color: var(--text);
+}
+.topup-methods { display: flex; flex-wrap: wrap; gap: 8px; }
+.method-btn {
+  background: var(--secondary-bg); color: var(--text);
+  border: 1.5px solid var(--secondary-bg); border-radius: 10px;
+  padding: 9px 12px; font-size: 14px; cursor: pointer;
+}
+.method-btn.active { border-color: var(--brand); color: var(--brand); font-weight: 700; }
+.topup-detail {
+  background: var(--secondary-bg); border-radius: 10px; padding: 12px;
+  font-size: 14px; margin-top: 10px; line-height: 1.5; word-break: break-word;
+}
+.topup-detail .qr-img { width: 100%; max-width: 220px; display: block; margin: 0 auto 10px; border-radius: 8px; }

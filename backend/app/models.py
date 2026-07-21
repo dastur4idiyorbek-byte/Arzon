@@ -283,6 +283,28 @@ class PlatformaHisob(Base):
     )
 
 
+class PlatformaTolovUsuli(Base):
+    """Balans to'ldirish uchun to'lov usullari (super-admin sozlaydi).
+
+    Bir nechta usul: karta, telefon (mobil to'lov), QR kod, crypto hamyon.
+    Faqat faol=True usullar mijozларга ko'rinadi (tartib_raqami bo'yicha).
+    """
+
+    __tablename__ = "platforma_tolov_usullari"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # karta / telefon / qr_kod / crypto
+    turi: Mapped[str] = mapped_column(String(20))
+    nomi: Mapped[str] = mapped_column(String(50))  # "Optima Bank", "Elsom"...
+    # karta raqami / telefon raqami / crypto manzili (QR uchun bo'sh bo'lishi mumkin)
+    qiymat: Mapped[str | None] = mapped_column(Text, nullable=True)
+    egasi: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    qr_rasm_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    izoh: Mapped[str | None] = mapped_column(Text, nullable=True)
+    faol: Mapped[bool] = mapped_column(Boolean, default=True)
+    tartib_raqami: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)
+
+
 class CoinToldirishSorovi(Base):
     """Balansni to'ldirish so'rovi — chek rasmi + AI xulosasi bilan."""
 
@@ -293,6 +315,11 @@ class CoinToldirishSorovi(Base):
         ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
     som_summasi: Mapped[float] = mapped_column(Numeric(14, 2))  # KGS
+    # Mijoz tanlagan to'lov usuli (yangilanish: bir nechta usul).
+    tolov_usuli_id: Mapped[int | None] = mapped_column(
+        ForeignKey("platforma_tolov_usullari.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     chek_rasm_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     # Gemini Flash o'qigan (TAKLIF — rule 2, yakuniy qaror emas).
     ai_ochigan_summa: Mapped[float | None] = mapped_column(

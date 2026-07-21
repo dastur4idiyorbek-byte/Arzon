@@ -99,18 +99,34 @@ def _base_url() -> str:
 
 
 async def _send_moliya(
-    text: str, reply_markup=None, photo_rel_url: str | None = None
+    text: str,
+    reply_markup=None,
+    photo_rel_url: str | None = None,
+    photo_bytes: bytes | None = None,
 ) -> None:
-    """Barcha super-adminlarга Moliya Boti orqali xabar."""
+    """Barcha super-adminlarга Moliya Boti orqali xabar.
+
+    photo_bytes — Mini App'дан yuklangan chek (Telegram file_id yo'q). Birinchi
+    super-adminга baytlar bilan yuboriladi va olingan file_id qolganlarга
+    ishlatiladi (samarali).
+    """
     from ..config import settings
 
     app = registry.get("moliya")
     if app is None:
         return
     base = _base_url()
+    file_id = None
     for sid in settings.super_admin_id_list:
         try:
-            if photo_rel_url and base:
+            if photo_bytes is not None:
+                photo = file_id if file_id else photo_bytes
+                msg = await app.bot.send_photo(
+                    chat_id=sid, photo=photo, caption=text, reply_markup=reply_markup
+                )
+                if file_id is None and msg and msg.photo:
+                    file_id = msg.photo[-1].file_id
+            elif photo_rel_url and base:
                 await app.bot.send_photo(
                     chat_id=sid,
                     photo=f"{base}{photo_rel_url}",
@@ -134,6 +150,8 @@ def notify_moliya_topup(
     ai_sana: str | None,
     ai_xulosa: str | None,
     chek_rel_url: str | None,
+    usul_nomi: str | None = None,
+    image_bytes: bytes | None = None,
 ) -> None:
     """Yangi to'ldirish so'rovi — chek + AI taklifи bilan (task_1, task_2)."""
     xulosa_emoji = {
@@ -152,7 +170,8 @@ def notify_moliya_topup(
         f"👤 Mijoz: {ism or 'nomalum'}"
         + (f", {telegram_id}" if telegram_id else "")
         + f"\n💰 Kiritgan summa: {summa:,.0f} som\n"
-        f"{ai_qator}\n"
+        + (f"💳 To'lov usuli: {usul_nomi}\n" if usul_nomi else "")
+        + f"{ai_qator}\n"
         f"AI xulosasi: {xulosa_emoji}\n\n"
         "⚠️ Yakuniy qaror sizniki — chekni ko'rib tasdiqlang."
     )
@@ -164,7 +183,9 @@ def notify_moliya_topup(
             ]
         ]
     )
-    _submit(_send_moliya(text, kb, photo_rel_url=chek_rel_url))
+    _submit(
+        _send_moliya(text, kb, photo_rel_url=chek_rel_url, photo_bytes=image_bytes)
+    )
 
 
 def notify_moliya_withdraw(

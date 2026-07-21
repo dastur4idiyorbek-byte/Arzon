@@ -306,6 +306,7 @@ class BotApi:
         ai_summa: float | None = None,
         ai_sana: str | None = None,
         ai_xulosa: str | None = None,
+        tolov_usuli_id: int | None = None,
     ) -> httpx.Response:
         return await self._request(
             "POST",
@@ -317,6 +318,7 @@ class BotApi:
                 "ai_summa": ai_summa,
                 "ai_sana": ai_sana,
                 "ai_xulosa": ai_xulosa,
+                "tolov_usuli_id": tolov_usuli_id,
             },
         )
 
@@ -329,6 +331,14 @@ class BotApi:
             headers=self._headers({"X-Telegram-User-Id": str(telegram_id)}),
             json={"summa": summa, "karta_raqami": karta},
         )
+
+    async def coin_tolov_usullari(self, telegram_id: int) -> list:
+        r = await self._request(
+            "GET",
+            "/api/bot/coin/tolov-usullari",
+            headers=self._headers({"X-Telegram-User-Id": str(telegram_id)}),
+        )
+        return r.json() if r.status_code == 200 else []
 
     # --- ACOM coin: admin (Boshqaruv) pul yechish ---
     async def store_balance(self, admin_id: int, store_id: int) -> httpx.Response:
@@ -423,6 +433,39 @@ class BotApi:
             "POST", "/api/moliya/platforma-hisob",
             headers=self._admin(admin_id),
             json={"karta_raqami": karta, "hisob_egasi": egasi},
+        )
+
+    # --- To'lov usullari (Moliya boti) ---
+    async def moliya_tolov_usullari(self, admin_id: int) -> list:
+        r = await self._request(
+            "GET", "/api/moliya/tolov-usullari", headers=self._admin(admin_id)
+        )
+        return r.json() if r.status_code == 200 else []
+
+    async def moliya_create_tolov(self, admin_id: int, data: dict) -> httpx.Response:
+        return await self._request(
+            "POST", "/api/moliya/tolov-usullari",
+            headers=self._admin(admin_id), json=data,
+        )
+
+    async def moliya_update_tolov(
+        self, admin_id: int, usul_id: int, data: dict
+    ) -> httpx.Response:
+        return await self._request(
+            "PATCH", f"/api/moliya/tolov-usullari/{usul_id}",
+            headers=self._admin(admin_id), json=data,
+        )
+
+    async def moliya_toggle_tolov(self, admin_id: int, usul_id: int) -> httpx.Response:
+        return await self._request(
+            "POST", f"/api/moliya/tolov-usullari/{usul_id}/toggle",
+            headers=self._admin(admin_id),
+        )
+
+    async def moliya_delete_tolov(self, admin_id: int, usul_id: int) -> httpx.Response:
+        return await self._request(
+            "DELETE", f"/api/moliya/tolov-usullari/{usul_id}",
+            headers=self._admin(admin_id),
         )
 
 

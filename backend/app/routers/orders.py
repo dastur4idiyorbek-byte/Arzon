@@ -3,7 +3,15 @@ from __future__ import annotations
 
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+    status,
+)
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -143,6 +151,90 @@ def balance(
     from ..services import coin as coin_service
 
     return {"coin_balans": float(coin_service.balance(user))}
+
+
+def _tolov_usuli_public(usul, base: str) -> dict:
+    """To'lov usulini Mini App uchun formatlaydi (QR uchun to'liq URL)."""
+    from ..services import coin as coin_service
+
+    d = coin_service.tolov_usuli_dict(usul)
+    if d.get("qr_rasm_url") and d["qr_rasm_url"].startswith("/media/") and base:
+        d["qr_rasm_url"] = f"{base}{d['qr_rasm_url']}"
+    return d
+
+
+@router.get("/tolov-usullari")
+def tolov_usullari(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Mini App to'ldirish oynasi uchun faol to'lov usullari (task_1, task_3)."""
+    import os
+
+    from ..services import coin as coin_service
+
+    base = (
+        os.getenv("WEBHOOK_BASE_URL", "").strip()
+        or os.getenv("RENDER_EXTERNAL_URL", "").strip()
+    ).rstrip("/")
+    usullar = coin_service.list_active_tolov_usullari(db)
+    return [_tolov_usuli_public(u, base) for u in usullar]
+
+
+@router.post("/topup-request")
+def topup_request(
+    summa: float = Form(...),
+    tolov_usuli_id: int | None = Form(None),
+    chek: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Mini App ichida balans to'ldirish so'rovi (task_3).
+
+    Chek rasmi yuklanadi -> Gemini tahlil -> so'rov yaratiladi -> Moliya Botiga
+    (chek rasmi bilan) yuboriladi. Backend mantig'i bot oqimi bilan bir xil.
+    """
+    from .. import ai as ai_module
+    from ..services import coin as coin_service
+
+    raw = chek.file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Chek rasmi bo'sh.")
+    mime = chek.content_type or "image/jpeg"
+    natija = ai_module.analyze_receipt(raw, mime, summa)
+
+    sorov = coin_service.create_topup_request(
+        db,
+        user,
+        summa,
+        ai_summa=natija.get("summa"),
+        ai_sana=natija.get("sana"),
+        ai_xulosa=natija.get("xulosa"),
+        tolov_usuli_id=tolov_usuli_id,
+    )
+    usul = (
+        coin_service.get_tolov_usuli(db, tolov_usuli_id)
+        if tolov_usuli_id
+        else None
+    )
+    try:
+        from ..tgbots import notify
+
+        notify.notify_moliya_topup(
+            sorov_id=sorov.id,
+            ism=user.ism,
+            telegram_id=user.telegram_id,
+            summa=float(sorov.som_summasi),
+            ai_summa=natija.get("summa"),
+            ai_sana=natija.get("sana"),
+            ai_xulosa=natija.get("xulosa"),
+            chek_rel_url=None,
+            usul_nomi=usul.nomi if usul else None,
+            image_bytes=raw,
+        )
+    except ImportError:
+        pass
+    return {"sorov_id": sorov.id, "holat": sorov.holat}
 
 
 @router.post("/confirm-phone")

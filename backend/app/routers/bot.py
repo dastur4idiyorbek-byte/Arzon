@@ -167,6 +167,19 @@ class BotTopup(BaseModel):
     ai_summa: float | None = None
     ai_sana: str | None = None
     ai_xulosa: str | None = None
+    tolov_usuli_id: int | None = None
+
+
+@router.get("/coin/tolov-usullari")
+def bot_coin_tolov_usullari(
+    user: User = Depends(bot_user),
+    db: Session = Depends(get_db),
+):
+    """Faol to'lov usullari (Savdo Boti to'ldirish oqimи uchun — task_1)."""
+    return [
+        coin_service.tolov_usuli_dict(u)
+        for u in coin_service.list_active_tolov_usullari(db)
+    ]
 
 
 @router.post("/coin/topup")
@@ -184,6 +197,12 @@ def bot_coin_topup(
         ai_summa=payload.ai_summa,
         ai_sana=payload.ai_sana,
         ai_xulosa=payload.ai_xulosa,
+        tolov_usuli_id=payload.tolov_usuli_id,
+    )
+    usul = (
+        coin_service.get_tolov_usuli(db, payload.tolov_usuli_id)
+        if payload.tolov_usuli_id
+        else None
     )
     try:
         from ..tgbots import notify
@@ -199,6 +218,7 @@ def bot_coin_topup(
             ai_sana=sorov.ai_ochigan_sana,
             ai_xulosa=sorov.ai_xulosasi,
             chek_rel_url=sorov.chek_rasm_url,
+            usul_nomi=usul.nomi if usul else None,
         )
     except ImportError:
         pass
