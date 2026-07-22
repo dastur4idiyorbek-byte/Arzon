@@ -67,6 +67,14 @@ class Store(Base):
     )
     # Mahsulot limiti (pullik do'kon ochishда tanlangan). NULL = cheksiz.
     mahsulot_limiti: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Oylik arenda (ijara) summasi — menejer belgilaydi (som). NULL = arenda yo'q.
+    arenda_summasi: Mapped[float | None] = mapped_column(
+        Numeric(14, 2), nullable=True
+    )
+    # Arenda muddati qachon tugashi. O'tса va to'lanmasа holat 'vaqtincha_toxtatilgan'.
+    arenda_muddati_tugashi: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     products: Mapped[list["Product"]] = relationship(
         back_populates="store", cascade="all, delete-orphan"

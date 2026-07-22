@@ -44,10 +44,6 @@ BTN_ORDERS = "📋 Buyurtmalar"
 BTN_SEARCH = "🔍 Buyurtma qidirish"
 BTN_PICKUP = "📍 Punktlar"
 BTN_WITHDRAW = "💰 Pul yechish"
-# Faqat super-admin (do'kon/admin boshqaruvi)
-BTN_NEWSTORE = "🏪 Yangi do'kon"
-BTN_NEWADMIN = "➕ Yangi admin qo'shish"
-BTN_DELSTORE = "🗑 Do'kon o'chirish"
 # Navigatsiya
 BTN_CANCEL = "❌ Bekor qilish"  # eski (fallbackда saqlanadi)
 BTN_HOME = "🏠 Bosh menyu"
@@ -59,7 +55,6 @@ BTN_SKIP = "⏭ O'tkazib yuborish"
 MENU_BUTTONS = {
     BTN_ADD, BTN_DEL, BTN_EDIT, BTN_PROMO, BTN_SECRET,
     BTN_STATS, BTN_ORDERS, BTN_SEARCH, BTN_PICKUP, BTN_WITHDRAW,
-    BTN_NEWSTORE, BTN_NEWADMIN, BTN_DELSTORE,
 }
 
 # Conversation holatlari.
@@ -81,15 +76,11 @@ MENU_BUTTONS = {
 RATIOS = ["1:1", "4:3", "3:4", "9:16", "16:9"]
 
 
-def _is_super(uid: int) -> bool:
-    return uid in settings.super_admin_id_list
+def menu_markup(uid: int = 0) -> ReplyKeyboardMarkup:
+    """Bosh menyu — BARCHA adminlar uchun AYNAN BIR XIL (Menejer rule 1).
 
-
-def menu_markup(uid: int) -> ReplyKeyboardMarkup:
-    """Bosh menyu — doimiy tugmalar qatori (spec1 rule 1).
-
-    Do'kon/admin boshqaruvi (yangi do'kon, yangi admin, do'kon o'chirish)
-    faqat super-adminга ko'rinadi. Oddiy admin do'kon ocholmaydi.
+    Super-admin ham oddiy admin kabi ko'radi — hech qanday qo'shimcha tugma
+    yo'q. Do'kon/admin/arenda boshqaruvi endi Menejer Botда.
     """
     rows = [
         [KeyboardButton(BTN_ADD), KeyboardButton(BTN_EDIT)],
@@ -98,11 +89,6 @@ def menu_markup(uid: int) -> ReplyKeyboardMarkup:
         [KeyboardButton(BTN_ORDERS), KeyboardButton(BTN_SEARCH)],
         [KeyboardButton(BTN_PICKUP), KeyboardButton(BTN_WITHDRAW)],
     ]
-    if _is_super(uid):
-        rows.append(
-            [KeyboardButton(BTN_NEWSTORE), KeyboardButton(BTN_NEWADMIN)]
-        )
-        rows.append([KeyboardButton(BTN_DELSTORE)])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
 
@@ -169,16 +155,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             lines.append(f"• {s['nomi']} (ID: {s['id']}, holat: {s['holat']})")
         lines.append("\nQuyidagi tugmalardан foydalaning 👇")
         text = "\n".join(lines)
-    elif _is_super(uid):
-        text = (
-            "Assalomu alaykum, super-admin! 👋\n\n"
-            f"'{BTN_NEWSTORE}' tugmasi bilan do'kon oching va admin tayinlang."
-        )
     else:
         text = (
             "Assalomu alaykum! 👋\n\n"
-            "Sizga hali do'kon biriktirilmagan. Do'kon super-admin tomonidan "
-            "ochiladi — super-admin bilan bog'laning."
+            "Sizga hali do'kon biriktirilmagan. Do'kon ochish uchun Savdo "
+            "botiдаги '🏪 Do'kon ochish' orqali so'rov yuboring."
         )
     await update.message.reply_text(text, reply_markup=menu_markup(uid))
 
@@ -1063,107 +1044,6 @@ async def search_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 
-# ---------------------------------------------------------------------------
-# 🏪 Do'kon ochish (spec1 task_3)
-# ---------------------------------------------------------------------------
-async def dokon_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    stores = await api.my_stores(update.effective_user.id)
-    if stores:
-        nomlar = ", ".join(s["nomi"] for s in stores)
-        await _back_to_menu(
-            update, f"Sizда allaqachon do'kon bor: {nomlar}"
-        )
-        return ConversationHandler.END
-    await update.message.reply_text(
-        "🏪 Yangi do'kon ochamiz!\nDo'kon nomini kiriting:",
-        reply_markup=cancel_markup(),
-    )
-    return DO_NOMI
-
-
-async def dokon_nomi(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if _is_menu_press(update.message.text):
-        await _warn_finish_first(update)
-        return DO_NOMI
-    r = await api.create_self_store(
-        update.effective_user.id, update.message.text.strip()
-    )
-    if r.status_code == 200:
-        d = r.json()
-        await _back_to_menu(
-            update,
-            f"✅ '{d['nomi']}' do'koni ochildi!\n\n"
-            f"🔑 Mahfiy kodingiz: {d['mahfiy_kirish_kodi']}\n"
-            "(Buni yozib qo'ying — mahfiy mahsulotlar shu kod bilan ochiladi.)",
-        )
-    else:
-        try:
-            detail = r.json().get("detail", r.text)
-        except Exception:  # noqa: BLE001
-            detail = r.text
-        await _back_to_menu(update, f"❌ {detail}")
-    return ConversationHandler.END
-
-
-# ---------------------------------------------------------------------------
-# ➕ Yangi admin qo'shish (spec1 task_4, faqat super-admin)
-# ---------------------------------------------------------------------------
-async def newadmin_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not _is_super(update.effective_user.id):
-        await _back_to_menu(update, "⛔️ Bu amal faqat super-admin uchun.")
-        return ConversationHandler.END
-    stores = await api.my_stores(update.effective_user.id)
-    if not stores:
-        await _back_to_menu(update, "Hali do'konlar yo'q.")
-        return ConversationHandler.END
-    rows = [
-        [
-            InlineKeyboardButton(
-                s["nomi"], callback_data=f"nastore_{s['id']}"
-            )
-        ]
-        for s in stores[:50]
-    ]
-    await update.message.reply_text(
-        "Qaysi do'konга admin qo'shasiz?",
-        reply_markup=InlineKeyboardMarkup(rows),
-    )
-    return NA_ID
-
-
-async def newadmin_store(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    context.user_data["na_store"] = int(query.data.replace("nastore_", ""))
-    await query.edit_message_text(
-        "Yangi adminning Telegram ID'sini kiriting:"
-    )
-    return NA_ID
-
-
-async def newadmin_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        new_admin = int(update.message.text.strip())
-    except ValueError:
-        await update.message.reply_text("Telegram ID raqam bo'lishi kerak:")
-        return NA_ID
-    store_id = context.user_data.get("na_store")
-    if store_id is None:
-        await _back_to_menu(update, "Avval do'konni tanlang.")
-        return ConversationHandler.END
-    r = await api.add_store_admin(
-        update.effective_user.id, store_id, new_admin
-    )
-    if r.status_code == 200:
-        await _back_to_menu(
-            update,
-            f"✅ Admin {new_admin} qo'shildi. U darhol botга kira oladi.",
-        )
-    else:
-        await _back_to_menu(update, f"❌ {r.text[:300]}")
-    context.user_data.clear()
-    return ConversationHandler.END
-
 
 # ---------------------------------------------------------------------------
 # Oddiy ko'rish funksiyalari (mavjud mantiq — tugmalarga ulangan)
@@ -1538,133 +1418,6 @@ async def promo_foiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ---------------------------------------------------------------------------
-# Super-admin: boshqa odamга do'kon ochish (legacy /yangi_dokon)
-# ---------------------------------------------------------------------------
-async def yangi_dokon(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not _is_super(update.effective_user.id):
-        await _back_to_menu(update, "⛔️ Do'kon ochish faqat super-admin uchun.")
-        return ConversationHandler.END
-    await update.message.reply_text(
-        "🏪 Yangi do'kon yaratish.\nDo'kon nomini kiriting:",
-        reply_markup=cancel_markup(),
-    )
-    return S_NOMI
-
-
-async def s_nomi(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if _is_menu_press(update.message.text):
-        await _warn_finish_first(update)
-        return S_NOMI
-    context.user_data["yangi_dokon_nomi"] = update.message.text
-    await update.message.reply_text(
-        "Yangi admin(do'kon egasi)ning Telegram ID'sini kiriting:"
-    )
-    return S_ADMIN_ID
-
-
-async def s_admin_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        new_admin = int(update.message.text.strip())
-    except ValueError:
-        await update.message.reply_text("Telegram ID raqam bo'lishi kerak:")
-        return S_ADMIN_ID
-    r = await api.create_store(
-        update.effective_user.id,
-        {
-            "nomi": context.user_data["yangi_dokon_nomi"],
-            "admin_telegram_id": new_admin,
-        },
-    )
-    if r.status_code == 200:
-        d = r.json()
-        await _back_to_menu(
-            update,
-            f"✅ Do'kon yaratildi!\n\n"
-            f"Nomi: {d['nomi']}\nID: {d['store_id']}\n"
-            f"Admin: {new_admin}\n"
-            f"Mahfiy kod: {d['mahfiy_kirish_kodi']}",
-        )
-    elif r.status_code == 403:
-        await _back_to_menu(
-            update, "⛔️ Faqat super-admin yangi do'kon qo'sha oladi."
-        )
-    else:
-        await _back_to_menu(update, f"❌ {r.text[:300]}")
-    context.user_data.clear()
-    return ConversationHandler.END
-
-
-# --- Super-admin: do'konni o'chirish (mavjud oqim) ---
-async def dokon_ochirish(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not _is_super(update.effective_user.id):
-        await _back_to_menu(update, "⛔️ Do'kon o'chirish faqat super-admin uchun.")
-        return
-    stores = await api.my_stores(update.effective_user.id)
-    if not stores:
-        await update.message.reply_text("Do'konlar yo'q.")
-        return
-    rows = [
-        [
-            InlineKeyboardButton(
-                f"🗑 {s['nomi']} (ID {s['id']})",
-                callback_data=f"delstore_{s['id']}",
-            )
-        ]
-        for s in stores
-    ]
-    await update.message.reply_text(
-        "Qaysi do'konни o'chirmoqchisiz?\n"
-        "⚠️ Do'kon bilan birga uning BARCHA mahsulot va buyurtmalari o'chadi!",
-        reply_markup=InlineKeyboardMarkup(rows),
-    )
-
-
-async def dokon_ochirish_tanlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    store_id = int(query.data.replace("delstore_", ""))
-    kb = InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton(
-                    "✅ Ha, o'chirilsin", callback_data=f"delok_{store_id}"
-                ),
-                InlineKeyboardButton("❌ Bekor", callback_data="delcancel"),
-            ]
-        ]
-    )
-    await query.edit_message_text(
-        f"ID {store_id} do'konни butunlay o'chirishни tasdiqlaysizmi?\n"
-        "Bu amalni ORTGA QAYTARIB BO'LMAYDI.",
-        reply_markup=kb,
-    )
-
-
-async def dokon_ochirish_tasdiq(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    store_id = int(query.data.replace("delok_", ""))
-    r = await api.delete_store(update.effective_user.id, store_id)
-    if r.status_code == 200:
-        d = r.json()
-        await query.edit_message_text(
-            f"🗑 '{d['nomi']}' do'koni butunlay o'chirildi."
-        )
-    elif r.status_code == 403:
-        await query.edit_message_text(
-            "⛔️ Faqat super-admin do'kon o'chira oladi."
-        )
-    else:
-        await query.edit_message_text(f"❌ Xatolik: {r.text[:300]}")
-
-
-async def dokon_ochirish_bekor(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text("Bekor qilindi — hech narsa o'chirilmadi.")
-
-
-# ---------------------------------------------------------------------------
 # 📍 Olib ketish punktlari (spec task_4)
 # ---------------------------------------------------------------------------
 async def pickup_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1888,31 +1641,6 @@ def build_application(token: str) -> Application:
         "search",
     )
 
-    # ➕ Yangi admin (super)
-    newadmin_conv = _conv(
-        [MessageHandler(filters.Regex(f"^{BTN_NEWADMIN}$"), newadmin_start)],
-        {
-            NA_ID: [
-                CallbackQueryHandler(newadmin_store, pattern="^nastore_"),
-                MessageHandler(TXT, newadmin_id),
-            ]
-        },
-        "new_admin",
-    )
-
-    # 🏪 Yangi do'kon (faqat super) — nom + admin ID so'raydi
-    store_conv = _conv(
-        [
-            MessageHandler(filters.Regex(f"^{BTN_NEWSTORE}$"), yangi_dokon),
-            CommandHandler("yangi_dokon", yangi_dokon),
-        ],
-        {
-            S_NOMI: [MessageHandler(TXT, s_nomi)],
-            S_ADMIN_ID: [MessageHandler(TXT, s_admin_id)],
-        },
-        "super_store",
-    )
-
     # ❌ Buyurtmani bekor qilish (sabab bilan)
     reject_conv = _conv(
         [CallbackQueryHandler(order_reject_start, pattern="^rad_")],
@@ -1963,8 +1691,6 @@ def build_application(token: str) -> Application:
     app.add_handler(edit_conv)
     app.add_handler(promo_conv)
     app.add_handler(search_conv)
-    app.add_handler(newadmin_conv)
-    app.add_handler(store_conv)
     app.add_handler(reject_conv)
     app.add_handler(pickup_conv)
     app.add_handler(withdraw_conv)
@@ -1986,11 +1712,6 @@ def build_application(token: str) -> Application:
     app.add_handler(CommandHandler("mahsulotlar", mahsulotlar))
     app.add_handler(CommandHandler("tasdiqlash", tasdiqlash))
     app.add_handler(CommandHandler("top_tovarlar", top_tovarlar))
-    # 🗑 Do'kon o'chirish (faqat super-admin)
-    app.add_handler(
-        MessageHandler(filters.Regex(f"^{BTN_DELSTORE}$"), dokon_ochirish)
-    )
-    app.add_handler(CommandHandler("dokon_ochirish", dokon_ochirish))
 
     # Inline callbacklar
     app.add_handler(CallbackQueryHandler(order_accept, pattern="^qabul_"))
@@ -2001,13 +1722,4 @@ def build_application(token: str) -> Application:
     app.add_handler(CallbackQueryHandler(del_confirm, pattern="^pdelok_"))
     app.add_handler(CallbackQueryHandler(del_confirm, pattern="^pdelno$"))
     app.add_handler(CallbackQueryHandler(mahfiy_kod_refresh, pattern="^refresh_"))
-    app.add_handler(
-        CallbackQueryHandler(dokon_ochirish_tanlash, pattern="^delstore_")
-    )
-    app.add_handler(
-        CallbackQueryHandler(dokon_ochirish_tasdiq, pattern="^delok_")
-    )
-    app.add_handler(
-        CallbackQueryHandler(dokon_ochirish_bekor, pattern="^delcancel$")
-    )
     return app

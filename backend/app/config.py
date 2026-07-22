@@ -23,10 +23,24 @@ class Settings(BaseSettings):
     boshqaruv_bot_token: str = ""
     # Moliya Boti — faqat super-admin (ACOM coin so'rovlarини tasdiqlaydi).
     moliya_bot_token: str = ""
+    # Menejer Boti — faqat menejer(lar) (do'kon/admin/arenda boshqaruvi).
+    menejer_bot_token: str = ""
+    # Menejer Telegram ID'lari (vergul bilan). Faqat ular Menejer botга kiradi.
+    menejer_ids: str = ""
     # Boshqaruv (admin) boti username — do'kon ochilgach havola yuboriladi.
     admin_bot_username: str = "arzononlineadmin_bot"
     # Do'kon ochish narxi: har 10 mahsulot uchun (som). 10 dona = 100 som.
     dokon_ontalik_narxi: int = 100
+    # Arenda muddati tugashiga necha kun qolganda ogohlantirish yuboriladi.
+    arenda_ogohlantirish_kunlar: int = 2
+
+    @property
+    def menejer_id_list(self) -> List[int]:
+        return [
+            int(x.strip())
+            for x in self.menejer_ids.split(",")
+            if x.strip().isdigit()
+        ]
 
     # --- Telegram Mini App / initData tekshiruvi ---
     # initData HMAC imzosi Savdo Boti tokeni asosida tekshiriladi.
