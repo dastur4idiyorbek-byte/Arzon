@@ -64,6 +64,10 @@ class Settings(BaseSettings):
     # Buyurtma kodi amal qilish muddati (kun).
     order_code_ttl_days: int = 14
 
+    # Yetkazib berish bazaviy narxi (som, KGS). Hozircha qat'iy 100 som;
+    # keyinchalik manzil/masofaga qarab hisoblanadi (hisobla_yetkazish_narxi).
+    yetkazish_baza_narxi: int = 100
+
     # Mini App'ni jonli backend'ga ulash uchun CORS.
     cors_origins: str = "*"
 

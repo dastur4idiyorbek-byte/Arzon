@@ -279,7 +279,7 @@ def test_rule8_phone_required_and_rule10_split_orders():
     # Har bir buyurtmada alohida 6 xonali kod (phase 3.1).
     codes = {o["kod"] for o in orders}
     assert len(codes) == 2
-    assert all(len(c) == 6 and c.isdigit() for c in codes)
+    assert all(len(c) == 6 and c.isalnum() for c in codes)
     store_ids = {o["store_id"] for o in orders}
     assert store_ids == {store_a["store_id"], store_b["store_id"]}
 
@@ -438,7 +438,7 @@ def test_spec_discount_price_applied():
         json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Uy 1"},
     )
     assert r.status_code == 200, r.text
-    assert r.json()["buyurtmalar"][0]["jami_narx"] == 2560.0
+    assert r.json()["buyurtmalar"][0]["jami_narx"] == 2660.0  # 2560 + 100 yetkazish
 
 
 def test_spec_expired_discount_ignored():
@@ -844,7 +844,7 @@ def test_coin_purchase_settlement():
     )
     assert r.status_code == 200, r.text
     # Mijozdan to'liq 1000 yechildi.
-    assert get_balance(40001) == 4000.0
+    assert get_balance(40001) == 3900.0  # 5000 - (1000 + 100 yetkazish)
 
     # Admin (do'kon) balansi 950 (1000 - 5%).
     from app.database import SessionLocal
@@ -897,7 +897,7 @@ def test_coin_refund_on_cancel():
         "/api/checkout", headers=cust,
         json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Bishkek 1"},
     ).json()["buyurtmalar"][0]
-    assert get_balance(40003) == 3000.0  # 5000 - 2000
+    assert get_balance(40003) == 2900.0  # 5000 - (2000 + 100 yetkazish)
 
     from app.database import SessionLocal
     from app.models import Store
@@ -1203,3 +1203,102 @@ def test_topup_single_method_autoselect():
                              "qiymat": "+996700123456", "egasi": "Ali"}).json()
     active = client.get("/api/tolov-usullari", headers=customer_headers(70003)).json()
     assert len(active) == 1 and active[0]["id"] == only["id"]
+
+
+def test_delivery_fee_courier_vs_pickup():
+    """Yetkazish narxi: kuryer +100 som, punktdan olish 0."""
+    store_a, _ = setup_two_stores()
+    p = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/products",
+        headers=admin_headers(ADMIN_A),
+        json={"nomi": "Yetk narx tovar", "narxi": 1000, "korinish": "ommaviy"},
+    ).json()
+    pp = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/pickup-points",
+        headers=admin_headers(ADMIN_A),
+        json={"nomi": "F1", "manzil": "Bishkek 7"},
+    ).json()
+    cust = customer_headers(80001)
+    client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700800001"})
+    give_balance(80001, 10000)
+
+    # Kuryer -> jami = 1000 + 100 yetkazish.
+    r1 = client.post("/api/checkout", headers=cust,
+                     json={"items": [{"product_id": p["id"], "soni": 1}],
+                           "manzil": "Bishkek, Chuy 1",
+                           "lokatsiya_lat": 42.87, "lokatsiya_lng": 74.59})
+    o1 = r1.json()["buyurtmalar"][0]
+    assert o1["jami_narx"] == 1100.0
+    assert o1["yetkazish_narxi"] == 100.0
+    assert o1["lokatsiya_lat"] == 42.87
+
+    # Punktdan olish -> yetkazish 0.
+    r2 = client.post("/api/checkout", headers=cust,
+                     json={"items": [{"product_id": p["id"], "soni": 1}],
+                           "yetkazish_turi": "pickup",
+                           "pickup_points": {str(store_a["store_id"]): pp["id"]}})
+    o2 = r2.json()["buyurtmalar"][0]
+    assert o2["jami_narx"] == 1000.0
+    assert (o2["yetkazish_narxi"] or 0) == 0.0
+
+
+def test_order_status_progression():
+    """Admin holatni yangi->tayyorlanmoqda->yolda->topshirildi o'tkazadi (rule 7)."""
+    store_a, _ = setup_two_stores()
+    p = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/products",
+        headers=admin_headers(ADMIN_A),
+        json={"nomi": "Holat tovar", "narxi": 500, "korinish": "ommaviy"},
+    ).json()
+    cust = customer_headers(80002)
+    client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700800002"})
+    give_balance(80002, 5000)
+    order = client.post("/api/checkout", headers=cust,
+                        json={"items": [{"product_id": p["id"], "soni": 1}],
+                              "manzil": "Bishkek 1"}).json()["buyurtmalar"][0]
+    oid = order["id"]
+
+    # Qabul (yangi -> tayyorlanmoqda).
+    client.post(f"/api/admin/orders/{oid}/accept", headers=admin_headers(ADMIN_A))
+
+    # Boshqa admin holatni o'zgartira olmaydi (rule 7).
+    forb = client.patch(f"/api/admin/orders/{oid}/status",
+                        headers=admin_headers(ADMIN_B), json={"holat": "yolda"})
+    assert forb.status_code == 403, forb.text
+
+    # O'z admini: tayyorlanmoqda -> yolda -> topshirildi.
+    r1 = client.patch(f"/api/admin/orders/{oid}/status",
+                     headers=admin_headers(ADMIN_A), json={"holat": "yolda"})
+    assert r1.status_code == 200 and r1.json()["holat"] == "yolda", r1.text
+    r2 = client.patch(f"/api/admin/orders/{oid}/status",
+                     headers=admin_headers(ADMIN_A), json={"holat": "topshirildi"})
+    assert r2.status_code == 200 and r2.json()["holat"] == "topshirildi"
+
+    # Noto'g'ri o'tish rad etiladi (topshirildi -> yolda).
+    bad = client.patch(f"/api/admin/orders/{oid}/status",
+                      headers=admin_headers(ADMIN_A), json={"holat": "yolda"})
+    assert bad.status_code == 400, bad.text
+
+
+def test_order_code_alphanumeric():
+    """Buyurtma kodi harf+raqam aralash, 6 belgi, katta harflar."""
+    store_a, _ = setup_two_stores()
+    p = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/products",
+        headers=admin_headers(ADMIN_A),
+        json={"nomi": "Kod tovar", "narxi": 300, "korinish": "ommaviy"},
+    ).json()
+    cust = customer_headers(80003)
+    client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700800003"})
+    give_balance(80003, 5000)
+    kod = client.post("/api/checkout", headers=cust,
+                      json={"items": [{"product_id": p["id"], "soni": 1}],
+                            "manzil": "Bishkek 1"}).json()["buyurtmalar"][0]["kod"]
+    assert len(kod) == 6
+    assert kod == kod.upper()
+    assert any(c.isalpha() for c in kod) and any(c.isdigit() for c in kod)
+
+    # Kichik harf bilan qidirilса ham topiladi (case-insensitive).
+    r = client.get(f"/api/admin/stores/{store_a['store_id']}/orders/search",
+                   headers=admin_headers(ADMIN_A), params={"q": kod.lower()})
+    assert r.status_code == 200 and len(r.json()) == 1

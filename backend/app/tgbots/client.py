@@ -234,6 +234,16 @@ class BotApi:
             json={"sabab": sabab},
         )
 
+    async def change_status(
+        self, admin_id: int, order_id: int, holat: str
+    ) -> httpx.Response:
+        return await self._request(
+            "PATCH",
+            f"/api/admin/orders/{order_id}/status",
+            headers=self._admin(admin_id),
+            json={"holat": holat},
+        )
+
     async def search_orders(
         self, admin_id: int, store_id: int, q: str
     ) -> httpx.Response:

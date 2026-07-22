@@ -190,6 +190,14 @@ class StatusChange(BaseModel):
     holat: str
 
 
+# Holat o'zgarganда mijozга yuboriladigan chiroyli xabar (mijoz tomoni).
+_HOLAT_XABAR = {
+    "tayyorlanmoqda": "👨‍🍳 Buyurtmangiz *{kod}* qabul qilindi va tayyorlanmoqda!",
+    "yolda": "🚚 Buyurtmangiz *{kod}* yo'lga chiqdi! Tez orada yetkazamiz.",
+    "topshirildi": "✅ Buyurtmangiz *{kod}* topshirildi. Xaridingiz uchun rahmat! 🎉",
+}
+
+
 @router.patch("/orders/{order_id}/status", response_model=OrderOut)
 def change_status(
     order_id: int,
@@ -204,6 +212,20 @@ def change_status(
     order = order_service.change_order_status(
         db, order, payload.holat, admin_id
     )
+    # Mijozга holat o'zgargani haqida xabar (chiroyli, tushunarli).
+    xabar = _HOLAT_XABAR.get(order.holat)
+    if xabar:
+        try:
+            from ..models import User as _User
+            from ..tgbots import notify
+
+            u = db.get(_User, order.user_id)
+            if u:
+                notify.notify_customer(
+                    u.telegram_id, xabar.format(kod=order.kod)
+                )
+        except ImportError:
+            pass
     return OrderOut.model_validate(order)
 
 
@@ -282,7 +304,7 @@ def search_orders(
         .where(
             Order.store_id == store_id,
             (
-                (Order.kod == q)
+                (Order.kod == q.upper())
                 | _User.tel.ilike(f"%{q}%")
                 | _User.ism.ilike(f"%{q}%")
             ),
@@ -323,13 +345,14 @@ def confirm_code(
 
     Avval kodga tegishli buyurtma topiladi, keyin do'kon ruxsati tekshiriladi.
     """
-    order = db.scalar(select(Order).where(Order.kod == payload.kod))
+    kod_norm = (payload.kod or "").strip().upper()
+    order = db.scalar(select(Order).where(Order.kod == kod_norm))
     if order is None:
         raise HTTPException(
             status_code=404, detail="Bunday kodli buyurtma topilmadi."
         )
     check_store_access(admin_id, order.store_id, db)  # rule 7
-    order = order_service.confirm_order_code(db, payload.kod, admin_id)
+    order = order_service.confirm_order_code(db, kod_norm, admin_id)
     return OrderOut.model_validate(order)
 
 

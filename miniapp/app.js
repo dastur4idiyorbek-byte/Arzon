@@ -28,6 +28,8 @@ let currentProduct = null; // batafsil sahifadagi mahsulot
 let selOlcham = null;      // batafsil sahifada tanlangan o'lcham
 let selRang = null;        // tanlangan rang
 let buyNow = null;         // Buy Now holati: {product, olcham, rang, promo, ...}
+const DELIVERY_FEE = 100;  // Yetkazish narxi (som) — backend bilan mos (hozircha 100)
+let cartLocation = null;   // Savat checkout uchun yuborilgan joylashuv {lat, lng}
 
 async function api(path, { method = "GET", body } = {}) {
   const res = await fetch(API + path, {
@@ -429,7 +431,8 @@ function renderCart() {
   });
   empty.hidden = keys.length > 0;
   summary.hidden = keys.length === 0;
-  document.getElementById("cart-total").textContent = money(total);
+  cartSubtotal = total;
+  updateCartSummary();
   // task_5: savat belgisi — real vaqtda son.
   const badge = document.getElementById("cart-badge");
   badge.textContent = count;
@@ -437,6 +440,24 @@ function renderCart() {
   // Saqlangan manzilni taklif qilamiz.
   const manzilInput = document.getElementById("manzil");
   if (!manzilInput.value) manzilInput.value = savedManzil();
+}
+
+let cartSubtotal = 0;
+
+function currentDeliveryFee() {
+  // Yetkazish narxi faqat kuryerда (punktdan olish bepul).
+  return deliveryType === "kuryer" && cartSubtotal > 0 ? DELIVERY_FEE : 0;
+}
+
+function updateCartSummary() {
+  const fee = currentDeliveryFee();
+  const sub = document.getElementById("cart-subtotal");
+  const feeRow = document.getElementById("deliv-fee-row");
+  const feeEl = document.getElementById("cart-fee");
+  if (sub) sub.textContent = money(cartSubtotal) + " som";
+  if (feeEl) feeEl.textContent = money(fee) + " som";
+  if (feeRow) feeRow.style.display = fee > 0 ? "flex" : "none";
+  document.getElementById("cart-total").textContent = money(cartSubtotal + fee);
 }
 
 function changeQty(key, d) {
@@ -462,7 +483,31 @@ function setDelivery(type) {
   const pc = document.getElementById("pickup-container");
   pc.style.display = type === "pickup" ? "block" : "none";
   if (type === "pickup") loadPickupPoints();
+  updateCartSummary(); // yetkazish narxi turга qarab o'zgaradi
 }
+
+/* ---------- Joylashuv (lokatsiya) yuborish ---------- */
+function captureLocation(onOk) {
+  if (!navigator.geolocation) {
+    notify("Qurilmangiz joylashuvni qo'llab-quvvatlamaydi.");
+    return;
+  }
+  notify("📍 Joylashuvга ruxsat bering...");
+  navigator.geolocation.getCurrentPosition(
+    (pos) => onOk({ lat: +pos.coords.latitude.toFixed(7), lng: +pos.coords.longitude.toFixed(7) }),
+    () => notify("Joylashuv olinmadi. Ruxsat berilganini tekshiring."),
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+}
+
+document.getElementById("btn-location").onclick = () => {
+  captureLocation((loc) => {
+    cartLocation = loc;
+    const el = document.getElementById("loc-status");
+    el.hidden = false;
+    el.textContent = "✅ Joylashuv qo'shildi";
+  });
+};
 
 async function fetchPickupPoints(storeIds) {
   const { ok, data } = await api("/api/pickup-points?store_ids=" + storeIds.join(","));
@@ -522,11 +567,14 @@ document.getElementById("btn-checkout").onclick = async () => {
     body.pickup_points = {};
     storeIds.forEach((sid) => { body.pickup_points[sid] = pickupChoice[sid]; });
   }
+  if (cartLocation) { body.lokatsiya_lat = cartLocation.lat; body.lokatsiya_lng = cartLocation.lng; }
 
   const neededTotal = Object.values(cart).reduce(
-    (s, c) => s + effPrice(c.product) * c.soni, 0);
+    (s, c) => s + effPrice(c.product) * c.soni, 0) + currentDeliveryFee();
   await submitCheckout(body, () => {
     Object.keys(cart).forEach((k) => delete cart[k]);
+    cartLocation = null;
+    document.getElementById("loc-status").hidden = true;
     renderCart();
   }, neededTotal);
 };
@@ -614,6 +662,8 @@ function renderBuyStep(step) {
              value="${esc(buyNow.manzil || "")}"
              style="display:${buyNow.deliv === "kuryer" ? "block" : "none"}" />
       <div id="bn-pp" style="display:${buyNow.deliv === "pickup" ? "block" : "none"}"></div>
+      <button id="bn-loc" class="loc-btn" type="button">📍 Joylashuvni yuborish</button>
+      <div id="bn-loc-status" class="loc-status" ${buyNow.location ? "" : "hidden"}>✅ Joylashuv qo'shildi</div>
       <div class="row2">
         <button id="bn-back" class="ghost">← Orqaga</button>
         <button id="bn-next" class="primary">Davom etish →</button>
@@ -629,6 +679,11 @@ function renderBuyStep(step) {
     };
     box.querySelector("#bn-kuryer").onclick = () => setDeliv("kuryer");
     box.querySelector("#bn-pickup").onclick = () => setDeliv("pickup");
+    box.querySelector("#bn-loc").onclick = () => captureLocation((loc) => {
+      buyNow.location = loc;
+      const el = box.querySelector("#bn-loc-status");
+      el.hidden = false;
+    });
     if (buyNow.deliv === "pickup") loadBuyNowPoints();
 
     box.querySelector("#bn-back").onclick = () => renderBuyStep(1);
@@ -648,7 +703,9 @@ function renderBuyStep(step) {
 
   // 3-qadam: yakuniy tasdiqlash.
   const sotuv = effPrice(p);
-  const jami = sotuv * buyNow.soni;
+  const mahsulotJami = sotuv * buyNow.soni;
+  const fee = buyNow.deliv === "kuryer" ? DELIVERY_FEE : 0;
+  const jami = mahsulotJami + fee;
   const yetk = buyNow.deliv === "kuryer"
     ? `🚗 Kuryer — ${esc(buyNow.manzil)}`
     : `🏬 Punktdan olib ketish — ${esc(buyNow.ppNomi || "")}`;
@@ -657,10 +714,12 @@ function renderBuyStep(step) {
     <div class="bn-summary">
       <div class="bn-row"><span>Soni:</span><b>${buyNow.soni} dona</b></div>
       ${variant ? `<div class="bn-row"><span>Variant:</span><b>${esc(variant)}</b></div>` : ""}
-      <div class="bn-row"><span>Narx:</span><b>${money(sotuv)} som</b></div>
+      <div class="bn-row"><span>Mahsulotlar:</span><b>${money(mahsulotJami)} som</b></div>
       ${p.skidka_foizi > 0 ? `<div class="bn-row"><span>Chegirma:</span><b>-${p.skidka_foizi}%</b></div>` : ""}
       ${buyNow.promo ? `<div class="bn-row"><span>Promo:</span><b>${esc(buyNow.promo)} (tekshiriladi)</b></div>` : ""}
-      <div class="bn-row"><span>Yetkazish:</span><b>${yetk}</b></div>
+      <div class="bn-row"><span>Yetkazish turi:</span><b>${yetk}</b></div>
+      ${fee > 0 ? `<div class="bn-row"><span>🚚 Yetkazish narxi:</span><b>${money(fee)} som</b></div>` : ""}
+      ${buyNow.location ? `<div class="bn-row"><span>📍 Joylashuv:</span><b>qo'shildi</b></div>` : ""}
       <div class="bn-row total"><span>Jami:</span><b>${money(jami)} som</b></div>
     </div>
     <div class="row2">
@@ -679,7 +738,8 @@ function renderBuyStep(step) {
     };
     if (buyNow.deliv === "kuryer") body.manzil = buyNow.manzil;
     else body.pickup_points = { [p.store_id]: buyNow.ppid };
-    await submitCheckout(body, () => { buyNow = null; }, sotuv * buyNow.soni);
+    if (buyNow.location) { body.lokatsiya_lat = buyNow.location.lat; body.lokatsiya_lng = buyNow.location.lng; }
+    await submitCheckout(body, () => { buyNow = null; }, jami);
   };
 }
 
@@ -707,6 +767,14 @@ async function loadBuyNowPoints() {
 }
 
 /* ---------- Buyurtmalar ---------- */
+const HOLAT_INFO = {
+  yangi: { emoji: "🆕", matn: "Yangi", cls: "st-new" },
+  tayyorlanmoqda: { emoji: "👨‍🍳", matn: "Tayyorlanmoqda", cls: "st-prep" },
+  yolda: { emoji: "🚚", matn: "Yo'lda", cls: "st-way" },
+  topshirildi: { emoji: "✅", matn: "Topshirildi", cls: "st-done" },
+  bekor_qilindi: { emoji: "❌", matn: "Bekor qilindi", cls: "st-cancel" },
+};
+
 async function loadOrders() {
   const { ok, data } = await api("/api/orders");
   const box = document.getElementById("orders");
@@ -715,12 +783,23 @@ async function loadOrders() {
   if (!ok || !data || data.length === 0) { empty.hidden = false; return; }
   empty.hidden = true;
   data.forEach((o) => {
+    const st = HOLAT_INFO[o.holat] || { emoji: "•", matn: o.holat, cls: "" };
+    const yetk = o.yetkazish_turi === "kuryer" ? "🚚 Kuryer" : "🏬 Punktdan olish";
+    const feeRow = o.yetkazish_narxi
+      ? `<div class="oc-row"><span>Yetkazish</span><span>${money(o.yetkazish_narxi)} som</span></div>` : "";
     const el = document.createElement("div");
     el.className = "order-card";
     el.innerHTML = `
-      <div class="code">${esc(o.kod)}</div>
-      <div>${money(o.jami_narx)} som</div>
-      <div class="status">Holat: ${esc(o.holat)}</div>`;
+      <div class="oc-head">
+        <span class="oc-label">Buyurtma kodi</span>
+        <span class="status-badge ${st.cls}">${st.emoji} ${st.matn}</span>
+      </div>
+      <div class="oc-code">${esc(o.kod)}</div>
+      <div class="oc-rows">
+        <div class="oc-row"><span>${yetk}</span><span></span></div>
+        ${feeRow}
+        <div class="oc-row oc-total"><span>Jami</span><span>${money(o.jami_narx)} som</span></div>
+      </div>`;
     box.appendChild(el);
   });
 }

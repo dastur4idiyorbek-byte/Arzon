@@ -63,6 +63,8 @@ def checkout(
         yetkazish_turi=payload.yetkazish_turi,
         manzil=payload.manzil,
         pickup_points=payload.pickup_points,
+        lokatsiya_lat=payload.lokatsiya_lat,
+        lokatsiya_lng=payload.lokatsiya_lng,
     )
 
     # Referal: birinchi xaridni belgilash (phase 4.4).
@@ -85,6 +87,14 @@ def checkout(
                 )
             else:
                 yetk = f"🚚 Kuryer: {o.manzil or '-'}"
+                if o.yetkazish_narxi:
+                    yetk += f"\n💵 Yetkazish narxi: {float(o.yetkazish_narxi):,.0f} som"
+            # Lokatsiya bo'lsa — xaritaga havola (admin ochib ko'radi).
+            if o.lokatsiya_lat is not None and o.lokatsiya_lng is not None:
+                yetk += (
+                    f"\n📍 Joylashuv: https://maps.google.com/?q="
+                    f"{o.lokatsiya_lat},{o.lokatsiya_lng}"
+                )
             notify.notify_new_order(
                 admin_ids=list(store.admin_ids or []) if store else [],
                 order_id=o.id,

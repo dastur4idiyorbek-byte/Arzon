@@ -36,14 +36,30 @@ ORDER_TRANSITIONS: Dict[str, List[str]] = {
 }
 
 
-def generate_order_code(db: Session, *, max_tries: int = 50) -> str:
-    """Takrorlanmaydigan 6 xonali kod generatsiya qiladi (phase 3.1).
+# Buyurtma kodi belgilari — harf + raqam aralash. Chalkash belgilar
+# (O/0, I/1) olib tashlangan, o'qish oson bo'lishi uchun.
+_KOD_HARFLAR = "ABCDEFGHJKLMNPQRSTUVWXYZ"
+_KOD_RAQAMLAR = "23456789"
+_KOD_BELGILAR = _KOD_HARFLAR + _KOD_RAQAMLAR
 
-    secrets moduli — kriptografik jihatdan xavfsiz. Bazada UNIQUE cheklovi
-    bor, ammo poyga holatini kamaytirish uchun oldindan tekshiramiz.
+
+def generate_order_code(db: Session, *, max_tries: int = 50) -> str:
+    """Takrorlanmaydigan 6 belgili kod (harf+raqam aralash).
+
+    Harflar va raqamlar aralashtiriladi (kamida bittadan). Bazada UNIQUE
+    cheklovi bor, ammo poyga holatini kamaytirish uchun oldindan tekshiramiz.
     """
     for _ in range(max_tries):
-        kod = f"{secrets.randbelow(1_000_000):06d}"
+        # Kamida 1 harf + 1 raqam kafolatlanadi, qolgani aralash.
+        belgilar = [
+            secrets.choice(_KOD_HARFLAR),
+            secrets.choice(_KOD_RAQAMLAR),
+        ] + [secrets.choice(_KOD_BELGILAR) for _ in range(4)]
+        # Aralashtiramiz (harf/raqam pozitsiyasi tasodifiy bo'lsin).
+        for i in range(len(belgilar) - 1, 0, -1):
+            j = secrets.randbelow(i + 1)
+            belgilar[i], belgilar[j] = belgilar[j], belgilar[i]
+        kod = "".join(belgilar)
         exists = db.scalar(select(Order.id).where(Order.kod == kod))
         if not exists:
             return kod
@@ -51,6 +67,20 @@ def generate_order_code(db: Session, *, max_tries: int = 50) -> str:
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         detail="Buyurtma kodi generatsiya qilib bo'lmadi, qayta urinib ko'ring.",
     )
+
+
+def hisobla_yetkazish_narxi(
+    manzil: str | None = None,
+    lat: float | None = None,
+    lng: float | None = None,
+) -> Decimal:
+    """Yetkazib berish narxini hisoblaydi (som).
+
+    Hozircha qat'iy bazaviy narx (settings.yetkazish_baza_narxi = 100 som).
+    Keyinchalik bu yerда manzil/lokatsiyaga (masofaga) qarab hisoblanadi —
+    interfeys shu funksiya orqali tayyor turibdi, faqat mantiq almashtiriladi.
+    """
+    return Decimal(str(settings.yetkazish_baza_narxi))
 
 
 def create_orders_from_cart(
@@ -62,6 +92,8 @@ def create_orders_from_cart(
     yetkazish_turi: str = "kuryer",
     manzil: str | None = None,
     pickup_points: dict | None = None,
+    lokatsiya_lat: float | None = None,
+    lokatsiya_lng: float | None = None,
 ) -> List[Order]:
     """Savatdan buyurtma(lar) yaratadi — do'kon bo'yicha guruhlab (rule 10).
 
@@ -180,11 +212,18 @@ def create_orders_from_cart(
                 )
             order_pickup_id = pp.id
 
+        # Yetkazib berish narxi — faqat kuryer uchun (punktdan olish bepul).
+        yetkazish = (
+            hisobla_yetkazish_narxi(manzil, lokatsiya_lat, lokatsiya_lng)
+            if yetkazish_turi == "kuryer"
+            else Decimal("0")
+        )
         order = Order(
             store_id=store_id,
             user_id=user.id,
             mahsulotlar=mahsulotlar_json,
-            jami_narx=float(jami),
+            # Jami = mahsulotlar + yetkazib berish narxi.
+            jami_narx=float(jami + yetkazish),
             holat="yangi",
             kod=generate_order_code(db),
             amal_qilish_muddati=_now()
@@ -192,6 +231,9 @@ def create_orders_from_cart(
             yetkazish_turi=yetkazish_turi,
             manzil=manzil.strip() if (yetkazish_turi == "kuryer" and manzil) else None,
             pickup_point_id=order_pickup_id,
+            yetkazish_narxi=float(yetkazish),
+            lokatsiya_lat=lokatsiya_lat,
+            lokatsiya_lng=lokatsiya_lng,
         )
         db.add(order)
         orders.append(order)
@@ -211,9 +253,14 @@ def create_orders_from_cart(
             ),
         )
     # Rule 4: har buyurtma uchun darhol hisob-kitob (yechish + komissiya + admin).
+    # Komissiya faqat mahsulot narxidan olinadi; yetkazish narxi platformaники.
     for o in orders:
         store = db.get(Store, o.store_id)
-        coin_service.settle_purchase(db, user, store, o.jami_narx, o.id)
+        yetk = coin_service._dec(o.yetkazish_narxi)
+        mahsulot_base = coin_service._dec(o.jami_narx) - yetk
+        coin_service.settle_purchase(
+            db, user, store, mahsulot_base, o.id, yetkazish=yetk
+        )
 
     db.commit()
     for o in orders:
@@ -318,7 +365,11 @@ def cancel_order(
     user = db.get(User, order.user_id)
     store = db.get(Store, order.store_id)
     if user and store:
-        coin_service.refund_purchase(db, user, store, order.jami_narx, order.id)
+        yetk = coin_service._dec(order.yetkazish_narxi)
+        mahsulot_base = coin_service._dec(order.jami_narx) - yetk
+        coin_service.refund_purchase(
+            db, user, store, mahsulot_base, order.id, yetkazish=yetk
+        )
 
     db.commit()
     db.refresh(order)
@@ -333,6 +384,7 @@ def confirm_order_code(db: Session, kod: str, admin_id: int) -> Order:
 
     Kim va qachon tasdiqlagani saqlanadi. Muddati o'tган kod rad etiladi.
     """
+    kod = (kod or "").strip().upper()
     order = db.scalar(select(Order).where(Order.kod == kod))
     if order is None:
         raise HTTPException(

@@ -945,8 +945,11 @@ async def order_accept(update: Update, context: ContextTypes.DEFAULT_TYPE):
     vaqt = datetime.now(ZoneInfo(daily.LOCAL_TZ)).strftime("%H:%M")
     ism = update.effective_user.first_name or "admin"
     original = query.message.text or ""
+    # Qabul qilingach — keyingi qadam (🚚 Yo'lga chiqdi) tugmasi.
+    keyingi_kb = _order_status_kb(d.get("order", {}))
     await query.edit_message_text(
-        f"{original}\n\n✅ Qabul qilindi — {ism}, {vaqt}"
+        f"{original}\n\n✅ Qabul qilindi — {ism}, {vaqt}",
+        reply_markup=keyingi_kb,
     )
     # Ombor ogohlantirishlari (task_2).
     for w in d.get("ogohlantirishlar", []):
@@ -1170,6 +1173,62 @@ async def mahsulotlar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
+# Holat yorliqlari (admin ko'radigan, chiroyli).
+HOLAT_LABEL = {
+    "yangi": "🆕 Yangi",
+    "tayyorlanmoqda": "👨‍🍳 Tayyorlanmoqda",
+    "yolda": "🚚 Yo'lda",
+    "topshirildi": "✅ Topshirildi",
+    "bekor_qilindi": "❌ Bekor qilindi",
+}
+# Holatдан keyingi tugma(lar): (yorliq, yangi_holat).
+HOLAT_KEYINGI = {
+    "yangi": [("✅ Qabul qilish", "_accept")],  # accept alohida (ombor kamayadi)
+    "tayyorlanmoqda": [("🚚 Yo'lga chiqdi", "yolda")],
+    "yolda": [("✅ Topshirildi", "topshirildi")],
+}
+
+
+def _order_status_kb(o: dict) -> InlineKeyboardMarkup | None:
+    holat = o.get("holat")
+    rows = []
+    for label, yangi in HOLAT_KEYINGI.get(holat, []):
+        if yangi == "_accept":
+            rows.append([InlineKeyboardButton(label, callback_data=f"qabul_{o['id']}")])
+        else:
+            rows.append(
+                [InlineKeyboardButton(label, callback_data=f"holat_{o['id']}_{yangi}")]
+            )
+    # Yakunlanmagan buyurtmaни bekor qilish mumkin.
+    if holat in ("yangi", "tayyorlanmoqda", "yolda"):
+        rows.append([InlineKeyboardButton("❌ Bekor qilish", callback_data=f"rad_{o['id']}")])
+    return InlineKeyboardMarkup(rows) if rows else None
+
+
+def _order_card(o: dict) -> str:
+    """Admin uchun buyurtma kartasi matni (kod kattaroq/aniq, chiroyli)."""
+    yetk = (
+        f"🚚 Kuryer" if o.get("yetkazish_turi") == "kuryer" else "🏬 Punktdan olish"
+    )
+    qatorlar = [
+        f"🧾 Buyurtma  #{o['id']}",
+        f"🔑 Kod:  <code>{o['kod']}</code>",
+        f"📦 Holat:  {HOLAT_LABEL.get(o['holat'], o['holat'])}",
+        f"💰 Jami:  <b>{o['jami_narx']:,.0f} som</b>",
+    ]
+    if o.get("yetkazish_narxi"):
+        qatorlar.append(f"💵 Yetkazish:  {float(o['yetkazish_narxi']):,.0f} som")
+    qatorlar.append(f"🚀 Turi:  {yetk}")
+    if o.get("manzil"):
+        qatorlar.append(f"📍 Manzil:  {o['manzil']}")
+    if o.get("lokatsiya_lat") is not None and o.get("lokatsiya_lng") is not None:
+        qatorlar.append(
+            f"🗺 Joylashuv:  https://maps.google.com/?q="
+            f"{o['lokatsiya_lat']},{o['lokatsiya_lng']}"
+        )
+    return "\n".join(qatorlar)
+
+
 async def buyurtmalar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     store_id = await _resolve_store(update, context)
     if store_id is None:
@@ -1182,13 +1241,46 @@ async def buyurtmalar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not orders:
         await update.message.reply_text("Buyurtmalar yo'q.")
         return
-    lines = ["🧾 *Buyurtmalar:*\n"]
+    await update.message.reply_text("🧾 So'nggi buyurtmalar:")
     for o in orders[:15]:
-        lines.append(
-            f"• #{o['id']} kod:`{o['kod']}` — {o['jami_narx']:,.0f} som — "
-            f"_{o['holat']}_"
+        await update.message.reply_text(
+            _order_card(o),
+            parse_mode="HTML",
+            reply_markup=_order_status_kb(o),
+            disable_web_page_preview=True,
         )
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
+async def order_status_advance(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Holatni keyingi bosqichga o'tkazadi (holat_<id>_<yangi_holat>)."""
+    query = update.callback_query
+    parts = query.data.split("_")  # ['holat', '<id>', '<holat>']
+    order_id = int(parts[1])
+    yangi = parts[2]
+    r = await api.change_status(update.effective_user.id, order_id, yangi)
+    if r.status_code == 403:
+        await query.answer("Bu buyurtma sizga tegishli emas.", show_alert=True)
+        return
+    if r.status_code != 200:
+        try:
+            detail = r.json().get("detail", "Xatolik")
+        except Exception:  # noqa: BLE001
+            detail = "Xatolik"
+        await query.answer(detail, show_alert=True)
+        return
+    await query.answer("Holat yangilandi ✅")
+    o = r.json()
+    # Kartani yangilaymiz (yangi holat + keyingi tugmalar). Mijozга xabar
+    # backend (change_status) tomonidan yuboriladi.
+    try:
+        await query.edit_message_text(
+            _order_card(o),
+            parse_mode="HTML",
+            reply_markup=_order_status_kb(o),
+            disable_web_page_preview=True,
+        )
+    except Exception:  # noqa: BLE001
+        pass
 
 
 async def tasdiqlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1863,6 +1955,9 @@ def build_application(token: str) -> Application:
 
     # Inline callbacklar
     app.add_handler(CallbackQueryHandler(order_accept, pattern="^qabul_"))
+    app.add_handler(
+        CallbackQueryHandler(order_status_advance, pattern=r"^holat_\d+_")
+    )
     app.add_handler(CallbackQueryHandler(del_pick, pattern="^pdel_\\d"))
     app.add_handler(CallbackQueryHandler(del_confirm, pattern="^pdelok_"))
     app.add_handler(CallbackQueryHandler(del_confirm, pattern="^pdelno$"))

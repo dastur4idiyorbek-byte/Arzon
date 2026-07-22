@@ -65,9 +65,15 @@
         </div>
         <input id="manzil" type="text" placeholder="Yetkazish manzili (ko'cha, uy...)" />
         <div id="pickup-container"></div>
+        <button id="btn-location" class="loc-btn" type="button">📍 Joylashuvni yuborish</button>
+        <div id="loc-status" class="loc-status" hidden></div>
       </div>
 
-      <div class="total">Jami: <span id="cart-total">0</span> som</div>
+      <div class="summary-box">
+        <div class="summary-row"><span>Mahsulotlar:</span><span id="cart-subtotal">0 som</span></div>
+        <div class="summary-row" id="deliv-fee-row"><span>🚚 Yetkazish:</span><span id="cart-fee">0 som</span></div>
+        <div class="summary-row total"><span>Jami:</span><span id="cart-total-box"><b id="cart-total">0</b> som</span></div>
+      </div>
       <button id="btn-checkout" class="primary">Buyurtma berish</button>
     </div>
   </main>

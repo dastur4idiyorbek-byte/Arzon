@@ -157,6 +157,17 @@ class Order(Base):
     yetkazish_turi: Mapped[str] = mapped_column(String(10), default="kuryer")
     # Kuryer uchun manzil matni.
     manzil: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # Yetkazib berish narxi (som). Manzilga qarab hisoblanadi (hozircha 100).
+    yetkazish_narxi: Mapped[float | None] = mapped_column(
+        Numeric(12, 2), nullable=True, default=0
+    )
+    # Mijoz yuborgan joylashuv (lokatsiya) — kuryer/punkt uchun.
+    lokatsiya_lat: Mapped[float | None] = mapped_column(
+        Numeric(10, 7), nullable=True
+    )
+    lokatsiya_lng: Mapped[float | None] = mapped_column(
+        Numeric(10, 7), nullable=True
+    )
     # Punktdan olish uchun tanlangan punkt.
     pickup_point_id: Mapped[int | None] = mapped_column(
         ForeignKey("pickup_points.id", ondelete="SET NULL"), nullable=True

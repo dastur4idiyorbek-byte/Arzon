@@ -39,6 +39,7 @@ T_PUL_YECHISH = "pul_yechish"
 T_QAYTARIB_OLISH = "qaytarib_olish"
 T_REFERAL_BONUS = "referal_bonus"
 T_SODIQLIK_BONUS = "sodiqlik_bonus"
+T_YETKAZISH = "yetkazish"  # yetkazib berish narxi (platforma daromadi)
 
 
 def _dec(x) -> Decimal:
@@ -91,30 +92,40 @@ def _record(
 # Xarid / bekor qilish — darhol hisob-kitob (rule 4, 5)
 # ---------------------------------------------------------------------------
 def settle_purchase(
-    db: Session, user: User, store: Store, narx, order_id: int
+    db: Session, user: User, store: Store, narx, order_id: int, yetkazish=0
 ) -> None:
     """Xarid darhol hisob-kitobi (rule 4). Commit chaqiruvchida.
 
-    Bitta amalда: mijozdan to'liq narx yechiladi, komissiya hisoblanadi,
-    adminга sof summa (narx - komissiya) qo'shiladi.
+    `narx` — mahsulotlar narxi (komissiya shundan olinadi). `yetkazish` —
+    yetkazib berish narxi (platformaники, adminга tushmaydi).
+
+    Bitta amalда: mijozdan to'liq (narx + yetkazish) yechiladi, komissiya
+    mahsulot narxidan hisoblanadi, adminга sof summa (narx - komissiya) qo'shiladi.
     """
     narx = _dec(narx)
-    user.coin_balans = balance(user) - narx
+    yetk = _dec(yetkazish)
+    user.coin_balans = balance(user) - (narx + yetk)
     store.kutilayotgan_balans = store_balance(store) + sof_summa(narx)
     _record(
         db, T_XARID, narx, user_id=user.id, store_id=store.id, order_id=order_id
     )
+    if yetk > 0:
+        _record(
+            db, T_YETKAZISH, yetk, user_id=user.id, store_id=store.id,
+            order_id=order_id,
+        )
 
 
 def refund_purchase(
-    db: Session, user: User, store: Store, narx, order_id: int
+    db: Session, user: User, store: Store, narx, order_id: int, yetkazish=0
 ) -> None:
     """Bekor qilishда darhol teskari amal (rule 5). Commit chaqiruvchida.
 
-    Mijozга to'liq narx qaytadi, admin balansidan sof summa ayiriladi.
+    Mijozга to'liq (narx + yetkazish) qaytadi, admin balansidan sof summa ayiriladi.
     """
     narx = _dec(narx)
-    user.coin_balans = balance(user) + narx
+    yetk = _dec(yetkazish)
+    user.coin_balans = balance(user) + (narx + yetk)
     store.kutilayotgan_balans = store_balance(store) - sof_summa(narx)
     _record(
         db, T_QAYTARISH, narx, user_id=user.id, store_id=store.id, order_id=order_id

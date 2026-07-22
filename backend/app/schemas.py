@@ -102,6 +102,9 @@ class CheckoutRequest(BaseModel):
     manzil: Optional[str] = None  # kuryer uchun
     # Punktdan olish: {store_id(str): pickup_point_id} — har do'kon uchun punkt.
     pickup_points: Optional[dict] = None
+    # Mijoz yuborgan joylashuv (lokatsiya) — ixtiyoriy.
+    lokatsiya_lat: Optional[float] = None
+    lokatsiya_lng: Optional[float] = None
 
 
 class OrderOut(BaseModel):
@@ -118,6 +121,9 @@ class OrderOut(BaseModel):
     yetkazish_turi: Optional[str] = "kuryer"
     manzil: Optional[str] = None
     pickup_point_id: Optional[int] = None
+    yetkazish_narxi: Optional[float] = 0
+    lokatsiya_lat: Optional[float] = None
+    lokatsiya_lng: Optional[float] = None
 
 
 class CheckoutResponse(BaseModel):
