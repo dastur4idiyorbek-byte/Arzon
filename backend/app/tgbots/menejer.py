@@ -34,10 +34,11 @@ BTN_SOROVLAR = "🏪 Do'kon so'rovlari"
 BTN_ADMINLAR = "👤 Adminlar"
 BTN_OCHIRISH = "🗑 Do'kon/mahsulot o'chirish"
 BTN_ARENDA = "💰 Arenda nazorati"
+BTN_XABAR = "📢 Xabar yuborish"
 BTN_REPORT = "📊 Hisobot"
 BTN_HOME = "🏠 Bosh menyu"
 
-MA_ARENDA, MD_SABAB, ADD_TID = range(3)
+MD_SABAB, ADD_TID, BC_CHOOSE, BC_TEXT = range(4)
 
 
 def _is_menejer(uid: int) -> bool:
@@ -57,7 +58,7 @@ def menu_markup() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [
             [KeyboardButton(BTN_SOROVLAR), KeyboardButton(BTN_ADMINLAR)],
-            [KeyboardButton(BTN_OCHIRISH)],
+            [KeyboardButton(BTN_OCHIRISH), KeyboardButton(BTN_XABAR)],
             [KeyboardButton(BTN_ARENDA), KeyboardButton(BTN_REPORT)],
         ],
         resize_keyboard=True,
@@ -436,6 +437,54 @@ async def report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(text)
 
 
+# ---------------------------------------------------------------------------
+# 📢 Xabar yuborish (adminlarга yoki mijozларга)
+# ---------------------------------------------------------------------------
+async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if not await _guard(update):
+        return ConversationHandler.END
+    kb = InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("👨‍💼 Adminlarga", callback_data="bc_admin")],
+            [InlineKeyboardButton("🛍 Mijozlarga", callback_data="bc_customer")],
+        ]
+    )
+    await update.message.reply_text(
+        "📢 Xabar kimga yuborilsin?", reply_markup=kb
+    )
+    return BC_CHOOSE
+
+
+async def broadcast_choose(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    target = query.data.replace("bc_", "")
+    context.user_data["bc_target"] = target
+    nomi = "adminlarga (Boshqaruv bot)" if target == "admin" else "mijozlarga (Savdo bot)"
+    await query.message.reply_text(
+        f"✍️ {nomi} yuboriladigan xabar matnini yozing:"
+    )
+    return BC_TEXT
+
+
+async def broadcast_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    target = context.user_data.pop("bc_target", None)
+    if not target:
+        return ConversationHandler.END
+    matn = update.message.text
+    await update.message.reply_text("⏳ Yuborilmoqda...")
+    r = await api.menejer_broadcast(update.effective_user.id, target, matn)
+    if r.status_code == 200:
+        d = r.json()
+        await update.message.reply_text(
+            f"✅ Xabar {d['yuborildi']} ta foydalanuvchiga yuborildi.",
+            reply_markup=menu_markup(),
+        )
+    else:
+        await update.message.reply_text(f"❌ {r.text[:200]}", reply_markup=menu_markup())
+    return ConversationHandler.END
+
+
 def build_application(token: str) -> Application:
     app = Application.builder().token(token).updater(None).build()
     TXT = filters.TEXT & ~filters.COMMAND
@@ -452,11 +501,21 @@ def build_application(token: str) -> Application:
         fallbacks=[CommandHandler("start", start)],
         name="menejer_addadmin", persistent=False,
     )
+    broadcast_conv = ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex(f"^{BTN_XABAR}$"), broadcast_start)],
+        states={
+            BC_CHOOSE: [CallbackQueryHandler(broadcast_choose, pattern="^bc_")],
+            BC_TEXT: [MessageHandler(TXT, broadcast_text)],
+        },
+        fallbacks=[CommandHandler("start", start)],
+        name="menejer_broadcast", persistent=False,
+    )
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_HOME}$"), start))
     app.add_handler(reject_conv)
     app.add_handler(addadmin_conv)
+    app.add_handler(broadcast_conv)
     # Do'kon tasdiqlash — to'g'ridan-to'g'ri (arenda avtomatik).
     app.add_handler(CallbackQueryHandler(approve_do, pattern="^md_ok_"))
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_SOROVLAR}$"), sorovlar))

@@ -372,3 +372,17 @@ async def send_customer(telegram_id: int | None, text: str) -> None:
         await _send_customer(telegram_id, text)
     except Exception as e:  # noqa: BLE001
         logger.warning("Mijozga xabar yuborilmadi: %s", e)
+
+
+async def _send_boshqaruv(chat_id: int, text: str) -> None:
+    app = registry.get("boshqaruv")
+    if app is None:
+        return
+    await app.bot.send_message(chat_id=chat_id, text=text)
+
+
+def notify_admin_plain(telegram_id: int | None, text: str) -> None:
+    """Adminга Boshqaruv Boti orqali oddiy xabar (e'lon uchun)."""
+    if not telegram_id:
+        return
+    _submit(_send_boshqaruv(telegram_id, text))

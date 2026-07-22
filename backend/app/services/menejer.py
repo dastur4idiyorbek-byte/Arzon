@@ -147,6 +147,20 @@ def set_arenda(db: Session, store_id: int, summa, muddat=None) -> Store:
     return store
 
 
+def admin_recipients(db: Session) -> list[int]:
+    """Barcha do'kon adminlarининг Telegram ID'lari (takrorsiz)."""
+    ids: set[int] = set()
+    for s in db.scalars(select(Store)):
+        for a in s.admin_ids or []:
+            ids.add(int(a))
+    return list(ids)
+
+
+def customer_recipients(db: Session) -> list[int]:
+    """Barcha mijozlarининг Telegram ID'lari."""
+    return [int(t) for t in db.scalars(select(User.telegram_id)) if t]
+
+
 def extend_arenda(db: Session, store_id: int, oy: int = 1) -> Store:
     """Arendani `oy` oyга uzaytiradi va do'konни blokdan chiqaradi.
 

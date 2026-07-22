@@ -1598,3 +1598,22 @@ def test_super_admin_cannot_upload_to_other_store():
                      headers=admin_headers(ADMIN_A),
                      json={"nomi": "To'g'ri", "narxi": 100, "korinish": "ommaviy"})
     assert ok.status_code == 200, ok.text
+
+
+def test_menejer_broadcast():
+    """Menejer e'lon yuboradi (adminlar / mijozlar) — faqat menejer."""
+    setup_two_stores()  # ADMIN_A, ADMIN_B adminlar
+    client.post("/api/bot/confirm-phone", headers=_bot_headers(96001),
+                json={"tel": "+996700960001"})
+    # Adminlarga e'lon.
+    ra = client.post("/api/menejer/broadcast", headers=admin_headers(MANAGER),
+                     json={"target": "admin", "matn": "Yangilik: tez orada aksiya!"})
+    assert ra.status_code == 200 and ra.json()["yuborildi"] >= 2, ra.text
+    # Mijozlarga e'lon.
+    rc = client.post("/api/menejer/broadcast", headers=admin_headers(MANAGER),
+                     json={"target": "customer", "matn": "Chegirmalar boshlandi!"})
+    assert rc.status_code == 200 and rc.json()["yuborildi"] >= 1, rc.text
+    # Oddiy admin e'lon yubora olmaydi.
+    forb = client.post("/api/menejer/broadcast", headers=admin_headers(ADMIN_A),
+                       json={"target": "admin", "matn": "x"})
+    assert forb.status_code == 403, forb.text

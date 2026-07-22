@@ -250,6 +250,42 @@ def arenda_uzaytir(
 
 
 # ---------------------------------------------------------------------------
+# 📢 E'lon / yangilik yuborish (adminlarга yoki mijozларга)
+# ---------------------------------------------------------------------------
+class BroadcastBody(BaseModel):
+    target: str  # 'admin' | 'customer'
+    matn: str = Field(min_length=1, max_length=4000)
+
+
+@router.post("/broadcast")
+def broadcast(
+    payload: BroadcastBody,
+    _: int = Depends(require_manager),
+    db: Session = Depends(get_db),
+):
+    """E'lonni barcha adminlarга (Boshqaruv boti) yoki mijozларга (Savdo boti)."""
+    if payload.target not in ("admin", "customer"):
+        raise HTTPException(status_code=400, detail="target 'admin' yoki 'customer'.")
+    if payload.target == "admin":
+        ids = menejer_service.admin_recipients(db)
+    else:
+        ids = menejer_service.customer_recipients(db)
+
+    matn = payload.matn
+    try:
+        from ..tgbots import notify
+
+        for tid in ids:
+            if payload.target == "admin":
+                notify.notify_admin_plain(tid, matn)
+            else:
+                notify.notify_customer(tid, matn)
+    except ImportError:
+        pass
+    return {"yuborildi": len(ids), "target": payload.target}
+
+
+# ---------------------------------------------------------------------------
 # Hisobot (Moliyadan — bir xil backend, ikki marta yozilmaydi)
 # ---------------------------------------------------------------------------
 @router.get("/report")

@@ -603,5 +603,11 @@ class BotApi:
         r = await self._request("GET", "/api/menejer/report", headers=self._admin(mid))
         return r.json() if r.status_code == 200 else {}
 
+    async def menejer_broadcast(self, mid: int, target: str, matn: str) -> httpx.Response:
+        return await self._request(
+            "POST", "/api/menejer/broadcast", headers=self._admin(mid),
+            json={"target": target, "matn": matn},
+        )
+
 
 api = BotApi()
