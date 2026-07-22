@@ -143,14 +143,14 @@ def check_store_access(admin_id: int, store_id: int, db: Session) -> Store:
             detail="Do'kon topilmadi.",
         )
 
-    if is_super_admin(admin_id):
-        return store
-
+    # DIQQAT (Menejer rule 1): super-admin ham oddiy admin kabi — faqat O'Z
+    # do'koniga (admin_ids ичида) kiradi. Boshqa do'konга mahsulot yuklolmaydi.
+    # Do'kon/admin moderatsiyasi Menejer botда (alohida ruxsat).
     admin_ids = store.admin_ids or []
     if admin_id not in admin_ids:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Bu do'konga ruxsatingiz yo'q.",
+            detail="Bu do'konga ruxsatingiz yo'q (faqat o'z do'koningiz).",
         )
     return store
 
@@ -217,12 +217,11 @@ def require_manager(
 
 
 def get_admin_store_ids(admin_id: int, db: Session) -> list[int]:
-    """Admin tegishli bo'lgan barcha store_id'lar.
+    """Admin tegishli bo'lgan store_id'lar (admin_ids ичида bo'lganlari).
 
-    Super-admin uchun — barcha do'konlar.
+    Menejer rule 1: super-adminга ham imtiyoz yo'q — u ham faqat o'z
+    do'konlarини ko'radi (Boshqaruv botда oddiy admin kabi).
     """
-    if is_super_admin(admin_id):
-        return list(db.scalars(select(Store.id)))
     stores = db.scalars(select(Store)).all()
     return [s.id for s in stores if admin_id in (s.admin_ids or [])]
 

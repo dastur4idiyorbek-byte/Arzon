@@ -1580,3 +1580,21 @@ def test_pickup_direct_handover():
     r = client.patch(f"/api/admin/orders/{oid}/status",
                      headers=admin_headers(ADMIN_A), json={"holat": "topshirildi"})
     assert r.status_code == 200 and r.json()["holat"] == "topshirildi", r.text
+
+
+def test_super_admin_cannot_upload_to_other_store():
+    """Rule 1: super-admin boshqa (o'ziniki bo'lmagan) do'konга mahsulot yuklolmaydi."""
+    store_a, _ = setup_two_stores()  # admin_ids=[ADMIN_A], SUPER emas
+    # SUPER o'z ID'idan store_a'ga mahsulot qo'shmoqchi -> 403.
+    r = client.post(f"/api/admin/stores/{store_a['store_id']}/products",
+                    headers=admin_headers(SUPER),
+                    json={"nomi": "Ruxsatsiz", "narxi": 100, "korinish": "ommaviy"})
+    assert r.status_code == 403, r.text
+    # SUPER'ning my-stores'i ham bo'sh (o'ziga do'kon biriktirilmagan).
+    ms = client.get("/api/admin/my-stores", headers=admin_headers(SUPER)).json()
+    assert not any(s["id"] == store_a["store_id"] for s in ms)
+    # Faqat haqiqiy admin (ADMIN_A) qo'sha oladi.
+    ok = client.post(f"/api/admin/stores/{store_a['store_id']}/products",
+                     headers=admin_headers(ADMIN_A),
+                     json={"nomi": "To'g'ri", "narxi": 100, "korinish": "ommaviy"})
+    assert ok.status_code == 200, ok.text
