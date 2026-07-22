@@ -163,6 +163,69 @@ def balance(
     return {"coin_balans": float(coin_service.balance(user))}
 
 
+@router.get("/reverse-geocode")
+def reverse_geocode(
+    lat: float,
+    lng: float,
+    user: User = Depends(get_current_user),
+):
+    """Koordinatani qisqa manzil nomiga aylantiradi (OpenStreetMap Nominatim).
+
+    Mijoz lokatsiya yuborganда manzil maydoni avtomatik to'ldirilsin — qo'lда
+    yozish shart bo'lmaydi. Xizmat javob bermasa — koordinata qaytadi (zaxira).
+    """
+    import httpx
+
+    fallback = f"{lat:.5f}, {lng:.5f}"
+    try:
+        r = httpx.get(
+            "https://nominatim.openstreetmap.org/reverse",
+            params={
+                "format": "jsonv2",
+                "lat": lat,
+                "lon": lng,
+                "zoom": 18,
+                "addressdetails": 1,
+            },
+            headers={
+                "User-Agent": "ARZON-Shop/1.0 (telegram mini app)",
+                "Accept-Language": "ru,uz",
+            },
+            timeout=8,
+        )
+        if r.status_code != 200:
+            return {"nomi": fallback}
+        data = r.json()
+        adr = data.get("address", {}) or {}
+        # Qisqa nom: ko'cha/mahalla + shahar.
+        koча = (
+            adr.get("road")
+            or adr.get("pedestrian")
+            or adr.get("neighbourhood")
+            or adr.get("suburb")
+            or adr.get("city_district")
+        )
+        shahar = (
+            adr.get("city")
+            or adr.get("town")
+            or adr.get("village")
+            or adr.get("county")
+        )
+        uy = adr.get("house_number")
+        qismlar = []
+        if koча:
+            qismlar.append(f"{koча} {uy}" if uy else koча)
+        if shahar and shahar != koча:
+            qismlar.append(shahar)
+        nomi = ", ".join(qismlar) if qismlar else (data.get("display_name") or fallback)
+        # Juda uzun bo'lsa qisqartiramiz.
+        if len(nomi) > 120:
+            nomi = nomi[:117] + "..."
+        return {"nomi": nomi}
+    except Exception:  # noqa: BLE001
+        return {"nomi": fallback}
+
+
 def _tolov_usuli_public(usul, base: str) -> dict:
     """To'lov usulini Mini App uchun formatlaydi (QR uchun to'liq URL)."""
     from ..services import coin as coin_service

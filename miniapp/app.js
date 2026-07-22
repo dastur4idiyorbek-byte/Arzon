@@ -503,6 +503,14 @@ function browserGeo(finish) {
   );
 }
 
+/* Koordinatani qisqa manzil nomiga aylantiradi (backend orqali). */
+async function reverseGeocode(loc) {
+  try {
+    const { ok, data } = await api(`/api/reverse-geocode?lat=${loc.lat}&lng=${loc.lng}`);
+    return ok && data && data.nomi ? data.nomi : "";
+  } catch (_) { return ""; }
+}
+
 function captureLocation(onOk) {
   const finish = (loc) => {
     if (_okLoc(loc)) { onOk(loc); return; }
@@ -535,14 +543,23 @@ document.getElementById("btn-location").onclick = () => {
   const oldTxt = btn.textContent;
   btn.textContent = "⏳ So'ralmoqda...";
   btn.disabled = true;
-  captureLocation((loc) => {
+  captureLocation(async (loc) => {
     btn.disabled = false;
     if (!loc) { btn.textContent = oldTxt; return; }
     cartLocation = loc;
     const el = document.getElementById("loc-status");
     el.hidden = false;
-    el.textContent = "✅ Joylashuv qo'shildi";
+    el.textContent = "⏳ Manzil aniqlanmoqda...";
     btn.textContent = "📍 Joylashuvni qayta yuborish";
+    // Qisqa manzil nomini olib, maydonni avtomatik to'ldiramiz.
+    const nomi = await reverseGeocode(loc);
+    const manzilInput = document.getElementById("manzil");
+    if (nomi) {
+      manzilInput.value = nomi;
+      el.textContent = "✅ Manzil: " + nomi;
+    } else {
+      el.textContent = "✅ Joylashuv qo'shildi";
+    }
   });
   // Agar callback umumaн chaqirilmasa ham tugmani tiklaymiz.
   setTimeout(() => { if (btn.disabled) { btn.textContent = oldTxt; btn.disabled = false; } }, 15000);
@@ -722,13 +739,23 @@ function renderBuyStep(step) {
       const b = box.querySelector("#bn-loc");
       const old = b.textContent;
       b.textContent = "⏳ So'ralmoqda..."; b.disabled = true;
-      captureLocation((loc) => {
+      captureLocation(async (loc) => {
         b.disabled = false;
         if (!loc) { b.textContent = old; return; }
         buyNow.location = loc;
         b.textContent = "📍 Joylashuvni qayta yuborish";
         const el = box.querySelector("#bn-loc-status");
         el.hidden = false;
+        el.textContent = "⏳ Manzil aniqlanmoqda...";
+        const nomi = await reverseGeocode(loc);
+        const mInput = box.querySelector("#bn-manzil");
+        if (nomi) {
+          buyNow.manzil = nomi;
+          if (mInput) mInput.value = nomi;
+          el.textContent = "✅ Manzil: " + nomi;
+        } else {
+          el.textContent = "✅ Joylashuv qo'shildi";
+        }
       });
       setTimeout(() => { if (b.disabled) { b.textContent = old; b.disabled = false; } }, 15000);
     };
