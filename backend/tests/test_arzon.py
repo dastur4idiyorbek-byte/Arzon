@@ -1556,3 +1556,27 @@ def test_arenda_auto_from_product_count():
         assert float(db.get(Store, store_id).arenda_summasi) == 300.0
     finally:
         db.close()
+
+
+def test_pickup_direct_handover():
+    """Punktdan olish: tayyorlanmoqda -> topshirildi to'g'ridan-to'g'ri (kuryersiz)."""
+    store_a, _ = setup_two_stores()
+    p = client.post(f"/api/admin/stores/{store_a['store_id']}/products",
+                    headers=admin_headers(ADMIN_A),
+                    json={"nomi": "Punkt tovar", "narxi": 500, "korinish": "ommaviy"}).json()
+    pp = client.post(f"/api/admin/stores/{store_a['store_id']}/pickup-points",
+                     headers=admin_headers(ADMIN_A),
+                     json={"nomi": "P1", "manzil": "Bishkek 9"}).json()
+    cust = customer_headers(95001)
+    client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700950001"})
+    give_balance(95001, 5000)
+    order = client.post("/api/checkout", headers=cust,
+                        json={"items": [{"product_id": p["id"], "soni": 1}],
+                              "yetkazish_turi": "pickup",
+                              "pickup_points": {str(store_a["store_id"]): pp["id"]}}).json()["buyurtmalar"][0]
+    oid = order["id"]
+    client.post(f"/api/admin/orders/{oid}/accept", headers=admin_headers(ADMIN_A))
+    # Punkt: tayyorlanmoqda -> topshirildi (yolda'siz).
+    r = client.patch(f"/api/admin/orders/{oid}/status",
+                     headers=admin_headers(ADMIN_A), json={"holat": "topshirildi"})
+    assert r.status_code == 200 and r.json()["holat"] == "topshirildi", r.text

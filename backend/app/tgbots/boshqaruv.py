@@ -1098,18 +1098,29 @@ HOLAT_LABEL = {
     "topshirildi": "✅ Topshirildi",
     "bekor_qilindi": "❌ Bekor qilindi",
 }
-# Holatдан keyingi tugma(lar): (yorliq, yangi_holat).
-HOLAT_KEYINGI = {
-    "yangi": [("✅ Qabul qilish", "_accept")],  # accept alohida (ombor kamayadi)
-    "tayyorlanmoqda": [("🚚 Yo'lga chiqdi", "yolda")],
-    "yolda": [("✅ Topshirildi", "topshirildi")],
-}
+def _keyingi_tugmalar(o: dict) -> list:
+    """Holatдан keyingi tugma(lar) — yetkazish turiga qarab.
+
+    Kuryer:  yangi -> Qabul -> 🚚 Yo'lga chiqdi -> ✅ Topshirildi
+    Punkt:   yangi -> Qabul -> ✅ Mijozga topshirildi (kod bilan)
+    """
+    holat = o.get("holat")
+    pickup = o.get("yetkazish_turi") == "pickup"
+    if holat == "yangi":
+        return [("✅ Qabul qilish", "_accept")]
+    if holat == "tayyorlanmoqda":
+        if pickup:
+            return [("✅ Mijozga topshirildi", "topshirildi")]
+        return [("🚚 Yo'lga chiqdi", "yolda")]
+    if holat == "yolda":
+        return [("✅ Topshirildi", "topshirildi")]
+    return []
 
 
 def _order_status_kb(o: dict) -> InlineKeyboardMarkup | None:
     holat = o.get("holat")
     rows = []
-    for label, yangi in HOLAT_KEYINGI.get(holat, []):
+    for label, yangi in _keyingi_tugmalar(o):
         if yangi == "_accept":
             rows.append([InlineKeyboardButton(label, callback_data=f"qabul_{o['id']}")])
         else:
@@ -1147,21 +1158,37 @@ def _order_card(o: dict) -> str:
 
 
 async def buyurtmalar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    store_id = await _resolve_store(update, context)
-    if store_id is None:
+    admin_id = update.effective_user.id
+    stores = await api.my_stores(admin_id)
+    if not stores:
+        await update.message.reply_text(
+            "⛔️ Sizga hali do'kon biriktirilmagan.\n"
+            "Do'kon ochish uchun Savdo botiдаги '🏪 Do'kon ochish' orqali "
+            "so'rov yuboring.",
+            reply_markup=menu_markup(admin_id),
+        )
         return
-    r = await api.orders(update.effective_user.id, store_id)
-    if r.status_code != 200:
-        await update.message.reply_text(f"❌ {r.text}")
-        return
-    orders = r.json()
-    if not orders:
+    # BARCHA do'konlaringiz buyurtmalarini yig'amiz (nafaqat bittasi).
+    hammasi = []
+    for s in stores:
+        r = await api.orders(admin_id, s["id"])
+        if r.status_code == 200:
+            for o in r.json():
+                o["_store_nomi"] = s["nomi"]
+                hammasi.append(o)
+    if not hammasi:
         await update.message.reply_text("Buyurtmalar yo'q.")
         return
+    # Yaratilgan vaqt bo'yicha yangidan-eskiga.
+    hammasi.sort(key=lambda o: o.get("yaratilgan_vaqt", ""), reverse=True)
+    ko_p = len(stores) > 1
     await update.message.reply_text("🧾 So'nggi buyurtmalar:")
-    for o in orders[:15]:
+    for o in hammasi[:20]:
+        matn = _order_card(o)
+        if ko_p and o.get("_store_nomi"):
+            matn = f"🏪 {o['_store_nomi']}\n" + matn
         await update.message.reply_text(
-            _order_card(o),
+            matn,
             parse_mode="HTML",
             reply_markup=_order_status_kb(o),
             disable_web_page_preview=True,

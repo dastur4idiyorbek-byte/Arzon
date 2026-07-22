@@ -28,8 +28,9 @@ ORDER_STATES = [
 ]
 # Ruxsat etilgan o'tishlar.
 ORDER_TRANSITIONS: Dict[str, List[str]] = {
+    # tayyorlanmoqda -> topshirildi: punktdan olishда to'g'ridan-to'g'ri topshirish.
     "yangi": ["tayyorlanmoqda", "bekor_qilindi"],
-    "tayyorlanmoqda": ["yolda", "bekor_qilindi"],
+    "tayyorlanmoqda": ["yolda", "topshirildi", "bekor_qilindi"],
     "yolda": ["topshirildi", "bekor_qilindi"],
     "topshirildi": [],
     "bekor_qilindi": [],
