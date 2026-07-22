@@ -285,6 +285,100 @@ def _notify(telegram_id: int | None, text: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Do'kon ochish TO'LOVLARI (1-bosqich — hisobchi to'lovni tasdiqlaydi)
+# ---------------------------------------------------------------------------
+@router.get("/dokon-tolovlari")
+def list_dokon_tolovlari(
+    _: int = Depends(require_super),
+    db: Session = Depends(get_db),
+):
+    from ..models import DokonSorovi  # noqa: F401
+    from ..services import dokon as dokon_service
+
+    natija = []
+    for s in dokon_service.list_kutilmoqda(db):
+        u = db.get(User, s.user_id)
+        natija.append(
+            {
+                "id": s.id,
+                "ism": u.ism if u else None,
+                "telegram_id": u.telegram_id if u else None,
+                "dokon_nomi": s.dokon_nomi,
+                "admin_telegram_id": s.admin_telegram_id,
+                "mahsulot_soni": s.mahsulot_soni,
+                "summa": float(s.summa),
+                "ai_summa": float(s.ai_ochigan_summa)
+                if s.ai_ochigan_summa is not None
+                else None,
+                "ai_xulosa": s.ai_xulosasi,
+                "chek_rasm_url": s.chek_rasm_url,
+            }
+        )
+    return natija
+
+
+@router.post("/dokon-tolovlari/{sorov_id}/confirm")
+def confirm_dokon_tolov(
+    sorov_id: int,
+    admin_id: int = Depends(require_super),
+    db: Session = Depends(get_db),
+):
+    """Hisobchi to'lovni tasdiqlaydi -> so'rov Menejerга uzatiladi."""
+    from ..models import DokonSorovi
+    from ..services import dokon as dokon_service
+
+    sorov = db.get(DokonSorovi, sorov_id)
+    if sorov is None:
+        raise HTTPException(status_code=404, detail="So'rov topilmadi.")
+    dokon_service.confirm_tolov(db, sorov, admin_id)
+    # 2-bosqich: Menejerга xabar.
+    try:
+        from ..tgbots import notify
+
+        u = db.get(User, sorov.user_id)
+        notify.notify_menejer_dokon(
+            sorov_id=sorov.id,
+            ism=u.ism if u else None,
+            telegram_id=u.telegram_id if u else None,
+            dokon_nomi=sorov.dokon_nomi,
+            admin_tid=sorov.admin_telegram_id,
+            mahsulot_soni=sorov.mahsulot_soni,
+            summa=float(sorov.summa),
+            ai_summa=float(sorov.ai_ochigan_summa)
+            if sorov.ai_ochigan_summa is not None
+            else None,
+            ai_xulosa=sorov.ai_xulosasi,
+            chek_rel_url=sorov.chek_rasm_url,
+        )
+    except ImportError:
+        pass
+    return {"holat": sorov.holat}
+
+
+@router.post("/dokon-tolovlari/{sorov_id}/reject")
+def reject_dokon_tolov(
+    sorov_id: int,
+    payload: RejectBody,
+    admin_id: int = Depends(require_super),
+    db: Session = Depends(get_db),
+):
+    from ..models import DokonSorovi
+    from ..services import dokon as dokon_service
+
+    sorov = db.get(DokonSorovi, sorov_id)
+    if sorov is None:
+        raise HTTPException(status_code=404, detail="So'rov topilmadi.")
+    dokon_service.reject_dokon_sorovi(db, sorov, admin_id, payload.sabab)
+    u = db.get(User, sorov.user_id)
+    sabab_txt = f"\nSabab: {payload.sabab}" if payload.sabab else ""
+    _notify(
+        u.telegram_id if u else None,
+        f"❌ Do'kon ochish to'lovingiz ('{sorov.dokon_nomi}') tasdiqlanmadi.{sabab_txt}",
+    )
+    return {"holat": sorov.holat}
+
+
+# ---------------------------------------------------------------------------
 # To'lov usullari boshqaruvi (task_2)
 # ---------------------------------------------------------------------------
 @router.get("/tolov-usullari")

@@ -37,6 +37,7 @@ logger = logging.getLogger("arzon.moliya")
 BTN_TOPUPS = "🔔 To'ldirish so'rovlari"
 BTN_WITHDRAWS = "💸 Pul yechish so'rovlari"
 BTN_REFUNDS = "↩️ Qaytarish so'rovlari"
+BTN_DOKON_TOLOV = "🏪 Do'kon to'lovlari"
 BTN_REPORT = "📊 Umumiy hisobot"
 BTN_METHODS = "💳 To'lov usullari"
 BTN_HOME = "🏠 Bosh menyu"
@@ -77,8 +78,8 @@ def menu_markup() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [
             [KeyboardButton(BTN_TOPUPS), KeyboardButton(BTN_WITHDRAWS)],
-            [KeyboardButton(BTN_REFUNDS), KeyboardButton(BTN_REPORT)],
-            [KeyboardButton(BTN_METHODS)],
+            [KeyboardButton(BTN_REFUNDS), KeyboardButton(BTN_DOKON_TOLOV)],
+            [KeyboardButton(BTN_METHODS), KeyboardButton(BTN_REPORT)],
         ],
         resize_keyboard=True,
     )
@@ -264,6 +265,8 @@ async def reject_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     data = query.data
     if data.startswith("mt_no_"):
         context.user_data["reject"] = ("topup", int(data.replace("mt_no_", "")))
+    elif data.startswith("dt_no_"):
+        context.user_data["reject"] = ("dokon_tolov", int(data.replace("dt_no_", "")))
     else:
         context.user_data["reject"] = ("refund", int(data.replace("mr_no_", "")))
     await _edit(query, "❌ Rad etish sababini yozing (so'rovchiga yuboriladi):")
@@ -279,11 +282,74 @@ async def reject_reason(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     uid = update.effective_user.id
     if turi == "topup":
         r = await api.moliya_topup_reject(uid, sorov_id, sabab)
+    elif turi == "dokon_tolov":
+        r = await api.moliya_dokon_tolov_reject(uid, sorov_id, sabab)
     else:
         r = await api.moliya_refund_reject(uid, sorov_id, sabab)
     msg = "✅ Rad etildi, so'rovchiga xabar berildi." if r.status_code == 200 else f"❌ {r.text[:200]}"
     await update.message.reply_text(msg, reply_markup=menu_markup())
     return ConversationHandler.END
+
+
+# ---------------------------------------------------------------------------
+# 🏪 Do'kon ochish to'lovlari (hisobchi to'lovni tasdiqlaydi -> Menejerga)
+# ---------------------------------------------------------------------------
+async def dokon_tolovlari(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await _guard(update):
+        return
+    uid = update.effective_user.id
+    rows = await api.moliya_dokon_tolovlari(uid)
+    if not rows:
+        await update.message.reply_text("Kutilayotgan do'kon to'lovi yo'q. ✅")
+        return
+    xmap = {"mos_keladi": "✅ Mos", "mos_kelmaydi": "⚠️ Mos emas", "aniq_emas": "❓"}
+    for s in rows[:20]:
+        ai = (
+            f"🤖 Gemini: {s['ai_summa']:,.0f} som"
+            if s.get("ai_summa") is not None
+            else "🤖 Gemini: o'qilmadi"
+        )
+        text = (
+            f"🏪 Do'kon to'lovi #{s['id']}\n"
+            f"Do'kon: {s['dokon_nomi']}\n"
+            f"So'rovchi: {s.get('ism') or 'nomalum'}, {s.get('telegram_id')}\n"
+            f"Mahsulot soni: {s['mahsulot_soni']} ta\n"
+            f"To'lov: {s['summa']:,.0f} som\n"
+            f"{ai} — {xmap.get(s.get('ai_xulosa'), '❓')}"
+        )
+        kb = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton("✅ To'lov tasdiqlash", callback_data=f"dt_ok_{s['id']}"),
+                    InlineKeyboardButton("❌ Rad etish", callback_data=f"dt_no_{s['id']}"),
+                ]
+            ]
+        )
+        base = _base_url()
+        if s.get("chek_rasm_url") and base:
+            try:
+                await context.bot.send_photo(
+                    chat_id=uid, photo=f"{base}{s['chek_rasm_url']}",
+                    caption=text, reply_markup=kb,
+                )
+                continue
+            except Exception:  # noqa: BLE001
+                pass
+        await update.message.reply_text(text, reply_markup=kb)
+
+
+async def dokon_tolov_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    if not _is_super(update.effective_user.id):
+        await query.answer("Faqat super-admin.", show_alert=True)
+        return
+    await query.answer()
+    sorov_id = int(query.data.replace("dt_ok_", ""))
+    r = await api.moliya_dokon_tolov_confirm(update.effective_user.id, sorov_id)
+    if r.status_code == 200:
+        await _edit(query, "✅ To'lov tasdiqlandi. So'rov Menejerга uzatildi.")
+    else:
+        await _edit(query, f"❌ Xatolik: {r.text[:200]}")
 
 
 # ---------------------------------------------------------------------------
@@ -565,6 +631,7 @@ def build_application(token: str) -> Application:
         entry_points=[
             CallbackQueryHandler(reject_start, pattern="^mt_no_"),
             CallbackQueryHandler(reject_start, pattern="^mr_no_"),
+            CallbackQueryHandler(reject_start, pattern="^dt_no_"),
         ],
         states={R_SABAB: [MessageHandler(TXT, reject_reason)]},
         fallbacks=[CommandHandler("start", start)],
@@ -608,11 +675,13 @@ def build_application(token: str) -> Application:
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_REFUNDS}$"), refunds))
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_REPORT}$"), report))
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_METHODS}$"), methods))
+    app.add_handler(MessageHandler(filters.Regex(f"^{BTN_DOKON_TOLOV}$"), dokon_tolovlari))
 
     # Inline callbacklar (menyu ro'yxati va push xabarlaridан).
     app.add_handler(CallbackQueryHandler(topup_approve, pattern="^mt_ok_"))
     app.add_handler(CallbackQueryHandler(withdraw_paid, pattern="^mw_ok_"))
     app.add_handler(CallbackQueryHandler(refund_approve, pattern="^mr_ok_"))
+    app.add_handler(CallbackQueryHandler(dokon_tolov_confirm, pattern="^dt_ok_"))
     app.add_handler(CallbackQueryHandler(method_toggle, pattern="^mtog_"))
     app.add_handler(CallbackQueryHandler(method_delete, pattern="^mdel_"))
     return app

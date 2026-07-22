@@ -219,6 +219,53 @@ async def _send_menejer(text, reply_markup=None, photo_rel_url=None, photo_bytes
             logger.warning("Menejer xabari yuborilmadi (%s): %s", mid, e)
 
 
+def notify_moliya_dokon_tolov(
+    sorov_id: int,
+    ism: str | None,
+    telegram_id: int | None,
+    dokon_nomi: str,
+    admin_tid: int,
+    mahsulot_soni: int,
+    summa: float,
+    ai_summa: float | None,
+    ai_xulosa: str | None,
+    chek_rel_url: str | None,
+    usul_nomi: str | None = None,
+    image_bytes: bytes | None = None,
+) -> None:
+    """1-bosqich: do'kon ochish TO'LOVI — hisobchiга (Moliya) tekshirishга."""
+    xulosa_emoji = {
+        "mos_keladi": "✅ Mos keladi",
+        "mos_kelmaydi": "⚠️ Mos kelmaydi",
+        "aniq_emas": "❓ Aniq emas",
+    }.get(ai_xulosa or "aniq_emas", "❓ Aniq emas")
+    ai_qator = (
+        f"🤖 Gemini: {ai_summa:,.0f} som" if ai_summa is not None else "🤖 Gemini: o'qilmadi"
+    )
+    text = (
+        f"🏪 Do'kon ochish TO'LOVI #{sorov_id}\n\n"
+        f"👤 So'rovchi: {ism or 'nomalum'}"
+        + (f", {telegram_id}" if telegram_id else "")
+        + f"\n🏷 Do'kon: {dokon_nomi}\n"
+        f"📦 Mahsulot soni: {mahsulot_soni} ta\n"
+        f"💰 To'lov: {summa:,.0f} som\n"
+        + (f"💳 Usul: {usul_nomi}\n" if usul_nomi else "")
+        + f"{ai_qator}\nAI xulosasi: {xulosa_emoji}\n\n"
+        "To'lov to'g'ri bo'lsa — tasdiqlang. So'rov Menejerга uzatiladi."
+    )
+    kb = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("✅ To'lov tasdiqlash", callback_data=f"dt_ok_{sorov_id}"),
+                InlineKeyboardButton("❌ Rad etish", callback_data=f"dt_no_{sorov_id}"),
+            ]
+        ]
+    )
+    _submit(
+        _send_moliya(text, kb, photo_rel_url=chek_rel_url, photo_bytes=image_bytes)
+    )
+
+
 def notify_menejer_dokon(
     sorov_id: int,
     ism: str | None,
@@ -233,7 +280,7 @@ def notify_menejer_dokon(
     usul_nomi: str | None = None,
     image_bytes: bytes | None = None,
 ) -> None:
-    """Yangi do'kon ochish so'rovi — chek + tafsilotlar bilan (Menejerга)."""
+    """2-bosqich: hisobchi to'lovni tasdiqladi — Menejerга (biznes qarori)."""
     xulosa_emoji = {
         "mos_keladi": "✅ Mos keladi",
         "mos_kelmaydi": "⚠️ Mos kelmaydi",
@@ -243,17 +290,16 @@ def notify_menejer_dokon(
         f"🤖 Gemini: {ai_summa:,.0f} som" if ai_summa is not None else "🤖 Gemini: o'qilmadi"
     )
     text = (
-        f"🏪 Yangi DO'KON OCHISH so'rovi #{sorov_id}\n\n"
+        f"🏪 Do'kon ochish so'rovi #{sorov_id}\n"
+        "💳 To'lov hisobchi tomonidan TASDIQLANDI ✅\n\n"
         f"👤 So'rovchi: {ism or 'nomalum'}"
         + (f", {telegram_id}" if telegram_id else "")
         + f"\n🏷 Do'kon nomi: {dokon_nomi}\n"
         f"🆔 Admin Telegram ID: {admin_tid}\n"
         f"📦 Mahsulot limiti: {mahsulot_soni} ta\n"
-        f"💰 To'lov: {summa:,.0f} som\n"
-        + (f"💳 Usul: {usul_nomi}\n" if usul_nomi else "")
-        + f"{ai_qator}\nAI xulosasi: {xulosa_emoji}\n\n"
-        "✅ Tasdiqласангиз — do'kon avtomatik ochiladi va so'rovchiga "
-        "mahfiy kod yuboriladi."
+        f"💰 To'lov: {summa:,.0f} som\n\n"
+        "Shu do'kon ochilsinmi? Tasdiqласангиз — do'kon ochiladi va "
+        "so'rovchiga mahfiy kod + admin bot havolasi yuboriladi."
     )
     kb = InlineKeyboardMarkup(
         [

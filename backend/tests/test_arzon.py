@@ -1324,7 +1324,12 @@ def test_dokon_sorovi_full_flow():
     assert r.json()["summa"] == 300.0
     sorov_id = r.json()["sorov_id"]
 
-    # Menejer ro'yxatida ko'rinadi.
+    # 1-bosqich: hisobchi (Moliya) to'lovni tasdiqlaydi.
+    tl = client.get("/api/moliya/dokon-tolovlari", headers=admin_headers(SUPER)).json()
+    assert any(x["id"] == sorov_id for x in tl)
+    cf = client.post(f"/api/moliya/dokon-tolovlari/{sorov_id}/confirm", headers=admin_headers(SUPER))
+    assert cf.status_code == 200, cf.text
+    # 2-bosqich: endi Menejer ro'yxatida ko'rinadi.
     lst = client.get("/api/menejer/dokon-sorovlari", headers=admin_headers(MANAGER)).json()
     assert any(x["id"] == sorov_id and x["mahsulot_soni"] == 30 for x in lst)
 
@@ -1383,6 +1388,7 @@ def test_menejer_v3_new_admin_can_access_boshqaruv():
                      json={"dokon_nomi": "V3 Do'kon", "admin_telegram_id": new_admin,
                            "mahsulot_soni": 20})
     sid_req = sr.json()["sorov_id"]
+    client.post(f"/api/moliya/dokon-tolovlari/{sid_req}/confirm", headers=admin_headers(SUPER))
     # Tasdiqлашдан oldin new_admin'да do'kon yo'q.
     before = client.get("/api/admin/my-stores", headers=admin_headers(new_admin)).json()
     assert not any(s["nomi"] == "V3 Do'kon" for s in before)
@@ -1408,7 +1414,9 @@ def test_menejer_v4_arenda_suspend_but_products_visible():
     sr = client.post("/api/bot/dokon-sorovi", headers=_bot_headers(requester),
                      json={"dokon_nomi": "V4 Do'kon", "admin_telegram_id": new_admin,
                            "mahsulot_soni": 20})
-    ap = client.post(f"/api/menejer/dokon-sorovlari/{sr.json()['sorov_id']}/approve",
+    _sid = sr.json()['sorov_id']
+    client.post(f"/api/moliya/dokon-tolovlari/{_sid}/confirm", headers=admin_headers(SUPER))
+    ap = client.post(f"/api/menejer/dokon-sorovlari/{_sid}/approve",
                      headers=admin_headers(MANAGER), json={"arenda_summasi": 300}).json()
     store_id = ap["store_id"]
     # Mahsulot qo'shamiz (hali faol).
@@ -1485,3 +1493,31 @@ def test_menejer_admin_add_remove():
     rm = client.delete(f"/api/menejer/stores/{sid}/admins/55555",
                        headers=admin_headers(MANAGER))
     assert rm.status_code == 200 and 55555 not in rm.json()["admin_ids"]
+
+
+def test_dokon_two_stage_moliya_then_menejer():
+    """To'lov tasdiqlanmaguncha Menejer ro'yxatида ko'rinmaydi (2 bosqich)."""
+    tid = 93001
+    client.post("/api/bot/confirm-phone", headers=_bot_headers(tid),
+                json={"tel": "+996700930001"})
+    sr = client.post("/api/bot/dokon-sorovi", headers=_bot_headers(tid),
+                     json={"dokon_nomi": "2bosqich", "admin_telegram_id": tid,
+                           "mahsulot_soni": 10})
+    sid = sr.json()["sorov_id"]
+    # Hisobchi tasdiqlashдан OLDIN — Menejerда yo'q, Moliyada bor.
+    men = client.get("/api/menejer/dokon-sorovlari", headers=admin_headers(MANAGER)).json()
+    assert not any(x["id"] == sid for x in men)
+    mol = client.get("/api/moliya/dokon-tolovlari", headers=admin_headers(SUPER)).json()
+    assert any(x["id"] == sid for x in mol)
+    # Menejer to'lov tasdiqlanmagan so'rovni tasdiqlay olmaydi.
+    early = client.post(f"/api/menejer/dokon-sorovlari/{sid}/approve",
+                        headers=admin_headers(MANAGER), json={"arenda_summasi": 0})
+    assert early.status_code == 400, early.text
+    # Hisobchi to'lovni tasdiqlaydi -> endi Menejerда ko'rinadi.
+    client.post(f"/api/moliya/dokon-tolovlari/{sid}/confirm", headers=admin_headers(SUPER))
+    men2 = client.get("/api/menejer/dokon-sorovlari", headers=admin_headers(MANAGER)).json()
+    assert any(x["id"] == sid for x in men2)
+    # Endi Menejer tasdiqlaydi -> do'kon ochiladi.
+    ap = client.post(f"/api/menejer/dokon-sorovlari/{sid}/approve",
+                     headers=admin_headers(MANAGER), json={"arenda_summasi": 0})
+    assert ap.status_code == 200 and ap.json()["store_id"]

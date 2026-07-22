@@ -432,6 +432,24 @@ class BotApi:
             headers=self._admin(admin_id), json={"sabab": sabab},
         )
 
+    async def moliya_dokon_tolovlari(self, admin_id: int) -> list:
+        r = await self._request(
+            "GET", "/api/moliya/dokon-tolovlari", headers=self._admin(admin_id)
+        )
+        return r.json() if r.status_code == 200 else []
+
+    async def moliya_dokon_tolov_confirm(self, admin_id: int, sorov_id: int) -> httpx.Response:
+        return await self._request(
+            "POST", f"/api/moliya/dokon-tolovlari/{sorov_id}/confirm",
+            headers=self._admin(admin_id),
+        )
+
+    async def moliya_dokon_tolov_reject(self, admin_id: int, sorov_id: int, sabab: str) -> httpx.Response:
+        return await self._request(
+            "POST", f"/api/moliya/dokon-tolovlari/{sorov_id}/reject",
+            headers=self._admin(admin_id), json={"sabab": sabab},
+        )
+
     async def moliya_report(self, admin_id: int) -> dict:
         r = await self._request(
             "GET", "/api/moliya/report", headers=self._admin(admin_id)

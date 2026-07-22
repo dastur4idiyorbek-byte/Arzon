@@ -32,7 +32,8 @@ def list_dokon_sorovlari(
     db: Session = Depends(get_db),
 ):
     natija = []
-    for s in dokon_service.list_pending(db):
+    # Faqat hisobchi to'lovni tasdiqlagan so'rovlar (2-bosqich).
+    for s in dokon_service.list_tolov_tasdiqlangan(db):
         u = db.get(User, s.user_id)
         natija.append(
             {

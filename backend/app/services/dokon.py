@@ -75,12 +75,35 @@ def create_dokon_sorovi(
     return sorov
 
 
-def approve_dokon_sorovi(db: Session, sorov: DokonSorovi, admin_id: int) -> Store:
-    """Hisobchi tasdiqlaydi — do'kon avtomatik ochiladi (mahfiy kod bilan)."""
+def confirm_tolov(db: Session, sorov: DokonSorovi, admin_id: int) -> DokonSorovi:
+    """1-bosqich: Hisobchi (Moliya boti) TO'LOVNI tasdiqlaydi.
+
+    Do'kon hali OCHILMAYDI — so'rov Menejerга uzatiladi (biznes qarori uchun).
+    """
     if sorov.holat != "kutilmoqda":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"So'rov allaqachon '{sorov.holat}' holatida.",
+        )
+    sorov.holat = "tolov_tasdiqlandi"
+    db.commit()
+    db.refresh(sorov)
+    return sorov
+
+
+def approve_dokon_sorovi(db: Session, sorov: DokonSorovi, admin_id: int) -> Store:
+    """2-bosqich: Menejer tasdiqlaydi — do'kon ochiladi (mahfiy kod bilan).
+
+    Faqat hisobchi to'lovni tasdiqlagan (tolov_tasdiqlandi) so'rovларни tasdiqlash
+    mumkin — Menejer moliyaviy tekshiruvни takrorlamaydi.
+    """
+    if sorov.holat != "tolov_tasdiqlandi":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"So'rov '{sorov.holat}' holatida — avval hisobchi to'lovni "
+                "tasdiqlashi kerak."
+            ),
         )
     store = Store(
         nomi=sorov.dokon_nomi,
@@ -102,7 +125,8 @@ def approve_dokon_sorovi(db: Session, sorov: DokonSorovi, admin_id: int) -> Stor
 def reject_dokon_sorovi(
     db: Session, sorov: DokonSorovi, admin_id: int, sabab: str
 ) -> None:
-    if sorov.holat != "kutilmoqda":
+    # Har ikki bosqichда ham (hisobchi yoki menejer) rad etilishi mumkin.
+    if sorov.holat in ("tasdiqlandi", "rad_etildi"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"So'rov allaqachon '{sorov.holat}' holatida.",
@@ -113,9 +137,19 @@ def reject_dokon_sorovi(
     db.commit()
 
 
-def list_pending(db: Session) -> list[DokonSorovi]:
+def list_kutilmoqda(db: Session) -> list[DokonSorovi]:
+    """Hisobchi (Moliya) uchun — to'lov tekshirilmagan so'rovlar."""
     return db.scalars(
         select(DokonSorovi)
         .where(DokonSorovi.holat == "kutilmoqda")
+        .order_by(DokonSorovi.id.desc())
+    ).all()
+
+
+def list_tolov_tasdiqlangan(db: Session) -> list[DokonSorovi]:
+    """Menejer uchun — hisobchi to'lovni tasdiqlagan so'rovlar."""
+    return db.scalars(
+        select(DokonSorovi)
+        .where(DokonSorovi.holat == "tolov_tasdiqlandi")
         .order_by(DokonSorovi.id.desc())
     ).all()
