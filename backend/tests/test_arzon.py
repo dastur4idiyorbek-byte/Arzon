@@ -1521,3 +1521,38 @@ def test_dokon_two_stage_moliya_then_menejer():
     ap = client.post(f"/api/menejer/dokon-sorovlari/{sid}/approve",
                      headers=admin_headers(MANAGER), json={"arenda_summasi": 0})
     assert ap.status_code == 200 and ap.json()["store_id"]
+
+
+def test_arenda_auto_from_product_count():
+    """Oylik arenda mahsulot soniга qarab avtomatik (30 -> 300 som/oy)."""
+    from app.database import SessionLocal
+    from app.models import Store
+
+    tid, new_admin = 94001, 94002
+    client.post("/api/bot/confirm-phone", headers=_bot_headers(tid),
+                json={"tel": "+996700940001"})
+    sr = client.post("/api/bot/dokon-sorovi", headers=_bot_headers(tid),
+                     json={"dokon_nomi": "Arenda auto", "admin_telegram_id": new_admin,
+                           "mahsulot_soni": 30})
+    sid = sr.json()["sorov_id"]
+    client.post(f"/api/moliya/dokon-tolovlari/{sid}/confirm", headers=admin_headers(SUPER))
+    ap = client.post(f"/api/menejer/dokon-sorovlari/{sid}/approve",
+                     headers=admin_headers(MANAGER)).json()  # summa YUBORILMAYDI
+    store_id = ap["store_id"]
+    db = SessionLocal()
+    try:
+        s = db.get(Store, store_id)
+        assert float(s.arenda_summasi) == 300.0  # 30/10 * 100
+        assert s.arenda_muddati_tugashi is not None
+    finally:
+        db.close()
+
+    # Arenda uzaytirilганда o'sha summa saqlanadi (menejer qayta yozmaydi).
+    ext = client.post(f"/api/menejer/stores/{store_id}/arenda-uzaytir",
+                      headers=admin_headers(MANAGER))
+    assert ext.status_code == 200
+    db = SessionLocal()
+    try:
+        assert float(db.get(Store, store_id).arenda_summasi) == 300.0
+    finally:
+        db.close()

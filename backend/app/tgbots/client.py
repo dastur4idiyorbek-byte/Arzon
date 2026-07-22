@@ -531,12 +531,11 @@ class BotApi:
         r = await self._request("GET", "/api/menejer/dokon-sorovlari", headers=self._admin(mid))
         return r.json() if r.status_code == 200 else []
 
-    async def menejer_dokon_approve(
-        self, mid: int, sorov_id: int, arenda_summasi: float | None
-    ) -> httpx.Response:
+    async def menejer_dokon_approve(self, mid: int, sorov_id: int) -> httpx.Response:
+        # Arenda avtomatik (mahsulot soniga qarab) — summa yuborilmaydi.
         return await self._request(
             "POST", f"/api/menejer/dokon-sorovlari/{sorov_id}/approve",
-            headers=self._admin(mid), json={"arenda_summasi": arenda_summasi},
+            headers=self._admin(mid),
         )
 
     async def menejer_dokon_reject(self, mid: int, sorov_id: int, sabab: str) -> httpx.Response:

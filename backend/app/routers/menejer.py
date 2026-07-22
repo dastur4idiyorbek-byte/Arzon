@@ -54,26 +54,17 @@ def list_dokon_sorovlari(
     return natija
 
 
-class ApproveBody(BaseModel):
-    # Oylik arenda summasi (menejer belgilaydi) — ixtiyoriy (0/bo'sh = arendasiz).
-    arenda_summasi: float | None = None
-
-
 @router.post("/dokon-sorovlari/{sorov_id}/approve")
 def approve_dokon(
     sorov_id: int,
-    payload: ApproveBody,
     admin_id: int = Depends(require_manager),
     db: Session = Depends(get_db),
 ):
     sorov = db.get(DokonSorovi, sorov_id)
     if sorov is None:
         raise HTTPException(status_code=404, detail="So'rov topilmadi.")
+    # Oylik arenda avtomatik (mahsulot soniга qarab) — approve_dokon_sorovi ичида.
     store = dokon_service.approve_dokon_sorovi(db, sorov, admin_id)
-    # Oylik arenda (menejer belgilaydi) — 1 oy muddat bilan.
-    if payload.arenda_summasi and payload.arenda_summasi > 0:
-        menejer_service.set_arenda(db, store.id, payload.arenda_summasi)
-        db.refresh(store)
 
     bot_uname = settings.admin_bot_username.lstrip("@")
     bot_link = f"https://t.me/{bot_uname}"

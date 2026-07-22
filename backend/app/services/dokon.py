@@ -105,12 +105,22 @@ def approve_dokon_sorovi(db: Session, sorov: DokonSorovi, admin_id: int) -> Stor
                 "tasdiqlashi kerak."
             ),
         )
+    # Oylik arenda — mahsulot soniга qarab AVTOMATIK (ochish narxi bilan bir
+    # xil, masalan 30 mahsulot -> 300 som/oy). Menejer qo'lда yozmaydi va har
+    # oy shu miqdor takrorlanadi.
+    from datetime import timedelta
+
+    from ..models import _now
+
+    arenda = hisobla_summa(sorov.mahsulot_soni)
     store = Store(
         nomi=sorov.dokon_nomi,
         admin_ids=[sorov.admin_telegram_id],
         mahfiy_kirish_kodi=_generate_secret_code(),
         holat="faol",
         mahsulot_limiti=sorov.mahsulot_soni,
+        arenda_summasi=arenda,
+        arenda_muddati_tugashi=_now() + timedelta(days=30),
     )
     db.add(store)
     db.flush()  # store.id

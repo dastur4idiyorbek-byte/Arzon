@@ -140,42 +140,24 @@ async def sorovlar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text(text, reply_markup=kb)
 
 
-async def approve_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def approve_do(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Do'kon ochishни tasdiqlaydi. Arenda avtomatik (mahsulot soniга qarab)."""
     query = update.callback_query
     if not _is_menejer(update.effective_user.id):
         await query.answer("Ruxsat yo'q.", show_alert=True)
-        return ConversationHandler.END
+        return
     await query.answer()
-    context.user_data["md_id"] = int(query.data.replace("md_ok_", ""))
-    await query.message.reply_text(
-        "📅 Oylik arenda summasini kiriting (som).\n"
-        "Arendasiz ochish uchun 0 yozing:"
-    )
-    return MA_ARENDA
-
-
-async def approve_arenda(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    matn = update.message.text.strip().replace(" ", "")
-    try:
-        arenda = float(matn)
-        assert arenda >= 0
-    except (ValueError, AssertionError):
-        await update.message.reply_text("Musbat raqam yoki 0 kiriting:")
-        return MA_ARENDA
-    sorov_id = context.user_data.pop("md_id", None)
-    r = await api.menejer_dokon_approve(
-        update.effective_user.id, sorov_id, arenda if arenda > 0 else None
-    )
+    sorov_id = int(query.data.replace("md_ok_", ""))
+    r = await api.menejer_dokon_approve(update.effective_user.id, sorov_id)
     if r.status_code == 200:
         d = r.json()
-        await update.message.reply_text(
+        await _edit(
+            query,
             f"✅ Do'kon ochildi: {d['nomi']}\n🔑 Kod: {d['mahfiy_kirish_kodi']}\n"
-            "So'rovchiga havola va kod yuborildi.",
-            reply_markup=menu_markup(),
+            "So'rovchiga havola, kod va oylik arenda yuborildi.",
         )
     else:
-        await update.message.reply_text(f"❌ {r.text[:200]}", reply_markup=menu_markup())
-    return ConversationHandler.END
+        await _edit(query, f"❌ {r.text[:200]}")
 
 
 async def reject_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -458,12 +440,6 @@ def build_application(token: str) -> Application:
     app = Application.builder().token(token).updater(None).build()
     TXT = filters.TEXT & ~filters.COMMAND
 
-    approve_conv = ConversationHandler(
-        entry_points=[CallbackQueryHandler(approve_start, pattern="^md_ok_")],
-        states={MA_ARENDA: [MessageHandler(TXT, approve_arenda)]},
-        fallbacks=[CommandHandler("start", start)],
-        name="menejer_approve", persistent=False,
-    )
     reject_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(reject_start, pattern="^md_no_")],
         states={MD_SABAB: [MessageHandler(TXT, reject_sabab)]},
@@ -479,9 +455,10 @@ def build_application(token: str) -> Application:
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_HOME}$"), start))
-    app.add_handler(approve_conv)
     app.add_handler(reject_conv)
     app.add_handler(addadmin_conv)
+    # Do'kon tasdiqlash — to'g'ridan-to'g'ri (arenda avtomatik).
+    app.add_handler(CallbackQueryHandler(approve_do, pattern="^md_ok_"))
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_SOROVLAR}$"), sorovlar))
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_ADMINLAR}$"), adminlar))
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_OCHIRISH}$"), ochirish))
