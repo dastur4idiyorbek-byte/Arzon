@@ -58,16 +58,18 @@ WELCOME_SHORT = "🛍 ARZON ONLINE SAVDO — Xush kelibsiz!"
 BTN_ORDERS = "📦 Buyurtmalarim"
 BTN_LOYALTY = "🎁 Sodiqlik kartam"
 BTN_BALANCE = "💰 Balansim"
+BTN_DOKON = "🏪 Do'kon ochish"
 BTN_FAV = "❤️ Sevimlilar"
 BTN_HELP = "❓ Yordam"
 BTN_ASK = "💬 Savol berish"
 BTN_HOME = "🏠 Bosh menyu"
 
-# ACOM coin balans oqimi holatlari.
+# ACOM coin balans + do'kon ochish oqimi holatlari.
 (
     TOPUP_SUMMA, TOPUP_METHOD, TOPUP_CODE, TOPUP_CHEK,
     REFUND_SUMMA, REFUND_KARTA, REFUND_CODE,
-) = range(7)
+    D_NOMI, D_ADMIN_ID, D_SONI, D_METHOD, D_CODE, D_CHEK,
+) = range(13)
 
 # To'lov usuli turlari uchun emoji.
 _USUL_EMOJI = {"karta": "💳", "telefon": "📱", "qr_kod": "🔳", "crypto": "₿"}
@@ -122,6 +124,7 @@ def main_menu(miniapp_url: str = "") -> ReplyKeyboardMarkup:
     rows = [
         [KeyboardButton(BTN_ORDERS), KeyboardButton(BTN_BALANCE)],
         [KeyboardButton(BTN_LOYALTY), KeyboardButton(BTN_FAV)],
+        [KeyboardButton(BTN_DOKON)],
         [KeyboardButton(BTN_HELP), KeyboardButton(BTN_ASK)],
     ]
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
@@ -636,9 +639,224 @@ async def refund_code(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     return ConversationHandler.END
 
 
+# ---------------------------------------------------------------------------
+# 🏪 Do'kon ochish — pullik so'rov (nom -> ID -> mahsulot soni -> to'lov -> chek)
+# ---------------------------------------------------------------------------
+DOKON_ONTALIK = 100  # har 10 mahsulot uchun (som) — backend bilan mos
+
+
+async def dokon_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if not await _gate(update, context):
+        return ConversationHandler.END
+    context.user_data["d"] = {}
+    await update.message.reply_text(
+        "🏪 <b>Do'kon ochish</b>\n\n"
+        "ARZON platformasida o'z do'koningizni oching!\n\n"
+        "Avval do'koningiz nomini kiriting (masalan: Diyorbek Shop):",
+        parse_mode="HTML",
+        reply_markup=_home_kb(),
+    )
+    return D_NOMI
+
+
+async def dokon_nomi(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if update.message.text == BTN_HOME:
+        return await _cancel_to_menu(update, context)
+    context.user_data["d"]["nomi"] = update.message.text.strip()[:255]
+    await update.message.reply_text(
+        "🆔 Endi do'kon egasining <b>Telegram ID</b> raqamini kiriting.\n\n"
+        "❓ <b>ID'ni qanday bilaman?</b>\n"
+        "1) @userinfobot ni oching\n"
+        "2) unga /start yozing\n"
+        "3) u sizga raqamli ID beradi (masalan 123456789)\n"
+        "Odatda bu — sizning o'z ID'ingiz. O'sha raqamni shu yerga yuboring:",
+        parse_mode="HTML",
+    )
+    return D_ADMIN_ID
+
+
+async def dokon_admin_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if update.message.text == BTN_HOME:
+        return await _cancel_to_menu(update, context)
+    matn = update.message.text.strip()
+    if not matn.isdigit():
+        await update.message.reply_text(
+            "Iltimos, faqat raqamli ID kiriting (masalan 123456789):"
+        )
+        return D_ADMIN_ID
+    context.user_data["d"]["admin_id"] = int(matn)
+    # Mahsulot soni tanlash (10..100, o'ntalik).
+    rows, qator = [], []
+    for n in range(10, 101, 10):
+        qator.append(InlineKeyboardButton(str(n), callback_data=f"ds_{n}"))
+        if len(qator) == 5:
+            rows.append(qator)
+            qator = []
+    if qator:
+        rows.append(qator)
+    await update.message.reply_text(
+        f"📦 Do'koningizда nechта mahsulot bo'ladi?\n\n"
+        f"Har 10 ta mahsulot uchun <b>{DOKON_ONTALIK} som</b> "
+        f"(masalan 50 ta = {5 * DOKON_ONTALIK} som).\n"
+        "Quyidan tanlang:",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(rows),
+    )
+    return D_SONI
+
+
+async def dokon_soni(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    soni = int(query.data.replace("ds_", ""))
+    context.user_data["d"]["soni"] = soni
+    summa = (soni // 10) * DOKON_ONTALIK
+    context.user_data["d"]["summa"] = summa
+    await query.edit_message_text(
+        f"✅ {soni} ta mahsulot — <b>{summa:,.0f} som</b>",
+        parse_mode="HTML",
+    )
+    # To'lov usulini tanlash (yoki bitta bo'lsa avto).
+    usullar = await api.coin_tolov_usullari(update.effective_user.id)
+    context.user_data["d"]["usullar"] = usullar
+    if len(usullar) > 1:
+        rows = [
+            [InlineKeyboardButton(
+                f"{_USUL_EMOJI.get(u['turi'], '💰')} {u['nomi']}",
+                callback_data=f"dtu_{u['id']}",
+            )]
+            for u in usullar
+        ]
+        await query.message.reply_text(
+            "To'lov usulini tanlang:", reply_markup=InlineKeyboardMarkup(rows)
+        )
+        return D_METHOD
+    context.user_data["d"]["usul"] = usullar[0] if usullar else None
+    kod = confirm.issue_code(context.user_data)
+    await query.message.reply_text(confirm.prompt_text(kod), parse_mode="HTML")
+    return D_CODE
+
+
+async def dokon_method(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    usul_id = int(query.data.replace("dtu_", ""))
+    usullar = context.user_data["d"].get("usullar", [])
+    context.user_data["d"]["usul"] = next(
+        (u for u in usullar if u["id"] == usul_id), None
+    )
+    kod = confirm.issue_code(context.user_data)
+    await query.message.reply_text(confirm.prompt_text(kod), parse_mode="HTML")
+    return D_CODE
+
+
+async def dokon_code(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if update.message.text == BTN_HOME:
+        return await _cancel_to_menu(update, context)
+    natija = confirm.check_code(context.user_data, update.message.text)
+    if natija == "wrong":
+        await update.message.reply_text("Kod noto'g'ri, qaytadan urinib ko'ring:")
+        return D_CODE
+    if natija in ("expired", "toomany", "yoq"):
+        await update.message.reply_text(
+            "So'rov bekor qilindi (kod xato yoki muddati o'tdi). Qaytadan boshlang.",
+            reply_markup=_menu_kb(context),
+        )
+        return ConversationHandler.END
+    d = context.user_data["d"]
+    usul = d.get("usul")
+    summa = d.get("summa", 0)
+    if usul:
+        if usul.get("turi") == "qr_kod" and usul.get("qr_rasm_url"):
+            base = _base_url()
+            url = usul["qr_rasm_url"]
+            if url.startswith("/media/") and base:
+                url = f"{base}{url}"
+            try:
+                await context.bot.send_photo(update.effective_chat.id, url)
+            except Exception:  # noqa: BLE001
+                pass
+        await update.message.reply_text(
+            _usul_detail(usul, summa), parse_mode="HTML", reply_markup=_home_kb()
+        )
+    else:
+        await update.message.reply_text(
+            f"<b>{summa:,.0f} som</b> to'lang va chekni yuboring.\n"
+            "⚠️ To'lov usuli sozlanmagan — administrator bilan bog'laning.",
+            parse_mode="HTML",
+            reply_markup=_home_kb(),
+        )
+    await update.message.reply_text("📸 To'lov chekini (rasm) yuboring:")
+    return D_CHEK
+
+
+async def dokon_chek(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if update.message.text and update.message.text == BTN_HOME:
+        return await _cancel_to_menu(update, context)
+    if not update.message.photo:
+        await update.message.reply_text("Iltimos, chek RASMINI yuboring:")
+        return D_CHEK
+    d = context.user_data.get("d", {})
+    summa = d.get("summa", 0)
+    photo = update.message.photo[-1]
+    file_id = photo.file_id
+    await context.bot.send_chat_action(update.effective_chat.id, "typing")
+
+    ai_summa = ai_sana = ai_xulosa = None
+    try:
+        import asyncio
+
+        from .. import ai as ai_module
+
+        tg_file = await photo.get_file()
+        raw = bytes(await tg_file.download_as_bytearray())
+        loop = asyncio.get_running_loop()
+        natija = await loop.run_in_executor(
+            None, ai_module.analyze_receipt, raw, "image/jpeg", summa
+        )
+        ai_summa = natija.get("summa")
+        ai_sana = natija.get("sana")
+        ai_xulosa = natija.get("xulosa")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Do'kon cheki tahlilида xato: %s", e)
+
+    usul = d.get("usul")
+    r = await api.dokon_sorovi(
+        update.effective_user.id,
+        {
+            "dokon_nomi": d.get("nomi", ""),
+            "admin_telegram_id": d.get("admin_id"),
+            "mahsulot_soni": d.get("soni"),
+            "tolov_usuli_id": usul["id"] if usul else None,
+            "chek_rasm_url": f"/media/{file_id}",
+            "ai_summa": ai_summa,
+            "ai_sana": ai_sana,
+            "ai_xulosa": ai_xulosa,
+        },
+    )
+    confirm.clear(context.user_data)
+    context.user_data.pop("d", None)
+    if r.status_code == 200:
+        await update.message.reply_text(
+            "✅ <b>So'rovingiz qabul qilindi!</b>\n\n"
+            "Hisobchi to'lovni tekshiradi. Tasdiqлангандан so'ng do'koningiz "
+            "ochiladi va sizga <b>mahfiy kod</b> hamda admin bot havolasi "
+            "yuboriladi. 🚀",
+            parse_mode="HTML",
+            reply_markup=_menu_kb(context),
+        )
+    else:
+        try:
+            xato = r.json().get("detail", "Xatolik")
+        except Exception:  # noqa: BLE001
+            xato = "Xatolik"
+        await update.message.reply_text(f"❌ {xato}", reply_markup=_menu_kb(context))
+    return ConversationHandler.END
+
+
 async def _cancel_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     confirm.clear(context.user_data)
-    for k in ("topup_summa", "refund_summa", "refund_karta"):
+    for k in ("topup_summa", "refund_summa", "refund_karta", "d"):
         context.user_data.pop(k, None)
     await update.message.reply_text("Bosh menyu 👇", reply_markup=_menu_kb(context))
     return ConversationHandler.END
@@ -696,6 +914,30 @@ def build_application(token: str, miniapp_url: str) -> Application:
         persistent=False,
     )
     app.add_handler(balance_conv)
+
+    # 🏪 Do'kon ochish (pullik so'rov).
+    dokon_conv = ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex(f"^{BTN_DOKON}$"), dokon_start)],
+        states={
+            D_NOMI: [MessageHandler(TXT, dokon_nomi)],
+            D_ADMIN_ID: [MessageHandler(TXT, dokon_admin_id)],
+            D_SONI: [CallbackQueryHandler(dokon_soni, pattern="^ds_")],
+            D_METHOD: [CallbackQueryHandler(dokon_method, pattern="^dtu_")],
+            D_CODE: [MessageHandler(TXT, dokon_code)],
+            D_CHEK: [
+                MessageHandler(filters.PHOTO, dokon_chek),
+                MessageHandler(TXT, dokon_chek),
+            ],
+        },
+        fallbacks=[
+            CommandHandler("start", start),
+            MessageHandler(filters.Regex(f"^{BTN_HOME}$"), _cancel_to_menu),
+        ],
+        name="dokon_flow",
+        persistent=False,
+    )
+    app.add_handler(dokon_conv)
+
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_BALANCE}$"), balance))
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_HOME}$"), start))
 

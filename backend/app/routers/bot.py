@@ -225,6 +225,68 @@ def bot_coin_topup(
     return {"sorov_id": sorov.id, "holat": sorov.holat}
 
 
+class BotDokonSorovi(BaseModel):
+    dokon_nomi: str
+    admin_telegram_id: int
+    mahsulot_soni: int
+    tolov_usuli_id: int | None = None
+    chek_rasm_url: str | None = None
+    ai_summa: float | None = None
+    ai_sana: str | None = None
+    ai_xulosa: str | None = None
+
+
+@router.post("/dokon-sorovi")
+def bot_dokon_sorovi(
+    payload: BotDokonSorovi,
+    user: User = Depends(bot_user),
+    db: Session = Depends(get_db),
+):
+    """Do'kon ochish so'rovi (chek bilan). Hisobchiга (Moliya boti) yuboriladi."""
+    from ..services import dokon as dokon_service
+
+    sorov = dokon_service.create_dokon_sorovi(
+        db,
+        user,
+        dokon_nomi=payload.dokon_nomi,
+        admin_telegram_id=payload.admin_telegram_id,
+        mahsulot_soni=payload.mahsulot_soni,
+        tolov_usuli_id=payload.tolov_usuli_id,
+        chek_rasm_url=payload.chek_rasm_url,
+        ai_summa=payload.ai_summa,
+        ai_sana=payload.ai_sana,
+        ai_xulosa=payload.ai_xulosa,
+    )
+    usul = (
+        coin_service.get_tolov_usuli(db, payload.tolov_usuli_id)
+        if payload.tolov_usuli_id
+        else None
+    )
+    try:
+        from ..tgbots import notify
+
+        notify.notify_moliya_dokon(
+            sorov_id=sorov.id,
+            ism=user.ism,
+            telegram_id=user.telegram_id,
+            dokon_nomi=sorov.dokon_nomi,
+            admin_tid=sorov.admin_telegram_id,
+            mahsulot_soni=sorov.mahsulot_soni,
+            summa=float(sorov.summa),
+            ai_summa=payload.ai_summa,
+            ai_xulosa=payload.ai_xulosa,
+            chek_rel_url=sorov.chek_rasm_url,
+            usul_nomi=usul.nomi if usul else None,
+        )
+    except ImportError:
+        pass
+    return {
+        "sorov_id": sorov.id,
+        "summa": float(sorov.summa),
+        "holat": sorov.holat,
+    }
+
+
 class BotRefund(BaseModel):
     summa: float
     karta_raqami: str

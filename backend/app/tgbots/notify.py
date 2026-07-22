@@ -79,11 +79,11 @@ def notify_new_order(
         _submit(_send_admin(admin_id, text, order_id))
 
 
-async def _send_customer(telegram_id: int, text: str) -> None:
+async def _send_customer(telegram_id: int, text: str, parse_mode=None) -> None:
     app = registry.get("savdo")
     if app is None:
         return
-    await app.bot.send_message(chat_id=telegram_id, text=text)
+    await app.bot.send_message(chat_id=telegram_id, text=text, parse_mode=parse_mode)
 
 
 # ===========================================================================
@@ -188,6 +188,55 @@ def notify_moliya_topup(
     )
 
 
+def notify_moliya_dokon(
+    sorov_id: int,
+    ism: str | None,
+    telegram_id: int | None,
+    dokon_nomi: str,
+    admin_tid: int,
+    mahsulot_soni: int,
+    summa: float,
+    ai_summa: float | None,
+    ai_xulosa: str | None,
+    chek_rel_url: str | None,
+    usul_nomi: str | None = None,
+    image_bytes: bytes | None = None,
+) -> None:
+    """Yangi do'kon ochish so'rovi — chek + tafsilotlar bilan (super-adminга)."""
+    xulosa_emoji = {
+        "mos_keladi": "✅ Mos keladi",
+        "mos_kelmaydi": "⚠️ Mos kelmaydi",
+        "aniq_emas": "❓ Aniq emas",
+    }.get(ai_xulosa or "aniq_emas", "❓ Aniq emas")
+    ai_qator = (
+        f"🤖 Gemini: {ai_summa:,.0f} som" if ai_summa is not None else "🤖 Gemini: o'qilmadi"
+    )
+    text = (
+        f"🏪 Yangi DO'KON OCHISH so'rovi #{sorov_id}\n\n"
+        f"👤 So'rovchi: {ism or 'nomalum'}"
+        + (f", {telegram_id}" if telegram_id else "")
+        + f"\n🏷 Do'kon nomi: {dokon_nomi}\n"
+        f"🆔 Admin Telegram ID: {admin_tid}\n"
+        f"📦 Mahsulot limiti: {mahsulot_soni} ta\n"
+        f"💰 To'lov: {summa:,.0f} som\n"
+        + (f"💳 Usul: {usul_nomi}\n" if usul_nomi else "")
+        + f"{ai_qator}\nAI xulosasi: {xulosa_emoji}\n\n"
+        "✅ Tasdiqласангиз — do'kon avtomatik ochiladi va so'rovchiga "
+        "mahfiy kod yuboriladi."
+    )
+    kb = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("✅ Tasdiqlash", callback_data=f"md_ok_{sorov_id}"),
+                InlineKeyboardButton("❌ Rad etish", callback_data=f"md_no_{sorov_id}"),
+            ]
+        ]
+    )
+    _submit(
+        _send_moliya(text, kb, photo_rel_url=chek_rel_url, photo_bytes=image_bytes)
+    )
+
+
 def notify_moliya_withdraw(
     sorov_id: int, store_nomi: str, summa: float, karta: str
 ) -> None:
@@ -231,11 +280,11 @@ def notify_moliya_refund(
     _submit(_send_moliya(text, kb))
 
 
-def notify_customer(telegram_id: int | None, text: str) -> None:
+def notify_customer(telegram_id: int | None, text: str, parse_mode=None) -> None:
     """Mijozga Savdo Boti orqali xabar (sync yoki async koddан)."""
     if not telegram_id:
         return
-    _submit(_send_customer(telegram_id, text))
+    _submit(_send_customer(telegram_id, text, parse_mode))
 
 
 async def send_customer(telegram_id: int | None, text: str) -> None:

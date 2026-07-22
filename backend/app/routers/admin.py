@@ -68,12 +68,25 @@ def add_product(
     admin_id: int = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    check_store_access(admin_id, store_id, db)  # rule 7
+    store = check_store_access(admin_id, store_id, db)  # rule 7
     if payload.korinish not in ("ommaviy", "mahfiy"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="korinish 'ommaviy' yoki 'mahfiy' bo'lishi kerak.",
         )
+    # Pullik do'kon mahsulot limiti (do'kon ochishда tanlangan).
+    if store.mahsulot_limiti is not None:
+        joriy = db.scalar(
+            select(func.count(Product.id)).where(Product.store_id == store_id)
+        ) or 0
+        if joriy >= store.mahsulot_limiti:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Mahsulot limiti to'ldi ({store.mahsulot_limiti} ta). "
+                    "Ko'proq mahsulot uchun tarifni kengaytiring."
+                ),
+            )
     if payload.rasm_urls and len(payload.rasm_urls) > 10:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

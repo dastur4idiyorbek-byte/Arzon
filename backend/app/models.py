@@ -65,6 +65,8 @@ class Store(Base):
     kutilayotgan_balans: Mapped[float | None] = mapped_column(
         Numeric(14, 2), nullable=True, default=0
     )
+    # Mahsulot limiti (pullik do'kon ochishда tanlangan). NULL = cheksiz.
+    mahsulot_limiti: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     products: Mapped[list["Product"]] = relationship(
         back_populates="store", cascade="all, delete-orphan"
@@ -388,6 +390,45 @@ class CoinQaytarishSorovi(Base):
     )
     yopilgan_vaqt: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+
+class DokonSorovi(Base):
+    """Do'kon ochish so'rovi — mijoz to'lov qiladi, hisobchi tasdiqlaydi,
+    so'ng do'kon avtomatik ochiladi (admin_telegram_id egasi bo'ladi).
+    """
+
+    __tablename__ = "dokon_sorovlari"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # So'rov yuborgan mijoz (Savdo boti foydalanuvchisi).
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    dokon_nomi: Mapped[str] = mapped_column(String(255))
+    # Bo'lajak admin Telegram ID (mijoz kiritadi — odatda o'zi).
+    admin_telegram_id: Mapped[int] = mapped_column(BigInteger)
+    mahsulot_soni: Mapped[int] = mapped_column(Integer)  # 10..100
+    summa: Mapped[float] = mapped_column(Numeric(14, 2))  # KGS
+    tolov_usuli_id: Mapped[int | None] = mapped_column(
+        ForeignKey("platforma_tolov_usullari.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    chek_rasm_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    ai_ochigan_summa: Mapped[float | None] = mapped_column(
+        Numeric(14, 2), nullable=True
+    )
+    ai_ochigan_sana: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    ai_xulosasi: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # kutilmoqda / tasdiqlandi / rad_etildi
+    holat: Mapped[str] = mapped_column(String(20), default="kutilmoqda")
+    tasdiqlagan_admin: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    rad_sababi: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_store_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stores.id", ondelete="SET NULL"), nullable=True
+    )
+    yaratilgan_vaqt: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now
     )
 
 

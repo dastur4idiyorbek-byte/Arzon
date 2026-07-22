@@ -350,6 +350,14 @@ class BotApi:
         )
         return r.json() if r.status_code == 200 else []
 
+    async def dokon_sorovi(self, telegram_id: int, data: dict) -> httpx.Response:
+        return await self._request(
+            "POST",
+            "/api/bot/dokon-sorovi",
+            headers=self._headers({"X-Telegram-User-Id": str(telegram_id)}),
+            json=data,
+        )
+
     # --- ACOM coin: admin (Boshqaruv) pul yechish ---
     async def store_balance(self, admin_id: int, store_id: int) -> httpx.Response:
         return await self._request(
@@ -476,6 +484,27 @@ class BotApi:
         return await self._request(
             "DELETE", f"/api/moliya/tolov-usullari/{usul_id}",
             headers=self._admin(admin_id),
+        )
+
+    # --- Do'kon so'rovlari (Moliya boti) ---
+    async def moliya_dokon_sorovlari(self, admin_id: int) -> list:
+        r = await self._request(
+            "GET", "/api/moliya/dokon-sorovlari", headers=self._admin(admin_id)
+        )
+        return r.json() if r.status_code == 200 else []
+
+    async def moliya_dokon_approve(self, admin_id: int, sorov_id: int) -> httpx.Response:
+        return await self._request(
+            "POST", f"/api/moliya/dokon-sorovlari/{sorov_id}/approve",
+            headers=self._admin(admin_id),
+        )
+
+    async def moliya_dokon_reject(
+        self, admin_id: int, sorov_id: int, sabab: str
+    ) -> httpx.Response:
+        return await self._request(
+            "POST", f"/api/moliya/dokon-sorovlari/{sorov_id}/reject",
+            headers=self._admin(admin_id), json={"sabab": sabab},
         )
 
 

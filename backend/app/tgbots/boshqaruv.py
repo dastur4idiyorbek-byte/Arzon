@@ -189,6 +189,32 @@ async def bekor(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 
+async def davom_hint(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/davom — jarayonда keyingi ma'lumotni yuborish kerakligini eslatadi."""
+    await update.effective_message.reply_text(
+        "Davom etish uchun so'ralgan ma'lumotni yuboring. "
+        "Bekor qilish uchun /bekor, asosiy menyu uchun /menyu."
+    )
+
+
+async def _post_init(app: Application) -> None:
+    """Bot ishga tushganда '/' buyruqlar menyusini o'rnatadi (qulaylik uchun)."""
+    from telegram import BotCommand
+
+    try:
+        await app.bot.set_my_commands(
+            [
+                BotCommand("start", "🏠 Boshlash / asosiy menyu"),
+                BotCommand("menyu", "🏠 Asosiy menyu"),
+                BotCommand("orqaga", "⬅️ Orqaga (menyuga qaytish)"),
+                BotCommand("davom", "▶️ Davom etish"),
+                BotCommand("bekor", "❌ Bekor qilish"),
+            ]
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
+
 # ---------------------------------------------------------------------------
 # 📦 Mahsulot qo'shish — kengaytirilgan jarayon (spec1 task_2)
 # ---------------------------------------------------------------------------
@@ -1749,6 +1775,8 @@ def _conv(entry_points, states, name: str) -> ConversationHandler:
             MessageHandler(filters.Regex(f"^{BTN_HOME}$"), bekor),
             MessageHandler(filters.Regex(f"^{BTN_CANCEL}$"), bekor),
             CommandHandler("bekor", bekor),
+            CommandHandler("menyu", bekor),
+            CommandHandler("orqaga", bekor),
         ],
         allow_reentry=True,
         name=name,
@@ -1756,7 +1784,13 @@ def _conv(entry_points, states, name: str) -> ConversationHandler:
 
 
 def build_application(token: str) -> Application:
-    app = Application.builder().token(token).updater(None).build()
+    app = (
+        Application.builder()
+        .token(token)
+        .updater(None)
+        .post_init(_post_init)
+        .build()
+    )
 
     TXT = filters.TEXT & ~filters.COMMAND
 
@@ -1904,6 +1938,11 @@ def build_application(token: str) -> Application:
     )
 
     app.add_handler(CommandHandler("start", start))
+    # Qulaylik uchun '/' buyruqlar (jarayondan tashqarida).
+    app.add_handler(CommandHandler("menyu", start))
+    app.add_handler(CommandHandler("orqaga", start))
+    app.add_handler(CommandHandler("bekor", start))
+    app.add_handler(CommandHandler("davom", davom_hint))
     # 🏠 Bosh menyu — jarayondan tashqarida bosilса menyuni ko'rsatadi
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_HOME}$"), start))
     # 💰 Pul yechish (ACOM coin)

@@ -1302,3 +1302,64 @@ def test_order_code_alphanumeric():
     r = client.get(f"/api/admin/stores/{store_a['store_id']}/orders/search",
                    headers=admin_headers(ADMIN_A), params={"q": kod.lower()})
     assert r.status_code == 200 and len(r.json()) == 1
+
+
+def test_dokon_sorovi_full_flow():
+    """Do'kon ochish: so'rov -> hisobchi tasdiqlaydi -> do'kon ochiladi + limit."""
+    # To'lov usuli bo'lsin.
+    m = client.post("/api/moliya/tolov-usullari", headers=admin_headers(SUPER),
+                    json={"turi": "karta", "nomi": "Optima", "qiymat": "5000****",
+                          "egasi": "Ali"}).json()
+    requester = 90001
+    new_admin = 90002  # bo'lajak do'kon admini
+    client.post("/api/bot/confirm-phone", headers=_bot_headers(requester),
+                json={"tel": "+996700900001"})
+    # 30 mahsulot -> 300 som.
+    r = client.post("/api/bot/dokon-sorovi", headers=_bot_headers(requester),
+                    json={"dokon_nomi": "Test Do'kon", "admin_telegram_id": new_admin,
+                          "mahsulot_soni": 30, "tolov_usuli_id": m["id"],
+                          "ai_summa": 300, "ai_xulosa": "mos_keladi"})
+    assert r.status_code == 200, r.text
+    assert r.json()["summa"] == 300.0
+    sorov_id = r.json()["sorov_id"]
+
+    # Moliya ro'yxatida ko'rinadi.
+    lst = client.get("/api/moliya/dokon-sorovlari", headers=admin_headers(SUPER)).json()
+    assert any(x["id"] == sorov_id and x["mahsulot_soni"] == 30 for x in lst)
+
+    # Hisobchi tasdiqlaydi -> do'kon ochiladi.
+    a = client.post(f"/api/moliya/dokon-sorovlari/{sorov_id}/approve",
+                    headers=admin_headers(SUPER))
+    assert a.status_code == 200, a.text
+    store_id = a.json()["store_id"]
+    assert a.json()["mahfiy_kirish_kodi"]
+
+    # Yangi admin o'z do'koniga mahsulot qo'sha oladi (rule 7).
+    for i in range(30):
+        rp = client.post(f"/api/admin/stores/{store_id}/products",
+                         headers=admin_headers(new_admin),
+                         json={"nomi": f"M{i}", "narxi": 100, "korinish": "ommaviy"})
+        assert rp.status_code == 200, rp.text
+    # 31-mahsulot limit tufayli rad etiladi.
+    over = client.post(f"/api/admin/stores/{store_id}/products",
+                       headers=admin_headers(new_admin),
+                       json={"nomi": "Ortiqcha", "narxi": 100, "korinish": "ommaviy"})
+    assert over.status_code == 400, over.text
+    assert "limit" in over.json()["detail"].lower()
+
+
+def test_dokon_sorovi_super_only():
+    """Do'kon so'rovlarini faqat super-admin ko'radi/tasdiqlaydi."""
+    r = client.get("/api/moliya/dokon-sorovlari", headers=admin_headers(ADMIN_A))
+    assert r.status_code == 403, r.text
+
+
+def test_dokon_sorovi_invalid_count():
+    """Mahsulot soni faqat o'ntalik (10..100) bo'lishi kerak."""
+    tid = 90003
+    client.post("/api/bot/confirm-phone", headers=_bot_headers(tid),
+                json={"tel": "+996700900003"})
+    r = client.post("/api/bot/dokon-sorovi", headers=_bot_headers(tid),
+                    json={"dokon_nomi": "X", "admin_telegram_id": tid,
+                          "mahsulot_soni": 25})
+    assert r.status_code == 400, r.text

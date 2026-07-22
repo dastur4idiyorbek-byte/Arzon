@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     boshqaruv_bot_token: str = ""
     # Moliya Boti — faqat super-admin (ACOM coin so'rovlarини tasdiqlaydi).
     moliya_bot_token: str = ""
+    # Boshqaruv (admin) boti username — do'kon ochilgach havola yuboriladi.
+    admin_bot_username: str = "arzononlineadmin_bot"
+    # Do'kon ochish narxi: har 10 mahsulot uchun (som). 10 dona = 100 som.
+    dokon_ontalik_narxi: int = 100
 
     # --- Telegram Mini App / initData tekshiruvi ---
     # initData HMAC imzosi Savdo Boti tokeni asosida tekshiriladi.
