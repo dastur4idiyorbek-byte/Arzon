@@ -486,27 +486,66 @@ function setDelivery(type) {
   updateCartSummary(); // yetkazish narxi turга qarab o'zgaradi
 }
 
-/* ---------- Joylashuv (lokatsiya) yuborish ---------- */
-function captureLocation(onOk) {
-  if (!navigator.geolocation) {
-    notify("Qurilmangiz joylashuvni qo'llab-quvvatlamaydi.");
-    return;
-  }
-  notify("📍 Joylashuvга ruxsat bering...");
+/* ---------- Joylashuv (lokatsiya) yuborish ----------
+ * Telegram ilovasi ichida navigator.geolocation ko'pincha bloklanadi, shuning
+ * uchun avval Telegram'ning LocationManager API'sini (8.0+) ishlatamiz,
+ * bo'lmasa brauzer geolocation'ига tushamiz. */
+function _okLoc(pos) {
+  return pos && isFinite(pos.lat) && isFinite(pos.lng);
+}
+
+function browserGeo(finish) {
+  if (!navigator.geolocation) { finish(null); return; }
   navigator.geolocation.getCurrentPosition(
-    (pos) => onOk({ lat: +pos.coords.latitude.toFixed(7), lng: +pos.coords.longitude.toFixed(7) }),
-    () => notify("Joylashuv olinmadi. Ruxsat berilganini tekshiring."),
-    { enableHighAccuracy: true, timeout: 10000 }
+    (p) => finish({ lat: +p.coords.latitude.toFixed(7), lng: +p.coords.longitude.toFixed(7) }),
+    () => finish(null),
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
   );
 }
 
+function captureLocation(onOk) {
+  const finish = (loc) => {
+    if (_okLoc(loc)) { onOk(loc); return; }
+    notify("Joylashuv olinmadi. Telegram'да ruxsat bering yoki manzilni qo'lда yozing.");
+    onOk(null);
+  };
+  const lm = tg && tg.LocationManager;
+  const has8 = tg && tg.isVersionAtLeast && tg.isVersionAtLeast("8.0");
+  if (lm && has8) {
+    const doGet = () => {
+      if (!lm.isLocationAvailable) { browserGeo(finish); return; }
+      lm.getLocation((data) => {
+        if (data && data.latitude != null) {
+          finish({ lat: +data.latitude.toFixed(7), lng: +data.longitude.toFixed(7) });
+        } else {
+          // Ruxsat berilmagan — sozlamalarni ochishni taklif qilamiz.
+          notify("Joylashuvга ruxsat berilmagan. Telegram sozlamalaridан ruxsat bering.");
+          if (lm.openSettings) lm.openSettings();
+        }
+      });
+    };
+    if (lm.isInited) doGet(); else lm.init(doGet);
+    return;
+  }
+  browserGeo(finish);
+}
+
 document.getElementById("btn-location").onclick = () => {
+  const btn = document.getElementById("btn-location");
+  const oldTxt = btn.textContent;
+  btn.textContent = "⏳ So'ralmoqda...";
+  btn.disabled = true;
   captureLocation((loc) => {
+    btn.disabled = false;
+    if (!loc) { btn.textContent = oldTxt; return; }
     cartLocation = loc;
     const el = document.getElementById("loc-status");
     el.hidden = false;
     el.textContent = "✅ Joylashuv qo'shildi";
+    btn.textContent = "📍 Joylashuvni qayta yuborish";
   });
+  // Agar callback umumaн chaqirilmasa ham tugmani tiklaymiz.
+  setTimeout(() => { if (btn.disabled) { btn.textContent = oldTxt; btn.disabled = false; } }, 15000);
 };
 
 async function fetchPickupPoints(storeIds) {
@@ -679,11 +718,20 @@ function renderBuyStep(step) {
     };
     box.querySelector("#bn-kuryer").onclick = () => setDeliv("kuryer");
     box.querySelector("#bn-pickup").onclick = () => setDeliv("pickup");
-    box.querySelector("#bn-loc").onclick = () => captureLocation((loc) => {
-      buyNow.location = loc;
-      const el = box.querySelector("#bn-loc-status");
-      el.hidden = false;
-    });
+    box.querySelector("#bn-loc").onclick = () => {
+      const b = box.querySelector("#bn-loc");
+      const old = b.textContent;
+      b.textContent = "⏳ So'ralmoqda..."; b.disabled = true;
+      captureLocation((loc) => {
+        b.disabled = false;
+        if (!loc) { b.textContent = old; return; }
+        buyNow.location = loc;
+        b.textContent = "📍 Joylashuvni qayta yuborish";
+        const el = box.querySelector("#bn-loc-status");
+        el.hidden = false;
+      });
+      setTimeout(() => { if (b.disabled) { b.textContent = old; b.disabled = false; } }, 15000);
+    };
     if (buyNow.deliv === "pickup") loadBuyNowPoints();
 
     box.querySelector("#bn-back").onclick = () => renderBuyStep(1);
