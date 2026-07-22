@@ -853,7 +853,7 @@ def test_coin_purchase_settlement():
     db = SessionLocal()
     try:
         s = db.get(Store, store_a["store_id"])
-        assert float(coin_service.store_balance(s)) == 950.0
+        assert float(coin_service.store_balance(s)) == 990.0
     finally:
         db.close()
 
@@ -905,7 +905,7 @@ def test_coin_refund_on_cancel():
     db = SessionLocal()
     try:
         s = db.get(Store, store_a["store_id"])
-        assert float(coin_service.store_balance(s)) == 1900.0  # 2000 - 5%
+        assert float(coin_service.store_balance(s)) == 1980.0  # 2000 - 1%
     finally:
         db.close()
 
@@ -1007,21 +1007,21 @@ def test_coin_withdraw_and_report():
     db = SessionLocal()
     try:
         s = db.get(Store, store_a["store_id"])
-        assert float(coin_service.store_balance(s)) == 9500.0
+        assert float(coin_service.store_balance(s)) == 9900.0
         rep1 = coin_service.overall_report(db)
         assert rep1["bugun_xarid_summa"] - rep0["bugun_xarid_summa"] == 10000.0
         # Komissiya har doim xarid summasining 5% (identifikatsiya).
-        assert rep1["bugun_komissiya"] == round(rep1["bugun_xarid_summa"] * 0.05, 2)
+        assert rep1["bugun_komissiya"] == round(rep1["bugun_xarid_summa"] * 0.01, 2)
         # Pul yechish so'rovi.
         w = coin_service.create_withdraw(db, s, 5000, "1234567890123456", ADMIN_A)
         assert w.holat == "kutilmoqda"
         # Yechishдан oldin balans o'zgarmaydi.
         db.refresh(s)
-        assert float(coin_service.store_balance(s)) == 9500.0
+        assert float(coin_service.store_balance(s)) == 9900.0
         # To'landi deb belgilash -> balans 4500.
         coin_service.mark_withdraw_paid(db, w)
         db.refresh(s)
-        assert float(coin_service.store_balance(s)) == 4500.0
+        assert float(coin_service.store_balance(s)) == 4900.0
         rep2 = coin_service.overall_report(db)
         assert rep2["bugun_yechish_summa"] - rep0["bugun_yechish_summa"] == 5000.0
     finally:
@@ -1093,7 +1093,7 @@ def test_admin_withdraw_flow():
     # Balans 2600 (7600 - 5000).
     bal = client.get(f"/api/admin/stores/{store_a['store_id']}/balance",
                      headers=admin_headers(ADMIN_A)).json()
-    assert bal["kutilayotgan_balans"] == 2600.0
+    assert bal["kutilayotgan_balans"] == 2920.0
 
 
 def test_miniapp_balance_endpoint():

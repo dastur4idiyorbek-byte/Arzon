@@ -38,7 +38,7 @@ class Settings(BaseSettings):
 
     # --- ACOM coin tizimi (barcha summalar KGS, 1 ACOM = 1 KGS) ---
     # Platforma komissiyasi (foiz) — xaridда adminга sof summa tushadi.
-    komissiya_foizi: int = 5
+    komissiya_foizi: int = 1
     # To'ldirish xavfsizlik chegaralari (KGSда).
     bir_martalik_toldirish_limit: int = 300000
     kunlik_toldirish_soni_limit: int = 3
