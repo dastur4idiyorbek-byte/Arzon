@@ -333,21 +333,27 @@ def approve_dokon(
     store = dokon_service.approve_dokon_sorovi(db, sorov, admin_id)
 
     # So'rovchiга chiroyli tasdiq — admin bot havolasi + mahfiy kod.
-    bot_link = f"https://t.me/{settings.admin_bot_username}"
+    # DIQQAT: HTML ishlatamiz (Markdown emas) — bot username'ida '_' bo'lsa
+    # Markdown uni kursiv deb o'qib xabarни buzadi.
+    import html as _html
+
+    bot_uname = settings.admin_bot_username.lstrip("@")
+    bot_link = f"https://t.me/{bot_uname}"
     xabar = (
-        "🎉 *Tabriklaymiz! Do'koningiz ochildi!*\n\n"
-        f"🏪 Do'kon: *{store.nomi}*\n"
-        f"📦 Mahsulot limiti: *{store.mahsulot_limiti} ta*\n\n"
-        f"🔑 Do'koningiz mahfiy kodi:\n`{store.mahfiy_kirish_kodi}`\n\n"
-        f"👉 Boshqaruv (admin) botiga o'ting va /start bosing:\n{bot_link}\n\n"
+        "🎉 <b>Tabriklaymiz! Do'koningiz ochildi!</b>\n\n"
+        f"🏪 Do'kon: <b>{_html.escape(store.nomi)}</b>\n"
+        f"📦 Mahsulot limiti: <b>{store.mahsulot_limiti} ta</b>\n\n"
+        f"🔑 Do'koningiz mahfiy kodi:\n<code>{_html.escape(store.mahfiy_kirish_kodi or '')}</code>\n\n"
+        f"👉 Boshqaruv (admin) botiga o'ting va /start bosing:\n"
+        f'<a href="{bot_link}">@{_html.escape(bot_uname)}</a>\n\n'
         "Endi mahsulot qo'shishingiz, buyurtmalarni boshqarishingiz mumkin. "
         "Omad tilaymiz! 🚀"
     )
     u = db.get(User, sorov.user_id)
-    _notify_md(u.telegram_id if u else None, xabar)
+    _notify_html(u.telegram_id if u else None, xabar)
     # Bo'lajak admin (agar so'rovchидан farqли bo'lsa) — u ham xabar oladi.
     if sorov.admin_telegram_id and (not u or sorov.admin_telegram_id != u.telegram_id):
-        _notify_md(sorov.admin_telegram_id, xabar)
+        _notify_html(sorov.admin_telegram_id, xabar)
     return {
         "store_id": store.id,
         "nomi": store.nomi,
@@ -370,21 +376,33 @@ def reject_dokon(
         raise HTTPException(status_code=404, detail="So'rov topilmadi.")
     dokon_service.reject_dokon_sorovi(db, sorov, admin_id, payload.sabab)
     u = db.get(User, sorov.user_id)
+    # Sabab va do'kon nomi oddiy matn (Markdown/HTML belgilarisiz) yuboriladi.
     sabab_txt = f"\nSabab: {payload.sabab}" if payload.sabab else ""
-    _notify_md(
+    _notify_plain(
         u.telegram_id if u else None,
         f"❌ Do'kon ochish so'rovingiz ('{sorov.dokon_nomi}') rad etildi.{sabab_txt}",
     )
     return {"holat": sorov.holat}
 
 
-def _notify_md(telegram_id: int | None, text: str) -> None:
+def _notify_html(telegram_id: int | None, text: str) -> None:
     if not telegram_id:
         return
     try:
         from ..tgbots import notify
 
-        notify.notify_customer(telegram_id, text, parse_mode="Markdown")
+        notify.notify_customer(telegram_id, text, parse_mode="HTML")
+    except ImportError:
+        pass
+
+
+def _notify_plain(telegram_id: int | None, text: str) -> None:
+    if not telegram_id:
+        return
+    try:
+        from ..tgbots import notify
+
+        notify.notify_customer(telegram_id, text)
     except ImportError:
         pass
 

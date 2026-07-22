@@ -234,8 +234,10 @@ def change_status(
 
             u = db.get(_User, order.user_id)
             if u:
+                # Kod harf+raqam (Markdown xavfsiz) — chiroyli qalin ko'rinadi.
                 notify.notify_customer(
-                    u.telegram_id, xabar.format(kod=order.kod)
+                    u.telegram_id, xabar.format(kod=order.kod),
+                    parse_mode="Markdown",
                 )
         except ImportError:
             pass
