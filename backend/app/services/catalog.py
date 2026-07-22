@@ -63,7 +63,7 @@ def get_unlocked_store_ids(db: Session, user: User) -> Set[int]:
         if (
             store.mahfiy_kirish_kodi
             and unlocked.ishlatilgan_kod == store.mahfiy_kirish_kodi
-            and store.holat == "faol"
+            and store.holat in ("faol", "vaqtincha_toxtatilgan")
         ):
             valid.add(store.id)
     return valid
@@ -79,7 +79,11 @@ def get_catalog(db: Session, user: User) -> List[dict]:
     unlocked_ids = get_unlocked_store_ids(db, user)
 
     # Faol do'kon nomlarini oldindan yuklaymiz (javobda store_nomi uchun).
-    stores = {s.id: s for s in db.scalars(select(Store)) if s.holat == "faol"}
+    stores = {
+        s.id: s
+        for s in db.scalars(select(Store))
+        if s.holat in ("faol", "vaqtincha_toxtatilgan")
+    }
     active_ids = set(stores.keys())
 
     products = db.scalars(
@@ -123,7 +127,9 @@ def accessible_store_ids(db: Session, user: User) -> Set[int]:
     Barcha faol do'konlar (ommaviy tovar uchun) + ochilgan mahfiy do'konlar.
     """
     active = {
-        s.id for s in db.scalars(select(Store)) if s.holat == "faol"
+        s.id
+        for s in db.scalars(select(Store))
+        if s.holat in ("faol", "vaqtincha_toxtatilgan")
     }
     return active  # Ommaviy tovar har qanday faol do'kondan olinishi mumkin;
     # mahfiy tovar tekshiruvi orders.create_orders_from_cart ichida
@@ -144,7 +150,8 @@ def try_unlock(db: Session, user: User, kod: str) -> dict:
     kod = kod.strip()
     store = db.scalar(
         select(Store).where(
-            Store.mahfiy_kirish_kodi == kod, Store.holat == "faol"
+            Store.mahfiy_kirish_kodi == kod,
+            Store.holat.in_(("faol", "vaqtincha_toxtatilgan")),
         )
     )
     if store is None:

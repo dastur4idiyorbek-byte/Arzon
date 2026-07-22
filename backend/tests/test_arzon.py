@@ -87,6 +87,7 @@ def get_balance(telegram_id: int) -> float:
 # Fixtures uchun sodda o'rnatuvchi: ikkita do'kon + adminlar + mahsulotlar
 # ---------------------------------------------------------------------------
 SUPER = 999999
+MANAGER = 777777  # conftest MENEJER_IDS bilan mos
 ADMIN_A = 1001
 ADMIN_B = 2002
 
@@ -1323,13 +1324,13 @@ def test_dokon_sorovi_full_flow():
     assert r.json()["summa"] == 300.0
     sorov_id = r.json()["sorov_id"]
 
-    # Moliya ro'yxatida ko'rinadi.
-    lst = client.get("/api/moliya/dokon-sorovlari", headers=admin_headers(SUPER)).json()
+    # Menejer ro'yxatida ko'rinadi.
+    lst = client.get("/api/menejer/dokon-sorovlari", headers=admin_headers(MANAGER)).json()
     assert any(x["id"] == sorov_id and x["mahsulot_soni"] == 30 for x in lst)
 
-    # Hisobchi tasdiqlaydi -> do'kon ochiladi.
-    a = client.post(f"/api/moliya/dokon-sorovlari/{sorov_id}/approve",
-                    headers=admin_headers(SUPER))
+    # Menejer tasdiqlaydi (oylik arenda 500 som bilan) -> do'kon ochiladi.
+    a = client.post(f"/api/menejer/dokon-sorovlari/{sorov_id}/approve",
+                    headers=admin_headers(MANAGER), json={"arenda_summasi": 500})
     assert a.status_code == 200, a.text
     store_id = a.json()["store_id"]
     assert a.json()["mahfiy_kirish_kodi"]
@@ -1348,10 +1349,17 @@ def test_dokon_sorovi_full_flow():
     assert "limit" in over.json()["detail"].lower()
 
 
-def test_dokon_sorovi_super_only():
-    """Do'kon so'rovlarini faqat super-admin ko'radi/tasdiqlaydi."""
-    r = client.get("/api/moliya/dokon-sorovlari", headers=admin_headers(ADMIN_A))
+def test_dokon_sorovi_manager_only():
+    """Do'kon so'rovlarini faqat menejer ko'radi (oddiy admin ham, super ham emas)."""
+    # Oddiy admin -> 403.
+    r = client.get("/api/menejer/dokon-sorovlari", headers=admin_headers(ADMIN_A))
     assert r.status_code == 403, r.text
+    # Super-admin (menejer emas) ham -> 403 (rule 2: alohida ruxsat).
+    r2 = client.get("/api/menejer/dokon-sorovlari", headers=admin_headers(SUPER))
+    assert r2.status_code == 403, r2.text
+    # Menejer -> 200.
+    r3 = client.get("/api/menejer/dokon-sorovlari", headers=admin_headers(MANAGER))
+    assert r3.status_code == 200, r3.text
 
 
 def test_dokon_sorovi_invalid_count():
@@ -1363,3 +1371,117 @@ def test_dokon_sorovi_invalid_count():
                     json={"dokon_nomi": "X", "admin_telegram_id": tid,
                           "mahsulot_soni": 25})
     assert r.status_code == 400, r.text
+
+
+def test_menejer_v3_new_admin_can_access_boshqaruv():
+    """V3: Menejer tasdiqlagach, so'rovchi Boshqaruv botга (admin sifatida) kiradi."""
+    requester = 91001
+    new_admin = 91002
+    client.post("/api/bot/confirm-phone", headers=_bot_headers(requester),
+                json={"tel": "+996700910001"})
+    sr = client.post("/api/bot/dokon-sorovi", headers=_bot_headers(requester),
+                     json={"dokon_nomi": "V3 Do'kon", "admin_telegram_id": new_admin,
+                           "mahsulot_soni": 20})
+    sid_req = sr.json()["sorov_id"]
+    # Tasdiqлашдан oldin new_admin'да do'kon yo'q.
+    before = client.get("/api/admin/my-stores", headers=admin_headers(new_admin)).json()
+    assert not any(s["nomi"] == "V3 Do'kon" for s in before)
+    # Menejer tasdiqlaydi.
+    client.post(f"/api/menejer/dokon-sorovlari/{sid_req}/approve",
+                headers=admin_headers(MANAGER), json={"arenda_summasi": 300})
+    after = client.get("/api/admin/my-stores", headers=admin_headers(new_admin)).json()
+    assert any(s["nomi"] == "V3 Do'kon" for s in after)
+
+
+def test_menejer_v4_arenda_suspend_but_products_visible():
+    """V4: muddat o'tса bloklanadi, mahsulot ko'rinadi, admin qo'sha olmaydi."""
+    from datetime import timedelta
+
+    from app.database import SessionLocal
+    from app.models import Store, _now
+    from app.tgbots import daily
+
+    # Menejer do'kon ochadi (arenda bilan).
+    requester, new_admin = 92001, 92002
+    client.post("/api/bot/confirm-phone", headers=_bot_headers(requester),
+                json={"tel": "+996700920001"})
+    sr = client.post("/api/bot/dokon-sorovi", headers=_bot_headers(requester),
+                     json={"dokon_nomi": "V4 Do'kon", "admin_telegram_id": new_admin,
+                           "mahsulot_soni": 20})
+    ap = client.post(f"/api/menejer/dokon-sorovlari/{sr.json()['sorov_id']}/approve",
+                     headers=admin_headers(MANAGER), json={"arenda_summasi": 300}).json()
+    store_id = ap["store_id"]
+    # Mahsulot qo'shamiz (hali faol).
+    p = client.post(f"/api/admin/stores/{store_id}/products",
+                    headers=admin_headers(new_admin),
+                    json={"nomi": "V4 tovar", "narxi": 500, "korinish": "ommaviy"})
+    assert p.status_code == 200, p.text
+
+    # Arenda muddatini o'tган qilib qo'yamiz + kunlik tekshiruv.
+    db = SessionLocal()
+    try:
+        s = db.get(Store, store_id)
+        s.arenda_muddati_tugashi = _now() - timedelta(days=1)
+        db.commit()
+        xabarlar = daily.check_arenda(db)
+        db.refresh(s)
+        assert s.holat == "vaqtincha_toxtatilgan"
+        assert new_admin in xabarlar  # adminга ogohlantirish
+    finally:
+        db.close()
+
+    # Mahsulot mijoz katalogида hali ko'rinadi (sotilaveradi).
+    cat = client.get("/api/products", headers=customer_headers(92003)).json()
+    assert any(x["nomi"] == "V4 tovar" for x in cat)
+
+    # Admin endi mahsulot qo'sha olmaydi (bloklangan).
+    blocked = client.post(f"/api/admin/stores/{store_id}/products",
+                          headers=admin_headers(new_admin),
+                          json={"nomi": "Yangi", "narxi": 100, "korinish": "ommaviy"})
+    assert blocked.status_code == 403, blocked.text
+
+    # Menejer arendani uzaytiradi -> blokdan chiqadi.
+    ext = client.post(f"/api/menejer/stores/{store_id}/arenda-uzaytir",
+                      headers=admin_headers(MANAGER))
+    assert ext.status_code == 200 and ext.json()["holat"] == "faol"
+    ok = client.post(f"/api/admin/stores/{store_id}/products",
+                     headers=admin_headers(new_admin),
+                     json={"nomi": "Endi bo'ladi", "narxi": 100, "korinish": "ommaviy"})
+    assert ok.status_code == 200, ok.text
+
+
+def test_menejer_v5_report_matches_moliya():
+    """V5: Menejer hisoboti Moliya hisoboti bilan bir xil (bir xil backend)."""
+    rm = client.get("/api/moliya/report", headers=admin_headers(SUPER)).json()
+    rmg = client.get("/api/menejer/report", headers=admin_headers(MANAGER)).json()
+    assert rm == rmg
+
+
+def test_menejer_delete_store_and_product():
+    """Menejer moderatsiya: do'kon va mahsulot o'chirish."""
+    store_a, _ = setup_two_stores()
+    p = client.post(f"/api/admin/stores/{store_a['store_id']}/products",
+                    headers=admin_headers(ADMIN_A),
+                    json={"nomi": "Mod tovar", "narxi": 100, "korinish": "ommaviy"}).json()
+    # Mahsulot o'chirish.
+    dp = client.delete(f"/api/menejer/products/{p['id']}", headers=admin_headers(MANAGER))
+    assert dp.status_code == 200, dp.text
+    # Do'kon o'chirish.
+    ds = client.delete(f"/api/menejer/stores/{store_a['store_id']}",
+                       headers=admin_headers(MANAGER))
+    assert ds.status_code == 200, ds.text
+    # O'chirilgach ro'yxatda yo'q.
+    stores = client.get("/api/menejer/stores", headers=admin_headers(MANAGER)).json()
+    assert not any(s["id"] == store_a["store_id"] for s in stores)
+
+
+def test_menejer_admin_add_remove():
+    """Menejer do'konga admin qo'shadi va olib tashlaydi."""
+    store_a, _ = setup_two_stores()
+    sid = store_a["store_id"]
+    add = client.post(f"/api/menejer/stores/{sid}/admins",
+                      headers=admin_headers(MANAGER), json={"telegram_id": 55555})
+    assert add.status_code == 200 and 55555 in add.json()["admin_ids"]
+    rm = client.delete(f"/api/menejer/stores/{sid}/admins/55555",
+                       headers=admin_headers(MANAGER))
+    assert rm.status_code == 200 and 55555 not in rm.json()["admin_ids"]

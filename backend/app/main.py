@@ -23,6 +23,7 @@ from .routers import (
     instagram,
     loyalty,
     media,
+    menejer,
     moliya,
     orders,
     products,
@@ -105,6 +106,8 @@ app.include_router(bot.router)
 app.include_router(admin.router)
 # Moliya endpointlari (Moliya Boti — faqat super-admin, ACOM coin)
 app.include_router(moliya.router)
+# Menejer endpointlari (Menejer Boti — do'kon/admin/arenda boshqaruvi)
+app.include_router(menejer.router)
 # Instagram webhook
 app.include_router(instagram.router)
 # Telegram rasm proksisi (mahsulot rasmlari Mini App uchun)

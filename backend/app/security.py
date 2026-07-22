@@ -186,6 +186,36 @@ def require_admin(
     return int(x_admin_id)
 
 
+def is_manager(telegram_id: int) -> bool:
+    return telegram_id in settings.menejer_id_list
+
+
+def require_manager(
+    x_admin_id: str = Header(default="", alias="X-Admin-Id"),
+    x_internal_token: str = Header(default="", alias="X-Internal-Token"),
+) -> int:
+    """Menejer endpointlari uchun dependency — faqat MENEJER_ID ro'yxatidagilar.
+
+    Boshqaruv Bot bilan hech qanday umumiy kod ulashilmaydi (rule 2) — bu
+    alohida ruxsat qatlami, faqat umumiy ma'lumotlar bazasi.
+    """
+    if not settings.internal_api_token:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Ichki API tokeni sozlanmagan.",
+        )
+    if not hmac.compare_digest(x_internal_token, settings.internal_api_token):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Ichki token noto'g'ri."
+        )
+    if not x_admin_id.isdigit() or not is_manager(int(x_admin_id)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Sizda bu botdan foydalanish huquqi yo'q.",
+        )
+    return int(x_admin_id)
+
+
 def get_admin_store_ids(admin_id: int, db: Session) -> list[int]:
     """Admin tegishli bo'lgan barcha store_id'lar.
 

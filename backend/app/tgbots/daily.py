@@ -103,10 +103,70 @@ def build_store_report(db, store: Store) -> str:
     )
 
 
+def check_arenda(db) -> dict[int, list[str]]:
+    """Arenda muddatini tekshiradi (task_5).
+
+    - Tugashiga N kun (settings.arenda_ogohlantirish_kunlar) qolganда — admin(lar)ga
+      ogohlantirish.
+    - Muddat o'tса va do'kon hali faol bo'lsa — holat 'vaqtincha_toxtatilgan'
+      (mahsulotlar bazада saqlanadi, o'chirilmaydi).
+
+    Qaytaradi: {admin_telegram_id: [xabar, ...]}.
+    """
+    from ..config import settings
+
+    now = _now()
+    ogoh_kun = settings.arenda_ogohlantirish_kunlar
+    xabarlar: dict[int, list[str]] = {}
+    stores = db.scalars(
+        select(Store).where(Store.arenda_muddati_tugashi.isnot(None))
+    ).all()
+    ozgardi = False
+    for s in stores:
+        muddat = _as_aware(s.arenda_muddati_tugashi)
+        if muddat is None:
+            continue
+        qolgan_kun = (muddat - now).days
+        summa = float(s.arenda_summasi or 0)
+        if muddat < now:
+            # Muddat o'tdi — bloklaymiz (agar hali faol bo'lsa).
+            if s.holat == "faol":
+                s.holat = "vaqtincha_toxtatilgan"
+                ozgardi = True
+                for aid in s.admin_ids or []:
+                    xabarlar.setdefault(aid, []).append(
+                        f"🔴 '{s.nomi}' do'koningiz arenda to'lanmagani uchun "
+                        "vaqtincha to'xtatildi. Mahsulotlaringiz sotilib turibdi, "
+                        "lekin boshqarish uchun arendani to'lang (Menejer bilan bog'laning)."
+                    )
+        elif 0 <= qolgan_kun <= ogoh_kun and s.holat == "faol":
+            for aid in s.admin_ids or []:
+                xabarlar.setdefault(aid, []).append(
+                    f"⚠️ '{s.nomi}' do'koningiz arenda muddati {qolgan_kun} kundан "
+                    f"keyin tugaydi. Davom etish uchun {summa:,.0f} som to'lang "
+                    "(Menejer bilan bog'laning)."
+                )
+    if ozgardi:
+        db.commit()
+    return xabarlar
+
+
 async def daily_tick(bot) -> None:
-    """Kunlik ish: chegirma muddati + hisobotlar. `bot` — Boshqaruv Boti."""
+    """Kunlik ish: chegirma muddati + arenda + hisobotlar. `bot` — Boshqaruv Boti."""
     db = SessionLocal()
     try:
+        # 0) Arenda nazorati (ogohlantirish + muddat o'tса bloklash).
+        try:
+            arenda_xabarlar = check_arenda(db)
+            for admin_id, msgs in arenda_xabarlar.items():
+                for msg in msgs:
+                    try:
+                        await bot.send_message(chat_id=admin_id, text=msg)
+                    except Exception as e:  # noqa: BLE001
+                        logger.warning("Arenda xabari ketmadi: %s", e)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Arenda tekshiruvида xato: %s", e)
+
         # 1) Muddati o'tgan chegirmalar.
         xabarlar = expire_discounts(db)
         stores = db.scalars(select(Store).where(Store.holat == "faol")).all()

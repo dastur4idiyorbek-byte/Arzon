@@ -135,12 +135,23 @@ async def _resolve_store(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not stores:
         await update.effective_message.reply_text(
             "⛔️ Sizga hali do'kon biriktirilmagan.\n"
-            "Do'kon faqat super-admin tomonidan ochiladi/biriktiriladi — "
-            "super-admin bilan bog'laning.",
+            "Do'kon ochish uchun Savdo botiдаги '🏪 Do'kon ochish' orqali "
+            "so'rov yuboring.",
             reply_markup=menu_markup(admin_id),
         )
         return None
-    return stores[0]["id"]
+    store = stores[0]
+    # Arenda to'lanmay bloklangan bo'lsa — admin boshqara olmaydi (lekin
+    # mahsulotlar mijozlarга ko'rinib, sotilib turadi).
+    if store.get("holat") == "vaqtincha_toxtatilgan":
+        await update.effective_message.reply_text(
+            f"🔴 '{store['nomi']}' do'koningiz arenda to'lanmagani uchun "
+            "vaqtincha to'xtatilgan. Mahsulotlaringiz sotilib turibdi, lekin "
+            "boshqarish uchun arendani to'lang (Menejer bilan bog'laning).",
+            reply_markup=menu_markup(admin_id),
+        )
+        return None
+    return store["id"]
 
 
 # ---------------------------------------------------------------------------

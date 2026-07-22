@@ -69,6 +69,14 @@ def add_product(
     db: Session = Depends(get_db),
 ):
     store = check_store_access(admin_id, store_id, db)  # rule 7
+    if store.holat == "vaqtincha_toxtatilgan":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Do'kon arenda to'lanmagani uchun vaqtincha to'xtatilgan. "
+                "Boshqarish uchun arendани to'lang (Menejer bilan bog'laning)."
+            ),
+        )
     if payload.korinish not in ("ommaviy", "mahfiy"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

@@ -265,7 +265,7 @@ def bot_dokon_sorovi(
     try:
         from ..tgbots import notify
 
-        notify.notify_moliya_dokon(
+        notify.notify_menejer_dokon(
             sorov_id=sorov.id,
             ism=user.ism,
             telegram_id=user.telegram_id,

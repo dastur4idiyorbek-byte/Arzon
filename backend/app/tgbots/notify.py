@@ -188,7 +188,38 @@ def notify_moliya_topup(
     )
 
 
-def notify_moliya_dokon(
+async def _send_menejer(text, reply_markup=None, photo_rel_url=None, photo_bytes=None):
+    """Barcha menejerlarга Menejer Boti orqali xabar."""
+    from ..config import settings
+
+    app = registry.get("menejer")
+    if app is None:
+        return
+    base = _base_url()
+    file_id = None
+    for mid in settings.menejer_id_list:
+        try:
+            if photo_bytes is not None:
+                photo = file_id if file_id else photo_bytes
+                msg = await app.bot.send_photo(
+                    chat_id=mid, photo=photo, caption=text, reply_markup=reply_markup
+                )
+                if file_id is None and msg and msg.photo:
+                    file_id = msg.photo[-1].file_id
+            elif photo_rel_url and base:
+                await app.bot.send_photo(
+                    chat_id=mid, photo=f"{base}{photo_rel_url}",
+                    caption=text, reply_markup=reply_markup,
+                )
+            else:
+                await app.bot.send_message(
+                    chat_id=mid, text=text, reply_markup=reply_markup
+                )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Menejer xabari yuborilmadi (%s): %s", mid, e)
+
+
+def notify_menejer_dokon(
     sorov_id: int,
     ism: str | None,
     telegram_id: int | None,
@@ -202,7 +233,7 @@ def notify_moliya_dokon(
     usul_nomi: str | None = None,
     image_bytes: bytes | None = None,
 ) -> None:
-    """Yangi do'kon ochish so'rovi — chek + tafsilotlar bilan (super-adminга)."""
+    """Yangi do'kon ochish so'rovi — chek + tafsilotlar bilan (Menejerга)."""
     xulosa_emoji = {
         "mos_keladi": "✅ Mos keladi",
         "mos_kelmaydi": "⚠️ Mos kelmaydi",
@@ -233,7 +264,7 @@ def notify_moliya_dokon(
         ]
     )
     _submit(
-        _send_moliya(text, kb, photo_rel_url=chek_rel_url, photo_bytes=image_bytes)
+        _send_menejer(text, kb, photo_rel_url=chek_rel_url, photo_bytes=image_bytes)
     )
 
 

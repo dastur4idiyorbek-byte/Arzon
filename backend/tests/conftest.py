@@ -9,6 +9,7 @@ os.environ["MINIAPP_BOT_TOKEN"] = "TEST:BOT-TOKEN-123"
 os.environ["SAVDO_BOT_TOKEN"] = "TEST:BOT-TOKEN-123"
 os.environ["INTERNAL_API_TOKEN"] = "internal-secret-xyz"
 os.environ["SUPER_ADMIN_IDS"] = "999999"
+os.environ["MENEJER_IDS"] = "777777"
 os.environ["ANTHROPIC_API_KEY"] = ""  # AI zaxira javob rejimida
 
 # Jadvallarni yaratamiz (TestClient lifespan'siz ishlatilishi mumkin).

@@ -508,4 +508,83 @@ class BotApi:
         )
 
 
+    # --- Menejer boti (do'kon/admin/arenda boshqaruvi) ---
+    async def menejer_dokon_sorovlari(self, mid: int) -> list:
+        r = await self._request("GET", "/api/menejer/dokon-sorovlari", headers=self._admin(mid))
+        return r.json() if r.status_code == 200 else []
+
+    async def menejer_dokon_approve(
+        self, mid: int, sorov_id: int, arenda_summasi: float | None
+    ) -> httpx.Response:
+        return await self._request(
+            "POST", f"/api/menejer/dokon-sorovlari/{sorov_id}/approve",
+            headers=self._admin(mid), json={"arenda_summasi": arenda_summasi},
+        )
+
+    async def menejer_dokon_reject(self, mid: int, sorov_id: int, sabab: str) -> httpx.Response:
+        return await self._request(
+            "POST", f"/api/menejer/dokon-sorovlari/{sorov_id}/reject",
+            headers=self._admin(mid), json={"sabab": sabab},
+        )
+
+    async def menejer_adminlar(self, mid: int) -> list:
+        r = await self._request("GET", "/api/menejer/adminlar", headers=self._admin(mid))
+        return r.json() if r.status_code == 200 else []
+
+    async def menejer_add_admin(self, mid: int, store_id: int, tid: int) -> httpx.Response:
+        return await self._request(
+            "POST", f"/api/menejer/stores/{store_id}/admins",
+            headers=self._admin(mid), json={"telegram_id": tid},
+        )
+
+    async def menejer_remove_admin(self, mid: int, store_id: int, tid: int) -> httpx.Response:
+        return await self._request(
+            "DELETE", f"/api/menejer/stores/{store_id}/admins/{tid}",
+            headers=self._admin(mid),
+        )
+
+    async def menejer_stores(self, mid: int) -> list:
+        r = await self._request("GET", "/api/menejer/stores", headers=self._admin(mid))
+        return r.json() if r.status_code == 200 else []
+
+    async def menejer_delete_store(self, mid: int, store_id: int) -> httpx.Response:
+        return await self._request(
+            "DELETE", f"/api/menejer/stores/{store_id}", headers=self._admin(mid)
+        )
+
+    async def menejer_store_products(self, mid: int, store_id: int) -> list:
+        r = await self._request(
+            "GET", f"/api/menejer/stores/{store_id}/products", headers=self._admin(mid)
+        )
+        return r.json() if r.status_code == 200 else []
+
+    async def menejer_delete_product(self, mid: int, product_id: int) -> httpx.Response:
+        return await self._request(
+            "DELETE", f"/api/menejer/products/{product_id}", headers=self._admin(mid)
+        )
+
+    async def menejer_arenda(self, mid: int) -> list:
+        r = await self._request("GET", "/api/menejer/arenda", headers=self._admin(mid))
+        return r.json() if r.status_code == 200 else []
+
+    async def menejer_block(self, mid: int, store_id: int) -> httpx.Response:
+        return await self._request(
+            "POST", f"/api/menejer/stores/{store_id}/block", headers=self._admin(mid)
+        )
+
+    async def menejer_unblock(self, mid: int, store_id: int) -> httpx.Response:
+        return await self._request(
+            "POST", f"/api/menejer/stores/{store_id}/unblock", headers=self._admin(mid)
+        )
+
+    async def menejer_arenda_uzaytir(self, mid: int, store_id: int) -> httpx.Response:
+        return await self._request(
+            "POST", f"/api/menejer/stores/{store_id}/arenda-uzaytir", headers=self._admin(mid)
+        )
+
+    async def menejer_report(self, mid: int) -> dict:
+        r = await self._request("GET", "/api/menejer/report", headers=self._admin(mid))
+        return r.json() if r.status_code == 200 else {}
+
+
 api = BotApi()

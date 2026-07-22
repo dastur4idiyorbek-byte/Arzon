@@ -37,6 +37,14 @@ services:
       # Moliya Boti (faqat super-admin — ACOM coin so'rovlari).
       - key: MOLIYA_BOT_TOKEN
         sync: false
+      # Menejer Boti (do'kon/admin/arenda boshqaruvi) + menejer ID'lari.
+      - key: MENEJER_BOT_TOKEN
+        sync: false
+      - key: MENEJER_IDS
+        sync: false
+      # Do'kon ochilgach yuboriladigan admin bot username (@siz).
+      - key: ADMIN_BOT_USERNAME
+        sync: false
       # Gemini Flash — chek/rasm tahlili (ixtiyoriy; bo'sh bo'lса super-admin
       # qo'lда tekshiradi). Mijoz chatи uchun emas — u Claude API.
       - key: GEMINI_API_KEY
