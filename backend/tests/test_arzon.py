@@ -634,8 +634,23 @@ def test_referral_rewards_go_to_referrer():
         "/api/checkout", headers=customer_headers(F),
         json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Uy 1"},
     )
-    # jami = 1000 + 100 yetkazish = 1100 -> 5% = 55.
-    assert round(r_balance() - b2, 2) == 55
+    # Do'st xaridi ACOM bermaydi — referal egasiga chegirma vaucheri beriladi.
+    assert r_balance() == b2
+    loy = client.get("/api/loyalty", headers=customer_headers(R)).json()
+    assert loy["chegirma_vaucherlar"] == 1
+
+    # R o'zi xarid qiladi — vaucher 5% chegirma beradi (mahsulotga, yetkazishга emas).
+    client.post("/api/confirm-phone", headers=customer_headers(R),
+                json={"tel": "+996700007000"})
+    give_balance(R, 100000)
+    o = client.post(
+        "/api/checkout", headers=customer_headers(R),
+        json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Uy 9"},
+    ).json()["buyurtmalar"][0]
+    assert o["jami_narx"] == 1050  # 1000*0.95 + 100 yetkazish
+    # Vaucher ishlatildi — endi qolmadi.
+    loy2 = client.get("/api/loyalty", headers=customer_headers(R)).json()
+    assert loy2["chegirma_vaucherlar"] == 0
 
 
 def test_spec_order_search_store_scoped():
@@ -1231,8 +1246,10 @@ def test_coin_referral_bonus():
                            "manzil": "Bishkek 1"})
     assert ok.status_code == 200, ok.text
 
-    # A ga: register (5) + do'st xarididan 5% (1100 * 0.05 = 55) = 60.
-    assert get_balance(a_tid) == 60.0
+    # A ga: register (5 ACOM). Do'st xaridi ACOM bermaydi — chegirma vaucheri.
+    assert get_balance(a_tid) == 5.0
+    loy = client.get("/api/loyalty", headers=customer_headers(a_tid)).json()
+    assert loy["chegirma_vaucherlar"] == 1
 
 
 def test_moliya_payment_methods_crud():

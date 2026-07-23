@@ -1141,7 +1141,15 @@ async function loadLoyalty() {
     ? `<p>Keyingi karta uchun yana <b>${data.keyingi_karta_uchun_qolgan}</b> ta xarid.</p>` : "";
   const sB = data.referral_start_bonus ?? 5;
   const mB = data.referral_miniapp_bonus ?? 10;
-  const pF = data.referral_purchase_foiz ?? 5;
+  const pF = data.referral_discount_foiz ?? 5;
+  const vau = data.chegirma_vaucherlar || 0;
+  const vauBox = vau > 0
+    ? `<div class="loyalty-box loy-vau" style="margin-top:12px">
+         <span class="loy-vau-ico">🏷</span>
+         <div><b>${vau} ta ${pF}% chegirma</b> sizniki<br>
+           <span class="loy-note">Keyingi xaridingizda avtomatik ishlatiladi.</span></div>
+       </div>`
+    : "";
   box.innerHTML = `
     <div class="loyalty-box">
       <div class="card-store">Umumiy xaridlar</div>
@@ -1151,12 +1159,14 @@ async function loadLoyalty() {
     </div>
 
     <div class="loyalty-box" style="margin-top:12px">
-      <div class="card-store">🎁 Do'st taklif qiling — ACOM ishlang!</div>
+      <div class="card-store">👥 Do'st taklif qiling — mukofot yutib oling!</div>
       <p class="loy-note">Do'stingiz havolangiz orqali kirsa, mukofot <b>sizga</b> beriladi:</p>
       <div class="loy-item"><span>🚀 Do'st /start bossa</span><b>+${sB} ACOM</b></div>
       <div class="loy-item"><span>📲 Do'st Mini App'ni ochsa</span><b>+${mB} ACOM</b></div>
-      <div class="loy-item"><span>🛍 Do'st xarid qilsa</span><b>${pF}% ACOM</b></div>
+      <div class="loy-item"><span>🛍 Do'st xarid qilsa</span><b>keyingi xaridga ${pF}%</b></div>
     </div>
+
+    ${vauBox}
 
     <div class="loyalty-box loy-earn" style="margin-top:12px">
       <div>

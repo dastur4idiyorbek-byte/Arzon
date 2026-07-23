@@ -170,6 +170,9 @@ def create_orders_from_cart(
                         ),
                     )
 
+    # Referal chegirma vaucheri — do'st xarid qilganda egasiga berilgan (5%).
+    vaucher_bor = (user.chegirma_vaucher or 0) >= 1
+
     orders: List[Order] = []
     for store_id, line_items in grouped.items():
         jami = Decimal("0")
@@ -194,6 +197,10 @@ def create_orders_from_cart(
         # Promo kod — faqat shu do'konga tegishli bo'lsa qo'llanadi.
         if promo_kod:
             jami = _apply_promo(db, store_id, promo_kod, jami)
+
+        # Referal chegirma vaucheri (do'st xaridi uchun olingan 5%).
+        if vaucher_bor:
+            jami = (jami * Decimal(95) / Decimal(100)).quantize(Decimal("0.01"))
 
 
         # Yetkazib berish tekshiruvi (do'kon darajasида).
@@ -239,6 +246,10 @@ def create_orders_from_cart(
         )
         db.add(order)
         orders.append(order)
+
+    # Vaucher ishlatildi — bittasini kamaytiramiz (butun checkout uchun bir marta).
+    if vaucher_bor:
+        user.chegirma_vaucher = (user.chegirma_vaucher or 0) - 1
 
     # ACOM coin bilan to'lash (rule 1: naqd yo'q; rule 3: balans yetsa darhol).
     from . import coin as coin_service

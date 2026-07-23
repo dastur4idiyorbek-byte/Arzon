@@ -56,7 +56,7 @@ WELCOME_SHORT = "🛍 ARZON ONLINE SAVDO — Xush kelibsiz!"
 
 # --- Menyu tugmalari ---
 BTN_ORDERS = "📦 Buyurtmalarim"
-BTN_LOYALTY = "🎁 Sodiqlik kartam"
+BTN_LOYALTY = "👥 Do'stlarni taklif qilish"
 BTN_BALANCE = "💰 Balansim"
 BTN_DOKON = "🏪 Do'kon ochish"
 BTN_FAV = "❤️ Sevimlilar"
@@ -332,21 +332,26 @@ async def loyalty(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
     s = data.get("referral_start_bonus", 5)
     m = data.get("referral_miniapp_bonus", 10)
-    f = data.get("referral_purchase_foiz", 5)
+    f = data.get("referral_discount_foiz", 5)
+    vau = data.get("chegirma_vaucherlar", 0)
     havola = data.get("referal_havola", "")
+    vau_txt = (
+        f"\n🏷 Sizda *{vau} ta {f}% chegirma* bor — keyingi xaridingizda ishlatiladi."
+        if vau else ""
+    )
     await update.message.reply_text(
-        f"🎁 *Sodiqlik kartam*\n\n"
+        f"👥 *Do'stlarni taklif qilish*\n\n"
         f"🛍 Umumiy xaridlar: *{data.get('umumiy_xaridlar', 0)}*\n"
         f"💳 Karta: *{karta}*{qolgan_txt}\n\n"
-        f"👥 *Do'st taklif qiling — ACOM ishlang!*\n"
-        f"Do'stingiz havolangiz orqali kirsa, mukofot *sizga* beriladi:\n"
+        f"*Do'stingiz havolangiz orqali kirsa, mukofot sizga:*\n"
         f"• Do'st /start bossa → *+{s} ACOM*\n"
         f"• Do'st Mini App'ni ochsa → *+{m} ACOM*\n"
-        f"• Do'st xarid qilsa → xarid summasining *{f}%* ACOM\n\n"
+        f"• Do'st xarid qilsa → *keyingi xaridingizga {f}% chegirma*\n\n"
         f"🔗 Taklif havolangiz:\n{havola}\n\n"
         f"👤 Taklif qilinganlar: *{data.get('taklif_start', 0)}* "
         f"(xarid qilgan: *{data.get('taklif_qilganlar', 0)}*)\n"
-        f"🪙 Referaldan ishlagan: *{data.get('referral_jami_acom', 0):,.0f} ACOM*",
+        f"🪙 Referaldan ishlagan: *{data.get('referral_jami_acom', 0):,.0f} ACOM*"
+        f"{vau_txt}",
         parse_mode="Markdown",
     )
 
@@ -369,7 +374,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "ko'rish va buyurtma berish)\n"
         "📦 Buyurtmalarim — buyurtmalaringiz holati\n"
         "💰 Balansim — ACOM hisobingiz\n"
-        "🎁 Sodiqlik kartam — chegirma va referal\n"
+        "👥 Do'stlarni taklif qilish — do'st taklif qiling, ACOM va chegirma yutib oling\n"
         "💬 Savol berish — menга yozing, javob beraman\n\n"
         "Savolingiz bo'lsa — shu yerга yozing!",
         parse_mode="Markdown",

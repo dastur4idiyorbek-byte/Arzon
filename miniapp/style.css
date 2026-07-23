@@ -441,6 +441,12 @@ button.ghost .spinner, button.btn-secondary .spinner {
 .loy-counts div { display: flex; flex-direction: column; }
 .loy-counts b { font-size: 20px; color: var(--store); }
 .loy-counts span { font-size: 11px; color: var(--hint); }
+.loy-vau {
+  display: flex; align-items: center; gap: 12px;
+  border: 1.5px solid var(--sale); background: rgba(224, 30, 30, 0.06);
+}
+.loy-vau-ico { font-size: 30px; }
+.loy-vau b { color: var(--sale); }
 
 /* ---------- Tabbar ---------- */
 .tabbar {

@@ -141,6 +141,11 @@ class User(Base):
     miniapp_bonus_berildi: Mapped[bool | None] = mapped_column(
         Boolean, nullable=True, default=False
     )
+    # Referal chegirma vaucherlari — taklif qilgan do'st xarid qilganда 1 tadan
+    # qo'shiladi; egasi keyingi xaridida har biri 5% chegirma beradi (NULL=0).
+    chegirma_vaucher: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=0
+    )
     yaratilgan_vaqt: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now
     )

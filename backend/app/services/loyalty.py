@@ -26,10 +26,10 @@ REFERAL_BONUS = 500
 # Referal mukofot dasturi (foydalanuvchi so'rovi) — mukofot REFERAL EGASIGA:
 #   taklif qilingan do'st /start bossa      -> referal egasiga 5 ACOM
 #   taklif qilingan do'st Mini App'ni ochsa -> referal egasiga 10 ACOM
-#   taklif qilingan do'st xarid qilsa       -> referal egasiga xarid summasining 5%
+#   taklif qilingan do'st xarid qilsa       -> referal egasiga keyingi xaridiga 5% chegirma
 REFERRAL_START_BONUS = 5
 REFERRAL_MINIAPP_BONUS = 10
-REFERRAL_PURCHASE_FOIZ = 5
+REFERRAL_DISCOUNT_FOIZ = 5
 
 
 def _referrer_of(db: Session, user: User):
@@ -207,8 +207,9 @@ def loyalty_status(db: Session, user: User, bot_username: str = "") -> dict:
         "taklif_start": taklif_start,
         "referral_start_bonus": REFERRAL_START_BONUS,
         "referral_miniapp_bonus": REFERRAL_MINIAPP_BONUS,
-        "referral_purchase_foiz": REFERRAL_PURCHASE_FOIZ,
+        "referral_discount_foiz": REFERRAL_DISCOUNT_FOIZ,
         "referral_jami_acom": referral_total_earned(db, user),
+        "chegirma_vaucherlar": int(user.chegirma_vaucher or 0),
     }
 
 
@@ -263,14 +264,12 @@ def mark_referral_purchased(db: Session, user: User, xarid_summasi: float = 0) -
 
         referrer = db.get(User, ref.referred_by)
         if referrer:
-            mukofot = round(float(xarid_summasi or 0) * REFERRAL_PURCHASE_FOIZ / 100, 2)
-            if mukofot > 0:
-                coin_service.add_bonus(
-                    db, referrer, mukofot, coin_service.T_REFERAL_BONUS
-                )
-                _notify(
-                    referrer.telegram_id,
-                    f"\U0001f389 Taklif qilgan do'stingiz {float(xarid_summasi):,.0f} som "
-                    f"xarid qildi! Sizga 5% = {mukofot:,.0f} ACOM mukofot qo'shildi.",
-                )
+            # Referal egasiga KEYINGI xaridi uchun 5% chegirma vaucheri (ACOM emas).
+            referrer.chegirma_vaucher = (referrer.chegirma_vaucher or 0) + 1
+            _notify(
+                referrer.telegram_id,
+                f"\U0001f389 Taklif qilgan do'stingiz birinchi xaridini qildi! "
+                f"Sizga keyingi xaridingizga {REFERRAL_DISCOUNT_FOIZ}% chegirma "
+                f"vaucheri berildi.",
+            )
         db.commit()
