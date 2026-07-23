@@ -23,6 +23,43 @@ KUMUSH_BONUS = 500
 OLTIN_BONUS = 1000
 REFERAL_BONUS = 500
 
+# Sodiqlik dasturi (foydalanuvchi so'rovi):
+#   /start bosganга — 5 ACOM (bir marta)
+#   Mini App'ni ochганга — 10 ACOM (bir marta)
+#   kamida 1 marta xarid qilган mijozга — har xaridда 5% chegirma
+START_BONUS = 5
+MINIAPP_BONUS = 10
+SODIQLIK_CHEGIRMA_FOIZ = 5
+
+
+def award_start_bonus(db: Session, user: User) -> int:
+    """/start uchun bir martalik bonus. Qaytaradi: berilган ACOM (0 = allaqachon)."""
+    if user.start_bonus_berildi:
+        return 0
+    from . import coin as coin_service
+
+    coin_service.add_bonus(db, user, START_BONUS, coin_service.T_SODIQLIK_BONUS)
+    user.start_bonus_berildi = True
+    db.commit()
+    return START_BONUS
+
+
+def award_miniapp_bonus(db: Session, user: User) -> int:
+    """Mini App'ni birinchi ochган uchun bir martalik bonus (ACOM)."""
+    if user.miniapp_bonus_berildi:
+        return 0
+    from . import coin as coin_service
+
+    coin_service.add_bonus(db, user, MINIAPP_BONUS, coin_service.T_SODIQLIK_BONUS)
+    user.miniapp_bonus_berildi = True
+    db.commit()
+    return MINIAPP_BONUS
+
+
+def sodiqlik_chegirma_foizi(db: Session, user: User) -> int:
+    """Xarid qilган mijozга chegirma foizi (aks holда 0)."""
+    return SODIQLIK_CHEGIRMA_FOIZ if count_purchases(db, user) >= 1 else 0
+
 
 def _notify(telegram_id: int | None, text: str) -> None:
     if not telegram_id:
@@ -140,6 +177,12 @@ def loyalty_status(db: Session, user: User, bot_username: str = "") -> dict:
         "keyingi_karta_uchun_qolgan": qolgan,
         "referal_havola": havola,
         "taklif_qilganlar": taklif_qilganlar,
+        # Sodiqlik dasturi holati (foydalanuvchi so'rovi).
+        "start_bonus": START_BONUS,
+        "miniapp_bonus": MINIAPP_BONUS,
+        "start_bonus_olindi": bool(user.start_bonus_berildi),
+        "miniapp_bonus_olindi": bool(user.miniapp_bonus_berildi),
+        "chegirma_foizi": sodiqlik_chegirma_foizi(db, user),
     }
 
 

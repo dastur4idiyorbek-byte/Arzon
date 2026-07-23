@@ -1139,13 +1139,30 @@ async function loadLoyalty() {
   if (!ok || !data) { box.innerHTML = "<p class='empty'>Ma'lumot yo'q.</p>"; return; }
   const qolgan = data.keyingi_karta_uchun_qolgan
     ? `<p>Keyingi karta uchun yana <b>${data.keyingi_karta_uchun_qolgan}</b> ta xarid.</p>` : "";
+  const tick = (v) => v ? "✅" : "⏳";
+  const chegirmaRow = data.chegirma_foizi > 0
+    ? `<div class="loy-item done"><span>🏷 Doimiy mijoz chegirmasi</span><b>−${data.chegirma_foizi}%</b></div>`
+    : `<div class="loy-item"><span>🏷 Xarid qiling — chegirmaga ega bo'ling</span><b>−5%</b></div>`;
   box.innerHTML = `
     <div class="loyalty-box">
       <div class="card-store">Umumiy xaridlar</div>
       <div class="big">${data.umumiy_xaridlar}</div>
       <p>Karta: <b>${esc(data.karta_turi || "yo'q")}</b></p>
       ${qolgan}
-      <hr style="opacity:.2;margin:12px 0">
+    </div>
+
+    <div class="loyalty-box" style="margin-top:12px">
+      <div class="card-store">🎁 Sodiqlik dasturi</div>
+      <div class="loy-item ${data.start_bonus_olindi ? "done" : ""}">
+        <span>${tick(data.start_bonus_olindi)} Botni ishga tushirish</span><b>+${data.start_bonus} ACOM</b>
+      </div>
+      <div class="loy-item ${data.miniapp_bonus_olindi ? "done" : ""}">
+        <span>${tick(data.miniapp_bonus_olindi)} Mini App'ni ochish</span><b>+${data.miniapp_bonus} ACOM</b>
+      </div>
+      ${chegirmaRow}
+    </div>
+
+    <div class="loyalty-box" style="margin-top:12px">
       <div class="card-store">Referal havolangiz (${data.taklif_qilganlar} taklif):</div>
       <div class="ref-link">${esc(data.referal_havola)}</div>
     </div>`;
@@ -1171,7 +1188,16 @@ function notify(text) {
   else alert(text);
 }
 
+/* Mini App'ni birinchi ochган uchun bonus (10 ACOM). */
+async function claimMiniappBonus() {
+  const { ok, data } = await api("/api/miniapp-opened", { method: "POST" });
+  if (ok && data && data.bonus > 0) {
+    await loadBalance(); // balans animatsiyali yangilanadi
+    notify(`🎁 Mini App'ni ochганingiz uchun ${data.bonus} ACOM bonus oldingiz!`);
+  }
+}
+
 /* ---------- Boshlash ---------- */
 loadCatalog();
-loadBalance();
+loadBalance().then(claimMiniappBonus);
 renderCart();

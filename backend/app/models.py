@@ -134,6 +134,13 @@ class User(Base):
     coin_balans: Mapped[float | None] = mapped_column(
         Numeric(14, 2), nullable=True, default=0
     )
+    # Bir martalik sodiqlik bonuslari (start / Mini App ochish) — NULL bardoshli.
+    start_bonus_berildi: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True, default=False
+    )
+    miniapp_bonus_berildi: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True, default=False
+    )
     yaratilgan_vaqt: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now
     )

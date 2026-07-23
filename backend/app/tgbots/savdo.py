@@ -241,6 +241,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not me.get("tel_tasdiqlangan"):
         await _ask_phone(update)
         return
+    # /start uchun bir martalik sodiqlik bonusi (5 ACOM).
+    try:
+        res = await api.start_bonus(user.id)
+        if res.get("bonus"):
+            await update.effective_message.reply_text(
+                f"🎁 Botga xush kelibsiz! Sizga <b>{res['bonus']} ACOM</b> "
+                "sovg'a bonus qo'shildi.",
+                parse_mode="HTML",
+            )
+    except Exception:  # noqa: BLE001
+        pass
+
     # 3-qadam: taqdimot (qaytган mijozга qisqasi).
     await _show_welcome(update, short=bool(me.get("tel_tasdiqlangan")))
 

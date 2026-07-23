@@ -592,6 +592,44 @@ def test_customer_delete_finished_order():
     assert r.status_code == 403, r.text
 
 
+def test_loyalty_bonuses_and_discount():
+    """Start 5 ACOM, Mini App 10 ACOM (bir martadan), xariddан keyin 5% chegirma."""
+    cust = customer_headers(7001)
+    # Mini App ochish bonusi — bir marta 10 ACOM.
+    assert client.post("/api/miniapp-opened", headers=cust).json()["bonus"] == 10
+    assert client.post("/api/miniapp-opened", headers=cust).json()["bonus"] == 0
+    # /start bonusi (bot) — bir marta 5 ACOM.
+    both = {**INTERNAL, "X-Telegram-User-Id": "7001"}
+    assert client.post("/api/bot/start-bonus", headers=both).json()["bonus"] == 5
+    assert client.post("/api/bot/start-bonus", headers=both).json()["bonus"] == 0
+
+    # 5% chegirma — 1-xarid to'liq, tasdiqlangач 2-xarid arzon.
+    store_a, _ = setup_two_stores()
+    p = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/products",
+        headers=admin_headers(ADMIN_A),
+        json={"nomi": "Chegirma tovar", "narxi": 1000, "korinish": "ommaviy"},
+    ).json()
+    client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700007001"})
+    give_balance(7001, 100000)
+    o1 = client.post(
+        "/api/checkout", headers=cust,
+        json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Uy 1"},
+    ).json()["buyurtmalar"][0]
+    assert o1["jami_narx"] == 1100  # 1000 + 100 yetkazish, chegirmasiz
+
+    # Tasdiqlanadi -> endi "xarid qilган mijoz".
+    client.post(
+        "/api/admin/orders/confirm-code",
+        headers=admin_headers(ADMIN_A), json={"kod": o1["kod"]},
+    )
+    o2 = client.post(
+        "/api/checkout", headers=cust,
+        json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Uy 1"},
+    ).json()["buyurtmalar"][0]
+    assert o2["jami_narx"] == 1050  # 1000*0.95 + 100 yetkazish
+
+
 def test_spec_order_search_store_scoped():
     """Qidiruv faqat o'z do'koni doirasida (spec2 task_4 verification #4)."""
     store_a, store_b = setup_two_stores()

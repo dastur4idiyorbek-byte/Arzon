@@ -177,6 +177,19 @@ def balance(
     return {"coin_balans": float(coin_service.balance(user))}
 
 
+@router.post("/miniapp-opened")
+def miniapp_opened(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Mini App'ni birinchi ochган uchun bir martalik bonus (10 ACOM)."""
+    from ..services import coin as coin_service
+    from ..services import loyalty as loyalty_service
+
+    bonus = loyalty_service.award_miniapp_bonus(db, user)
+    return {"bonus": bonus, "coin_balans": float(coin_service.balance(user))}
+
+
 @router.get("/reverse-geocode")
 def reverse_geocode(
     lat: float,

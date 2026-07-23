@@ -24,6 +24,8 @@
   --gold-soft: rgba(201, 151, 26, 0.14);
   --warn: #b33a00;           /* ogohlantirish/tugadi */
   --sale: #e01e1e;           /* chegirma foizi — qizil (foydalanuvchi so'rovi) */
+  --buy: #0f6b4c;            /* "Sotib olish" tugmasi — to'q yashil (foydalanuvchi so'rovi) */
+  --buy-dark: #0b5540;
 
   /* Yordamchi tuslar */
   --card-grad-top: #fff8f2;  /* issiq karta foni */
@@ -218,7 +220,8 @@ body {
   font-weight: 700;
 }
 .card-actions .act-cart { background: var(--bg); color: var(--brand); border: 1.5px solid var(--brand); }
-.card-actions .act-buy { background: var(--brand); color: #fff; }
+/* "Sotib olish" — to'q yashil (foydalanuvchi so'rovi). */
+.card-actions .act-buy { background: var(--buy); color: #fff; }
 .card-actions button:disabled { opacity: 0.4; cursor: default; }
 
 /* ---------- Skeleton yuklanish (task_2) ---------- */
@@ -268,6 +271,9 @@ body {
 .chip.active { border-color: var(--brand); color: var(--brand); font-weight: 700; }
 .detail-actions { display: flex; gap: 8px; margin-top: 6px; }
 .detail-actions button { flex: 1; }
+/* Batafsil sahifada "Sotib olish" — to'q yashil (act-buy bilan bir xil). */
+#d-buy.primary { background: var(--buy); }
+#d-buy.primary:active { background: var(--buy-dark); }
 
 /* ---------- Buy Now (task_4 oqim) ---------- */
 .bn-product {
@@ -419,6 +425,14 @@ button.ghost .spinner, button.btn-secondary .spinner {
 /* 🟡 Umumiy xaridlar soni neytral — lekin referal pul emas, brendда qoldiramiz. */
 .loyalty-box .big { font-size: 32px; font-weight: 800; color: var(--brand); }
 .ref-link { word-break: break-all; color: var(--link); font-size: 13px; margin-top: 8px; }
+.loy-item {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 14px;
+}
+.loy-item:last-child { border-bottom: none; }
+/* 🟡 Bonus miqdori (pul) — oltin. */
+.loy-item b { color: var(--gold); font-variant-numeric: tabular-nums; }
+.loy-item.done span { color: var(--store); font-weight: 600; }
 
 /* ---------- Tabbar ---------- */
 .tabbar {
