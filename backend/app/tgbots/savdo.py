@@ -11,6 +11,7 @@ funksiyaда qayta 1-qadamга qaytariladi (rule 3).
 """
 from __future__ import annotations
 
+import html as _html
 import logging
 
 from telegram import (
@@ -335,24 +336,27 @@ async def loyalty(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     f = data.get("referral_discount_foiz", 5)
     vau = data.get("chegirma_vaucherlar", 0)
     havola = data.get("referal_havola", "")
+    # HTML rejimi — havoladagi "_" belgilari Markdownда kursivга aylanmasligi uchun.
+    karta_h = _html.escape(str(karta))
+    havola_h = _html.escape(havola)
     vau_txt = (
-        f"\n🏷 Sizda *{vau} ta {f}% chegirma* bor — keyingi xaridingizda ishlatiladi."
+        f"\n🏷 Sizda <b>{vau} ta {f}% chegirma</b> bor — keyingi xaridingizda ishlatiladi."
         if vau else ""
     )
     await update.message.reply_text(
-        f"👥 *Do'stlarni taklif qilish*\n\n"
-        f"🛍 Umumiy xaridlar: *{data.get('umumiy_xaridlar', 0)}*\n"
-        f"💳 Karta: *{karta}*{qolgan_txt}\n\n"
-        f"*Do'stingiz havolangiz orqali kirsa, mukofot sizga:*\n"
-        f"• Do'st /start bossa → *+{s} ACOM*\n"
-        f"• Do'st Mini App'ni ochsa → *+{m} ACOM*\n"
-        f"• Do'st xarid qilsa → *keyingi xaridingizga {f}% chegirma*\n\n"
-        f"🔗 Taklif havolangiz:\n{havola}\n\n"
-        f"👤 Taklif qilinganlar: *{data.get('taklif_start', 0)}* "
-        f"(xarid qilgan: *{data.get('taklif_qilganlar', 0)}*)\n"
-        f"🪙 Referaldan ishlagan: *{data.get('referral_jami_acom', 0):,.0f} ACOM*"
+        f"👥 <b>Do'stlarni taklif qilish</b>\n\n"
+        f"🛍 Umumiy xaridlar: <b>{data.get('umumiy_xaridlar', 0)}</b>\n"
+        f"💳 Karta: <b>{karta_h}</b>{qolgan_txt}\n\n"
+        f"<b>Do'stingiz havolangiz orqali kirsa, mukofot sizga:</b>\n"
+        f"• Do'st /start bossa → <b>+{s} ACOM</b>\n"
+        f"• Do'st Mini App'ni ochsa → <b>+{m} ACOM</b>\n"
+        f"• Do'st xarid qilsa → <b>keyingi xaridingizga {f}% chegirma</b>\n\n"
+        f"🔗 Taklif havolangiz:\n{havola_h}\n\n"
+        f"👤 Taklif qilinganlar: <b>{data.get('taklif_start', 0)}</b> "
+        f"(xarid qilgan: <b>{data.get('taklif_qilganlar', 0)}</b>)\n"
+        f"🪙 Referaldan ishlagan: <b>{data.get('referral_jami_acom', 0):,.0f} ACOM</b>"
         f"{vau_txt}",
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
 
 
