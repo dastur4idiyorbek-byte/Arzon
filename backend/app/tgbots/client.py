@@ -50,14 +50,6 @@ class BotApi:
         )
         return r.json() if r.status_code == 200 else {}
 
-    async def start_bonus(self, telegram_id: int) -> dict:
-        r = await self._request(
-            "POST",
-            "/api/bot/start-bonus",
-            headers=self._headers({"X-Telegram-User-Id": str(telegram_id)}),
-        )
-        return r.json() if r.status_code == 200 else {}
-
     async def chat(self, telegram_id: int, matn: str) -> str:
         r = await self._request(
             "POST",

@@ -170,11 +170,6 @@ def create_orders_from_cart(
                         ),
                     )
 
-    # Sodiqlik chegirmasi — kamida 1 marta xarid qilган mijozга 5% (bu xariddан oldin).
-    from . import loyalty as loyalty_service
-
-    sodiqlik_foiz = loyalty_service.sodiqlik_chegirma_foizi(db, user)
-
     orders: List[Order] = []
     for store_id, line_items in grouped.items():
         jami = Decimal("0")
@@ -200,11 +195,6 @@ def create_orders_from_cart(
         if promo_kod:
             jami = _apply_promo(db, store_id, promo_kod, jami)
 
-        # Sodiqlik chegirmasi (xarid qilган mijozга 5%).
-        if sodiqlik_foiz:
-            jami = (jami * Decimal(100 - sodiqlik_foiz) / Decimal(100)).quantize(
-                Decimal("0.01")
-            )
 
         # Yetkazib berish tekshiruvi (do'kon darajasида).
         order_pickup_id = None

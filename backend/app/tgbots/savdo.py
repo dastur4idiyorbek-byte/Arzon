@@ -241,19 +241,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not me.get("tel_tasdiqlangan"):
         await _ask_phone(update)
         return
-    # /start uchun bir martalik sodiqlik bonusi (5 ACOM).
-    try:
-        res = await api.start_bonus(user.id)
-        if res.get("bonus"):
-            await update.effective_message.reply_text(
-                f"🎁 Botga xush kelibsiz! Sizga <b>{res['bonus']} ACOM</b> "
-                "sovg'a bonus qo'shildi.",
-                parse_mode="HTML",
-            )
-    except Exception:  # noqa: BLE001
-        pass
-
-    # 3-qadam: taqdimot (qaytган mijozга qisqasi).
+    # Referal mukofoti register_referral ichida beriladi (referal egasiga).
+    # 3-qadam: taqdimot (qaytgan mijozga qisqasi).
     await _show_welcome(update, short=bool(me.get("tel_tasdiqlangan")))
 
 
@@ -328,8 +317,10 @@ async def orders(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def loyalty(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _gate(update, context):
         return
+    # Havola uchun sozlamadagi username afzal (noto'g'ri link bo'lmasligi uchun).
     data = await api.loyalty(
-        update.effective_user.id, context.bot.username or ""
+        update.effective_user.id,
+        settings.savdo_bot_username or context.bot.username or "",
     )
     if not data:
         await update.message.reply_text("Ma'lumot olinmadi.")
@@ -339,12 +330,23 @@ async def loyalty(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     qolgan_txt = (
         f"\nKeyingi karta uchun yana {qolgan} ta xarid kerak." if qolgan else ""
     )
+    s = data.get("referral_start_bonus", 5)
+    m = data.get("referral_miniapp_bonus", 10)
+    f = data.get("referral_purchase_foiz", 5)
+    havola = data.get("referal_havola", "")
     await update.message.reply_text(
         f"🎁 *Sodiqlik kartam*\n\n"
-        f"Umumiy xaridlar: *{data.get('umumiy_xaridlar', 0)}*\n"
-        f"Karta: *{karta}*{qolgan_txt}\n\n"
-        f"👥 Referal havolangiz:\n{data.get('referal_havola', '')}\n"
-        f"Taklif qilganlaringiz: {data.get('taklif_qilganlar', 0)}",
+        f"🛍 Umumiy xaridlar: *{data.get('umumiy_xaridlar', 0)}*\n"
+        f"💳 Karta: *{karta}*{qolgan_txt}\n\n"
+        f"👥 *Do'st taklif qiling — ACOM ishlang!*\n"
+        f"Do'stingiz havolangiz orqali kirsa, mukofot *sizga* beriladi:\n"
+        f"• Do'st /start bossa → *+{s} ACOM*\n"
+        f"• Do'st Mini App'ni ochsa → *+{m} ACOM*\n"
+        f"• Do'st xarid qilsa → xarid summasining *{f}%* ACOM\n\n"
+        f"🔗 Taklif havolangiz:\n{havola}\n\n"
+        f"👤 Taklif qilinganlar: *{data.get('taklif_start', 0)}* "
+        f"(xarid qilgan: *{data.get('taklif_qilganlar', 0)}*)\n"
+        f"🪙 Referaldan ishlagan: *{data.get('referral_jami_acom', 0):,.0f} ACOM*",
         parse_mode="Markdown",
     )
 

@@ -1139,10 +1139,9 @@ async function loadLoyalty() {
   if (!ok || !data) { box.innerHTML = "<p class='empty'>Ma'lumot yo'q.</p>"; return; }
   const qolgan = data.keyingi_karta_uchun_qolgan
     ? `<p>Keyingi karta uchun yana <b>${data.keyingi_karta_uchun_qolgan}</b> ta xarid.</p>` : "";
-  const tick = (v) => v ? "✅" : "⏳";
-  const chegirmaRow = data.chegirma_foizi > 0
-    ? `<div class="loy-item done"><span>🏷 Doimiy mijoz chegirmasi</span><b>−${data.chegirma_foizi}%</b></div>`
-    : `<div class="loy-item"><span>🏷 Xarid qiling — chegirmaga ega bo'ling</span><b>−5%</b></div>`;
+  const sB = data.referral_start_bonus ?? 5;
+  const mB = data.referral_miniapp_bonus ?? 10;
+  const pF = data.referral_purchase_foiz ?? 5;
   box.innerHTML = `
     <div class="loyalty-box">
       <div class="card-store">Umumiy xaridlar</div>
@@ -1152,20 +1151,46 @@ async function loadLoyalty() {
     </div>
 
     <div class="loyalty-box" style="margin-top:12px">
-      <div class="card-store">🎁 Sodiqlik dasturi</div>
-      <div class="loy-item ${data.start_bonus_olindi ? "done" : ""}">
-        <span>${tick(data.start_bonus_olindi)} Botni ishga tushirish</span><b>+${data.start_bonus} ACOM</b>
+      <div class="card-store">🎁 Do'st taklif qiling — ACOM ishlang!</div>
+      <p class="loy-note">Do'stingiz havolangiz orqali kirsa, mukofot <b>sizga</b> beriladi:</p>
+      <div class="loy-item"><span>🚀 Do'st /start bossa</span><b>+${sB} ACOM</b></div>
+      <div class="loy-item"><span>📲 Do'st Mini App'ni ochsa</span><b>+${mB} ACOM</b></div>
+      <div class="loy-item"><span>🛍 Do'st xarid qilsa</span><b>${pF}% ACOM</b></div>
+    </div>
+
+    <div class="loyalty-box loy-earn" style="margin-top:12px">
+      <div>
+        <div class="card-store">Referaldan ishlagan</div>
+        <div class="big">${money(data.referral_jami_acom || 0)}<span class="loy-acom"> ACOM</span></div>
       </div>
-      <div class="loy-item ${data.miniapp_bonus_olindi ? "done" : ""}">
-        <span>${tick(data.miniapp_bonus_olindi)} Mini App'ni ochish</span><b>+${data.miniapp_bonus} ACOM</b>
+      <div class="loy-counts">
+        <div><b>${data.taklif_start || 0}</b><span>taklif</span></div>
+        <div><b>${data.taklif_qilganlar || 0}</b><span>xarid qilgan</span></div>
       </div>
-      ${chegirmaRow}
     </div>
 
     <div class="loyalty-box" style="margin-top:12px">
-      <div class="card-store">Referal havolangiz (${data.taklif_qilganlar} taklif):</div>
-      <div class="ref-link">${esc(data.referal_havola)}</div>
+      <div class="card-store">🔗 Taklif havolangiz:</div>
+      <div class="ref-link" id="ref-link">${esc(data.referal_havola)}</div>
+      <div class="row2" style="margin-top:10px">
+        <button id="ref-copy" class="btn-secondary" type="button">📋 Nusxa olish</button>
+        <button id="ref-share" class="btn-primary" type="button">📤 Ulashish</button>
+      </div>
     </div>`;
+
+  const link = data.referal_havola || "";
+  const copyBtn = document.getElementById("ref-copy");
+  if (copyBtn) copyBtn.onclick = async () => {
+    try { await navigator.clipboard.writeText(link); notify("✅ Havola nusxalandi!"); }
+    catch (_) { notify(link); }
+  };
+  const shareBtn = document.getElementById("ref-share");
+  if (shareBtn) shareBtn.onclick = () => {
+    const txt = "ARZON — arzon narxlarda xarid! Mening havolam orqali qo'shiling:";
+    const url = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(txt)}`;
+    if (tg && tg.openTelegramLink) tg.openTelegramLink(url);
+    else window.open(url, "_blank");
+  };
 }
 
 /* ---------- Navigatsiya ---------- */
@@ -1188,13 +1213,9 @@ function notify(text) {
   else alert(text);
 }
 
-/* Mini App'ni birinchi ochган uchun bonus (10 ACOM). */
+/* Mini App'ni ochish — mukofot REFERAL EGASIGA beriladi (jimgina chaqiriladi). */
 async function claimMiniappBonus() {
-  const { ok, data } = await api("/api/miniapp-opened", { method: "POST" });
-  if (ok && data && data.bonus > 0) {
-    await loadBalance(); // balans animatsiyali yangilanadi
-    notify(`🎁 Mini App'ni ochганingiz uchun ${data.bonus} ACOM bonus oldingiz!`);
-  }
+  try { await api("/api/miniapp-opened", { method: "POST" }); } catch (_) {}
 }
 
 /* ---------- Boshlash ---------- */

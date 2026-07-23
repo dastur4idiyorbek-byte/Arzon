@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     menejer_ids: str = ""
     # Boshqaruv (admin) boti username — do'kon ochilgach havola yuboriladi.
     admin_bot_username: str = "arzononlineadmin_bot"
+    # Savdo bot username — referal havola uchun (SAVDO_BOT_USERNAME bilan almashtiring).
+    savdo_bot_username: str = "arzononline_bot"
     # Do'kon ochish narxi: har 10 mahsulot uchun (som). 10 dona = 100 som.
     dokon_ontalik_narxi: int = 100
     # Arenda muddati tugashiga necha kun qolganda ogohlantirish yuboriladi.

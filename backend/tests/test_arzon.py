@@ -592,42 +592,50 @@ def test_customer_delete_finished_order():
     assert r.status_code == 403, r.text
 
 
-def test_loyalty_bonuses_and_discount():
-    """Start 5 ACOM, Mini App 10 ACOM (bir martadan), xariddан keyin 5% chegirma."""
-    cust = customer_headers(7001)
-    # Mini App ochish bonusi — bir marta 10 ACOM.
-    assert client.post("/api/miniapp-opened", headers=cust).json()["bonus"] == 10
-    assert client.post("/api/miniapp-opened", headers=cust).json()["bonus"] == 0
-    # /start bonusi (bot) — bir marta 5 ACOM.
-    both = {**INTERNAL, "X-Telegram-User-Id": "7001"}
-    assert client.post("/api/bot/start-bonus", headers=both).json()["bonus"] == 5
-    assert client.post("/api/bot/start-bonus", headers=both).json()["bonus"] == 0
+def test_referral_rewards_go_to_referrer():
+    """Referal orqali kelgan do'st harakatlari uchun mukofot REFERAL EGASIGA."""
+    R, F = 7000, 7001
+    # R (referal egasi) foydalanuvchi mavjud bo'lsin.
+    client.get("/api/balance", headers=customer_headers(R))
 
-    # 5% chegirma — 1-xarid to'liq, tasdiqlangач 2-xarid arzon.
+    def r_balance():
+        return client.get("/api/balance", headers=customer_headers(R)).json()["coin_balans"]
+
+    b0 = r_balance()
+    # F referal link orqali kirib start bosadi -> R ga +5 ACOM.
+    both_F = {**INTERNAL, "X-Telegram-User-Id": str(F)}
+    client.post("/api/bot/register-referral", headers=both_F,
+                json={"referrer_telegram_id": R})
+    b1 = r_balance()
+    assert b1 - b0 == 5
+    # Takroriy register — qo'shimcha mukofot yo'q.
+    client.post("/api/bot/register-referral", headers=both_F,
+                json={"referrer_telegram_id": R})
+    assert r_balance() == b1
+
+    # F Mini App'ni ochadi -> R ga +10 ACOM (bir marta).
+    client.post("/api/miniapp-opened", headers=customer_headers(F))
+    b2 = r_balance()
+    assert b2 - b1 == 10
+    client.post("/api/miniapp-opened", headers=customer_headers(F))  # takror
+    assert r_balance() == b2
+
+    # F xarid qiladi -> R ga xarid summasining 5% ACOM.
     store_a, _ = setup_two_stores()
     p = client.post(
         f"/api/admin/stores/{store_a['store_id']}/products",
         headers=admin_headers(ADMIN_A),
-        json={"nomi": "Chegirma tovar", "narxi": 1000, "korinish": "ommaviy"},
+        json={"nomi": "Ref tovar", "narxi": 1000, "korinish": "ommaviy"},
     ).json()
-    client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700007001"})
-    give_balance(7001, 100000)
-    o1 = client.post(
-        "/api/checkout", headers=cust,
-        json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Uy 1"},
-    ).json()["buyurtmalar"][0]
-    assert o1["jami_narx"] == 1100  # 1000 + 100 yetkazish, chegirmasiz
-
-    # Tasdiqlanadi -> endi "xarid qilган mijoz".
+    client.post("/api/confirm-phone", headers=customer_headers(F),
+                json={"tel": "+996700007001"})
+    give_balance(F, 100000)
     client.post(
-        "/api/admin/orders/confirm-code",
-        headers=admin_headers(ADMIN_A), json={"kod": o1["kod"]},
-    )
-    o2 = client.post(
-        "/api/checkout", headers=cust,
+        "/api/checkout", headers=customer_headers(F),
         json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Uy 1"},
-    ).json()["buyurtmalar"][0]
-    assert o2["jami_narx"] == 1050  # 1000*0.95 + 100 yetkazish
+    )
+    # jami = 1000 + 100 yetkazish = 1100 -> 5% = 55.
+    assert round(r_balance() - b2, 2) == 55
 
 
 def test_spec_order_search_store_scoped():
@@ -1193,9 +1201,7 @@ def test_miniapp_balance_endpoint():
 
 
 def test_coin_referral_bonus():
-    """task_6: taklif qilgan mijoz do'sti birinchi xarid qilganда coin bonusi."""
-    from app.services import loyalty as loyalty_service
-
+    """Referal mukofoti: register (5) + do'st xarididan 5% — hammasi referal egasiga."""
     # Taklif qiluvchi A mavjud bo'lsin.
     a_tid = 60001
     client.post("/api/bot/confirm-phone", headers=_bot_headers(a_tid),
@@ -1209,6 +1215,8 @@ def test_coin_referral_bonus():
     r = client.post("/api/bot/register-referral", headers=_bot_headers(b_tid),
                     json={"referrer_telegram_id": a_tid})
     assert r.status_code == 200, r.text
+    # Register bosqichидаёк A ga +5 ACOM (do'st start bosdi).
+    assert get_balance(a_tid) == 5.0
 
     # B birinchi xaridini qiladi.
     store_a, _ = setup_two_stores()
@@ -1223,8 +1231,8 @@ def test_coin_referral_bonus():
                            "manzil": "Bishkek 1"})
     assert ok.status_code == 200, ok.text
 
-    # A ga referal bonus (500 coin) qo'shildi.
-    assert get_balance(a_tid) == float(loyalty_service.REFERAL_BONUS)
+    # A ga: register (5) + do'st xarididan 5% (1100 * 0.05 = 55) = 60.
+    assert get_balance(a_tid) == 60.0
 
 
 def test_moliya_payment_methods_crud():

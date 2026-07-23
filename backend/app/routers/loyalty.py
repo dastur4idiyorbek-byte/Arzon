@@ -20,6 +20,7 @@ def get_loyalty(
     user: User = Depends(get_current_user),
 ):
     """Mijozning sodiqlik holati — barcha do'konlar bo'yicha umumiy (rule 9)."""
-    # Savdo bot username'i havola uchun (ixtiyoriy).
-    bot_username = ""
+    # Savdo bot username'i havola uchun — noto'g'ri link bo'lmasligi uchun
+    # sozlamadan olinadi (masalan arzononline_bot).
+    bot_username = settings.savdo_bot_username
     return LoyaltyStatus(**loyalty_service.loyalty_status(db, user, bot_username))

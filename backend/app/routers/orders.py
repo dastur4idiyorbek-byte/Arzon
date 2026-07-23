@@ -67,8 +67,9 @@ def checkout(
         lokatsiya_lng=payload.lokatsiya_lng,
     )
 
-    # Referal: birinchi xaridni belgilash (phase 4.4).
-    loyalty_service.mark_referral_purchased(db, user)
+    # Referal: birinchi xaridni belgilash + referal egasiga 5% mukofot (phase 4.4).
+    jami_xarid = sum(float(o.jami_narx) for o in orders)
+    loyalty_service.mark_referral_purchased(db, user, jami_xarid)
 
     # Yangi buyurtma haqida do'kon adminlariga xabar (spec2 task_1).
     # PTB o'rnatilmagan yoki botlar faol bo'lmagan muhitда jimgina o'tadi.
@@ -186,7 +187,8 @@ def miniapp_opened(
     from ..services import coin as coin_service
     from ..services import loyalty as loyalty_service
 
-    bonus = loyalty_service.award_miniapp_bonus(db, user)
+    # Mukofot referal egasiga beriladi (do'st Mini App'ni ochdi).
+    bonus = loyalty_service.award_miniapp_referral_bonus(db, user)
     return {"bonus": bonus, "coin_balans": float(coin_service.balance(user))}
 
 

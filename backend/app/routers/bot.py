@@ -67,15 +67,6 @@ def bot_me(user: User = Depends(bot_user)):
     }
 
 
-@router.post("/start-bonus")
-def bot_start_bonus(user: User = Depends(bot_user), db: Session = Depends(get_db)):
-    """/start uchun bir martalik sodiqlik bonusi (5 ACOM)."""
-    bonus = loyalty_service.award_start_bonus(db, user)
-    from ..services import coin as coin_service
-
-    return {"bonus": bonus, "coin_balans": float(coin_service.balance(user))}
-
-
 class BotChat(BaseModel):
     matn: str
 

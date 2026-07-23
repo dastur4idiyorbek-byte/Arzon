@@ -23,42 +23,58 @@ KUMUSH_BONUS = 500
 OLTIN_BONUS = 1000
 REFERAL_BONUS = 500
 
-# Sodiqlik dasturi (foydalanuvchi so'rovi):
-#   /start bosganга — 5 ACOM (bir marta)
-#   Mini App'ni ochганга — 10 ACOM (bir marta)
-#   kamida 1 marta xarid qilган mijozга — har xaridда 5% chegirma
-START_BONUS = 5
-MINIAPP_BONUS = 10
-SODIQLIK_CHEGIRMA_FOIZ = 5
+# Referal mukofot dasturi (foydalanuvchi so'rovi) — mukofot REFERAL EGASIGA:
+#   taklif qilingan do'st /start bossa      -> referal egasiga 5 ACOM
+#   taklif qilingan do'st Mini App'ni ochsa -> referal egasiga 10 ACOM
+#   taklif qilingan do'st xarid qilsa       -> referal egasiga xarid summasining 5%
+REFERRAL_START_BONUS = 5
+REFERRAL_MINIAPP_BONUS = 10
+REFERRAL_PURCHASE_FOIZ = 5
 
 
-def award_start_bonus(db: Session, user: User) -> int:
-    """/start uchun bir martalik bonus. Qaytaradi: berilган ACOM (0 = allaqachon)."""
-    if user.start_bonus_berildi:
-        return 0
-    from . import coin as coin_service
-
-    coin_service.add_bonus(db, user, START_BONUS, coin_service.T_SODIQLIK_BONUS)
-    user.start_bonus_berildi = True
-    db.commit()
-    return START_BONUS
+def _referrer_of(db: Session, user: User):
+    """Ushbu foydalanuvchini taklif qilgan (referal egasi) — bo'lsa."""
+    ref = db.scalar(select(Referral).where(Referral.user_id == user.id))
+    return db.get(User, ref.referred_by) if ref else None
 
 
-def award_miniapp_bonus(db: Session, user: User) -> int:
-    """Mini App'ni birinchi ochган uchun bir martalik bonus (ACOM)."""
+def award_miniapp_referral_bonus(db: Session, user: User) -> int:
+    """Do'st Mini App'ni birinchi ochganda — referal egasiga 10 ACOM (bir marta).
+
+    Qaytaradi: referal egasiga berilgan ACOM (0 = referal yo'q yoki allaqachon).
+    """
     if user.miniapp_bonus_berildi:
         return 0
+    user.miniapp_bonus_berildi = True  # takroriy mukofotni oldini olamiz
+    referrer = _referrer_of(db, user)
+    if referrer is None:
+        db.commit()
+        return 0
     from . import coin as coin_service
 
-    coin_service.add_bonus(db, user, MINIAPP_BONUS, coin_service.T_SODIQLIK_BONUS)
-    user.miniapp_bonus_berildi = True
+    coin_service.add_bonus(
+        db, referrer, REFERRAL_MINIAPP_BONUS, coin_service.T_REFERAL_BONUS
+    )
+    _notify(
+        referrer.telegram_id,
+        f"\U0001f389 Taklif qilgan do'stingiz Mini App'ni ochdi! Sizga "
+        f"{REFERRAL_MINIAPP_BONUS} ACOM mukofot qo'shildi.",
+    )
     db.commit()
-    return MINIAPP_BONUS
+    return REFERRAL_MINIAPP_BONUS
 
 
-def sodiqlik_chegirma_foizi(db: Session, user: User) -> int:
-    """Xarid qilган mijozга chegirma foizi (aks holда 0)."""
-    return SODIQLIK_CHEGIRMA_FOIZ if count_purchases(db, user) >= 1 else 0
+def referral_total_earned(db: Session, user: User) -> float:
+    """Ushbu foydalanuvchi referal orqali ishlagan jami ACOM."""
+    from ..models import CoinHarakati
+
+    val = db.scalar(
+        select(func.coalesce(func.sum(CoinHarakati.summa), 0)).where(
+            CoinHarakati.user_id == user.id,
+            CoinHarakati.turi == "referal_bonus",
+        )
+    )
+    return float(val or 0)
 
 
 def _notify(telegram_id: int | None, text: str) -> None:
@@ -155,6 +171,15 @@ def loyalty_status(db: Session, user: User, bot_username: str = "") -> dict:
     else:
         qolgan = None
 
+    # Taklif qilingan do'stlar: start bosgan (jami) va xarid qilgan.
+    taklif_start = (
+        db.scalar(
+            select(func.count(Referral.id)).where(
+                Referral.referred_by == user.id,
+            )
+        )
+        or 0
+    )
     taklif_qilganlar = (
         db.scalar(
             select(func.count(Referral.id)).where(
@@ -165,9 +190,10 @@ def loyalty_status(db: Session, user: User, bot_username: str = "") -> dict:
         or 0
     )
 
+    uname = (bot_username or "").lstrip("@")
     havola = (
-        f"https://t.me/{bot_username}?start=ref_{user.telegram_id}"
-        if bot_username
+        f"https://t.me/{uname}?start=ref_{user.telegram_id}"
+        if uname
         else f"ref_{user.telegram_id}"
     )
 
@@ -177,12 +203,12 @@ def loyalty_status(db: Session, user: User, bot_username: str = "") -> dict:
         "keyingi_karta_uchun_qolgan": qolgan,
         "referal_havola": havola,
         "taklif_qilganlar": taklif_qilganlar,
-        # Sodiqlik dasturi holati (foydalanuvchi so'rovi).
-        "start_bonus": START_BONUS,
-        "miniapp_bonus": MINIAPP_BONUS,
-        "start_bonus_olindi": bool(user.start_bonus_berildi),
-        "miniapp_bonus_olindi": bool(user.miniapp_bonus_berildi),
-        "chegirma_foizi": sodiqlik_chegirma_foizi(db, user),
+        # Referal mukofot dasturi (mukofot referal egasiga).
+        "taklif_start": taklif_start,
+        "referral_start_bonus": REFERRAL_START_BONUS,
+        "referral_miniapp_bonus": REFERRAL_MINIAPP_BONUS,
+        "referral_purchase_foiz": REFERRAL_PURCHASE_FOIZ,
+        "referral_jami_acom": referral_total_earned(db, user),
     }
 
 
@@ -210,11 +236,22 @@ def register_referral(
             holat="start_bosgan",
         )
     )
+    # Referal egasiga /start mukofoti (do'st link orqali kirib start bosdi).
+    from . import coin as coin_service
+
+    coin_service.add_bonus(
+        db, referrer, REFERRAL_START_BONUS, coin_service.T_REFERAL_BONUS
+    )
+    _notify(
+        referrer.telegram_id,
+        f"\U0001f389 Taklif havolangiz orqali yangi do'st qo'shildi! "
+        f"Sizga {REFERRAL_START_BONUS} ACOM mukofot qo'shildi.",
+    )
     db.commit()
 
 
-def mark_referral_purchased(db: Session, user: User) -> None:
-    """Taklif qilingan mijoz birinchi xaridini qilganda holatni yangilaydi."""
+def mark_referral_purchased(db: Session, user: User, xarid_summasi: float = 0) -> None:
+    """Taklif qilingan do'st birinchi xaridini qilganda — referal egasiga 5%."""
     ref = db.scalar(
         select(Referral).where(
             Referral.user_id == user.id, Referral.holat == "start_bosgan"
@@ -222,18 +259,18 @@ def mark_referral_purchased(db: Session, user: User) -> None:
     )
     if ref:
         ref.holat = "xarid_qilgan"
-        # task_6: taklif qilgan mijozga coin bonusi.
         from . import coin as coin_service
 
         referrer = db.get(User, ref.referred_by)
         if referrer:
-            coin_service.add_bonus(
-                db, referrer, REFERAL_BONUS, coin_service.T_REFERAL_BONUS
-            )
-            _notify(
-                referrer.telegram_id,
-                f"🎉 Sizning taklifingiz bilan kelgan do'stingiz birinchi "
-                f"xaridini qildi! Sizga {REFERAL_BONUS:,.0f} ACOM "
-                f"({REFERAL_BONUS:,.0f} som) bonus qo'shildi.",
-            )
+            mukofot = round(float(xarid_summasi or 0) * REFERRAL_PURCHASE_FOIZ / 100, 2)
+            if mukofot > 0:
+                coin_service.add_bonus(
+                    db, referrer, mukofot, coin_service.T_REFERAL_BONUS
+                )
+                _notify(
+                    referrer.telegram_id,
+                    f"\U0001f389 Taklif qilgan do'stingiz {float(xarid_summasi):,.0f} som "
+                    f"xarid qildi! Sizga 5% = {mukofot:,.0f} ACOM mukofot qo'shildi.",
+                )
         db.commit()

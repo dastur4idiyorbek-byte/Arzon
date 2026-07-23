@@ -433,6 +433,14 @@ button.ghost .spinner, button.btn-secondary .spinner {
 /* 🟡 Bonus miqdori (pul) — oltin. */
 .loy-item b { color: var(--gold); font-variant-numeric: tabular-nums; }
 .loy-item.done span { color: var(--store); font-weight: 600; }
+.loy-note { font-size: 13px; color: var(--hint); margin: 4px 0 6px; line-height: 1.45; }
+.loy-earn { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.loy-earn .big { color: var(--gold); }
+.loy-earn .loy-acom { font-size: 14px; font-weight: 700; }
+.loy-counts { display: flex; gap: 16px; text-align: center; }
+.loy-counts div { display: flex; flex-direction: column; }
+.loy-counts b { font-size: 20px; color: var(--store); }
+.loy-counts span { font-size: 11px; color: var(--hint); }
 
 /* ---------- Tabbar ---------- */
 .tabbar {

@@ -153,3 +153,9 @@ class LoyaltyStatus(BaseModel):
     keyingi_karta_uchun_qolgan: Optional[int] = None
     referal_havola: str
     taklif_qilganlar: int
+    # Referal mukofot dasturi (mukofot referal egasiga).
+    taklif_start: int = 0
+    referral_start_bonus: int = 0
+    referral_miniapp_bonus: int = 0
+    referral_purchase_foiz: int = 0
+    referral_jami_acom: float = 0
