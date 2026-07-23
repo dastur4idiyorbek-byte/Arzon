@@ -190,7 +190,16 @@ def loyalty_status(db: Session, user: User, bot_username: str = "") -> dict:
         or 0
     )
 
-    uname = (bot_username or "").lstrip("@")
+    # Username'ни normallaymiz — to'liq URL yoki @ kiritilган bo'lsa ham faqat
+    # username qismини olamiz (aks holда "https://t.me/https://t.me/..." bo'lardi).
+    uname = (bot_username or "").strip()
+    for pref in ("https://", "http://"):
+        if uname.startswith(pref):
+            uname = uname[len(pref):]
+    for pref in ("t.me/", "telegram.me/", "telegram.dog/"):
+        if uname.lower().startswith(pref):
+            uname = uname[len(pref):]
+    uname = uname.lstrip("@").split("?")[0].split("/")[0]
     havola = (
         f"https://t.me/{uname}?start=ref_{user.telegram_id}"
         if uname
