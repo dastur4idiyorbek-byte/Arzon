@@ -53,6 +53,98 @@ function esc(s) {
   }[c]));
 }
 
+/* ---------- Dizayn yordamchilari (Dizayn_Yaxshilash_Prompt) ---------- */
+
+/* Bo'sh holat: ikonka + sarlavha + tavsif + (ixtiyoriy) harakat tugmasi (task_3). */
+function emptyStateHtml(icon, title, sub, btnText) {
+  const btn = btnText
+    ? `<button class="es-btn" type="button">${esc(btnText)}</button>` : "";
+  return `<div class="empty-state">
+      <div class="es-icon">${icon}</div>
+      <div class="es-title">${esc(title)}</div>
+      ${sub ? `<div class="es-sub">${esc(sub)}</div>` : ""}
+      ${btn}
+    </div>`;
+}
+function renderEmptyState(el, icon, title, sub, btnText, onClick) {
+  el.innerHTML = emptyStateHtml(icon, title, sub, btnText);
+  const b = el.querySelector(".es-btn");
+  if (b && onClick) b.onclick = onClick;
+}
+
+/* Skeleton yuklanish kartasi (task_2). */
+function skeletonCardHtml() {
+  return `<div class="skeleton-card">
+      <div class="sk sk-img"></div>
+      <div class="sk-body">
+        <div class="sk sk-line"></div>
+        <div class="sk sk-line short"></div>
+        <div class="sk sk-line price"></div>
+      </div>
+      <div class="sk-btns"><div class="sk sk-btn"></div><div class="sk sk-btn"></div></div>
+    </div>`;
+}
+function showSkeletons(n = 6) {
+  document.getElementById("catalog").innerHTML =
+    Array.from({ length: n }, skeletonCardHtml).join("");
+  document.getElementById("catalog-empty").hidden = true;
+}
+
+/* Tugma ichida spinner + vaqtincha matn (task_2). */
+async function withSpinner(btn, loadingText, fn) {
+  if (!btn) return fn();
+  const old = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spinner"></span>${esc(loadingText)}`;
+  try { return await fn(); }
+  finally { btn.disabled = false; btn.innerHTML = old; }
+}
+
+/* Raqamni eski qiymatdan yangi qiymatga animatsiyali sanaydi (task_4). */
+function animateCount(el, from, to, dur = 650) {
+  if (!el) return;
+  from = Number(from) || 0; to = Number(to) || 0;
+  if (from === to) { el.textContent = money(to); return; }
+  const start = performance.now();
+  const step = (now) => {
+    const t = Math.min(1, (now - start) / dur);
+    const eased = 1 - Math.pow(1 - t, 3); // ease-out
+    el.textContent = money(Math.round(from + (to - from) * eased));
+    if (t < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+/* "Savatga qo'shish" — rasmdan savat ikonkasiga uchuvchi doira (task_4). */
+function flyToCart(sourceEl) {
+  const cartTab = document.querySelector('.tab[data-view="savat"]');
+  if (!sourceEl || !cartTab) return;
+  const s = sourceEl.getBoundingClientRect();
+  const d = cartTab.getBoundingClientRect();
+  const dot = document.createElement("div");
+  dot.className = "fly-dot";
+  dot.textContent = "🛒";
+  dot.style.left = s.left + s.width / 2 - 11 + "px";
+  dot.style.top = s.top + s.height / 2 - 11 + "px";
+  document.body.appendChild(dot);
+  const dx = d.left + d.width / 2 - (s.left + s.width / 2);
+  const dy = d.top + d.height / 2 - (s.top + s.height / 2);
+  requestAnimationFrame(() => {
+    dot.style.transform = `translate(${dx}px, ${dy}px) scale(0.3)`;
+    dot.style.opacity = "0.2";
+  });
+  setTimeout(() => dot.remove(), 640);
+}
+
+/* Savat belgisi "pop" (task_4). */
+function popCartBadge() {
+  const b = document.getElementById("cart-badge");
+  if (!b) return;
+  b.classList.remove("pop");
+  void b.offsetWidth; // reflow — animatsiyani qayta ishga tushirish uchun
+  b.classList.add("pop");
+}
+
 /* Variantlar: olcham/rang maydonlari vergul bilan ro'yxat ("40, 41, 42"). */
 function variantsOf(p) {
   const parse = (s) => (s || "").split(",").map((x) => x.trim()).filter(Boolean);
@@ -83,9 +175,21 @@ async function loadBalance() {
   const { ok, data } = await api("/api/balance");
   const chip = document.getElementById("balance-chip");
   if (!ok || !data) { chip.hidden = true; return; }
-  currentBalance = data.coin_balans || 0;
-  document.getElementById("balance-val").textContent = money(currentBalance);
+  const oldBalance = currentBalance;
+  const newBalance = data.coin_balans || 0;
+  const firstLoad = chip.hidden;
+  currentBalance = newBalance;
   chip.hidden = false;
+  const valEl = document.getElementById("balance-val");
+  // task_4: balans o'zgarganda raqam animatsiyali sanaladi (statik emas).
+  if (firstLoad) {
+    valEl.textContent = money(newBalance);
+  } else if (oldBalance !== newBalance) {
+    animateCount(valEl, oldBalance, newBalance);
+    chip.classList.remove("bump");
+    void chip.offsetWidth;
+    chip.classList.add("bump");
+  }
 }
 
 /* ---------- Balans to'ldirish oynasi (task_3) ---------- */
@@ -181,9 +285,8 @@ document.getElementById("topup-submit").onclick = async () => {
   if (topupSelected) fd.append("tolov_usuli_id", topupSelected.id);
   fd.append("chek", file);
   const btn = document.getElementById("topup-submit");
-  btn.disabled = true; btn.textContent = "Yuborilmoqda...";
-  const { ok, data } = await apiUpload("/api/topup-request", fd);
-  btn.disabled = false; btn.textContent = "Yuborish";
+  const { ok, data } = await withSpinner(btn, "Tekshirilmoqda...", () =>
+    apiUpload("/api/topup-request", fd));
   if (ok) {
     closeTopupModal();
     notify("✅ So'rovingiz yuborildi! Super-admin chekni tekshirib tasdiqlaydi. " +
@@ -193,10 +296,64 @@ document.getElementById("topup-submit").onclick = async () => {
   }
 };
 
+/* ---------- Bannerlar + kategoriya chiplari (task_1) ---------- */
+// Kategoriya taksonomiyasi bazada yo'q — funksional filtrlar ishlatamiz.
+let activeCat = "all";
+const CATEGORIES = [
+  { id: "all", nomi: "🛍 Barchasi", test: () => true },
+  { id: "sale", nomi: "🔥 Chegirmalar", test: (p) => p.skidka_foizi > 0 },
+  { id: "stock", nomi: "✅ Mavjud", test: (p) => !p.tugadi },
+  { id: "new", nomi: "🆕 Yangi", test: (p, i, n) => i >= n - Math.ceil(n / 3) },
+];
+const BANNERS = [
+  { cls: "b-brand", title: "ARZON — arzon narxlar", sub: "Har kuni yangi takliflar", cat: "all" },
+  { cls: "b-gold", title: "🔥 Chegirmalar", sub: "Eng yaxshi narxni ushlang", cat: "sale" },
+  { cls: "b-store", title: "🚚 Tezkor yetkazish", sub: "Butun Qirg'iziston bo'ylab", cat: "all" },
+];
+
+function renderBanners() {
+  const box = document.getElementById("banners");
+  if (!box || box.dataset.done) return;
+  box.innerHTML = "";
+  BANNERS.forEach((b) => {
+    const el = document.createElement("div");
+    el.className = "banner " + b.cls;
+    el.innerHTML = `<div class="b-title">${esc(b.title)}</div><div class="b-sub">${esc(b.sub)}</div>`;
+    el.onclick = () => setCategory(b.cat);
+    box.appendChild(el);
+  });
+  box.dataset.done = "1";
+}
+
+function renderCatChips() {
+  const box = document.getElementById("cat-chips");
+  if (!box) return;
+  box.innerHTML = "";
+  CATEGORIES.forEach((c) => {
+    const b = document.createElement("button");
+    b.className = "cat-chip" + (c.id === activeCat ? " active" : "");
+    b.type = "button";
+    b.textContent = c.nomi;
+    b.onclick = () => setCategory(c.id);
+    box.appendChild(b);
+  });
+}
+
+function setCategory(id) {
+  activeCat = id;
+  renderCatChips();
+  renderCatalog();
+  const cat = document.getElementById("view-katalog");
+  if (!cat.classList.contains("active")) switchView("katalog");
+}
+
 /* ---------- Katalog (rule 1: bitta ro'yxat, do'kon tanlash yo'q) ---------- */
 async function loadCatalog() {
+  showSkeletons(6); // task_2: yuklanishда skeleton kartalar
   const { ok, data } = await api("/api/products");
   allProducts = ok && Array.isArray(data) ? data : [];
+  renderBanners();
+  renderCatChips();
   renderCatalog();
 }
 
@@ -205,17 +362,34 @@ function renderCatalog() {
   const empty = document.getElementById("catalog-empty");
   const q = document.getElementById("search").value.trim().toLowerCase();
 
+  // Kategoriya filtri (task_1) — "Yangi" ro'yxat oxiridagi mahsulotlar.
+  const catDef = CATEGORIES.find((c) => c.id === activeCat) || CATEGORIES[0];
+  const total = allProducts.length;
+  let list = allProducts.filter((p, i) => catDef.test(p, i, total));
   // task_5: nom bo'yicha real vaqt filtri + narx bo'yicha saralash.
-  let list = allProducts.filter((p) => !q || p.nomi.toLowerCase().includes(q));
+  list = list.filter((p) => !q || p.nomi.toLowerCase().includes(q));
   if (sortMode === "asc") list = [...list].sort((a, b) => effPrice(a) - effPrice(b));
   if (sortMode === "desc") list = [...list].sort((a, b) => effPrice(b) - effPrice(a));
 
   box.innerHTML = "";
   empty.hidden = list.length > 0;
   if (list.length === 0) {
-    empty.textContent = allProducts.length === 0
-      ? "Hozircha mahsulot yo'q."
-      : "Qidiruv bo'yicha hech narsa topilmadi.";
+    // task_3: mazmunli bo'sh holat.
+    if (allProducts.length === 0) {
+      renderEmptyState(empty, "🛍️", "Hozircha mahsulot yo'q",
+        "Tez orada yangi mahsulotlar qo'shiladi. Keyinroq qarab chiqing.");
+    } else if (q) {
+      renderEmptyState(empty, "🔍", `"${document.getElementById("search").value.trim()}" topilmadi`,
+        "Boshqa so'z bilan qidirib ko'ring yoki filtrni o'zgartiring.",
+        "Filtrni tozalash", () => {
+          document.getElementById("search").value = "";
+          setCategory("all");
+        });
+    } else {
+      renderEmptyState(empty, "📭", "Bu bo'limda mahsulot yo'q",
+        "Boshqa kategoriyani tanlab ko'ring.",
+        "Barchasini ko'rish", () => setCategory("all"));
+    }
     return;
   }
 
@@ -255,8 +429,11 @@ function renderCatalog() {
     card.querySelector(".card-img").onclick = () => openDetail(p);
     card.querySelector(".card-name").onclick = () => openDetail(p);
     if (!p.tugadi) {
-      card.querySelector(".act-cart").onclick = () =>
-        hasVariants(p) ? openDetail(p, true) : addToCart(p, null, null);
+      card.querySelector(".act-cart").onclick = () => {
+        if (hasVariants(p)) { openDetail(p, true); return; }
+        flyToCart(card.querySelector(".card-img")); // task_4
+        addToCart(p, null, null);
+      };
       card.querySelector(".act-buy").onclick = () =>
         hasVariants(p) ? openDetail(p, true) : startBuyNow(p, null, null);
     }
@@ -355,7 +532,10 @@ function openDetail(p, needVariant = false) {
   };
   if (!p.tugadi) {
     box.querySelector("#d-cart").onclick = () => {
-      if (checkVariant()) addToCart(p, selOlcham, selRang);
+      if (checkVariant()) {
+        flyToCart(box.querySelector(".carousel, .no-img")); // task_4
+        addToCart(p, selOlcham, selRang);
+      }
     };
     box.querySelector("#d-buy").onclick = () => {
       if (checkVariant()) startBuyNow(p, selOlcham, selRang);
@@ -398,8 +578,9 @@ function addToCart(p, olcham, rang) {
   if (!cart[key]) cart[key] = { product: p, soni: 0, olcham, rang };
   cart[key].soni += 1;
   renderCart();
-  const variant = [olcham, rang].filter(Boolean).join(", ");
-  notify(`"${p.nomi}"${variant ? ` (${variant})` : ""} savatga qo'shildi`);
+  popCartBadge(); // task_4: savat soni "pop" animatsiyasi
+  // Bloklovchi alert o'rniga yengil haptik signal (task_4).
+  try { tg && tg.HapticFeedback && tg.HapticFeedback.impactOccurred("light"); } catch (_) {}
 }
 
 function renderCart() {
@@ -431,6 +612,12 @@ function renderCart() {
   });
   empty.hidden = keys.length > 0;
   summary.hidden = keys.length === 0;
+  if (keys.length === 0) {
+    // task_3: mazmunli bo'sh savat holati.
+    renderEmptyState(empty, "🛒", "Savatingiz hali bo'sh",
+      "Katalogdan yoqqan mahsulotlarni savatga qo'shing.",
+      "Katalogni ko'rish", () => switchView("katalog"));
+  }
   cartSubtotal = total;
   updateCartSummary();
   // task_5: savat belgisi — real vaqtda son.
@@ -627,12 +814,14 @@ document.getElementById("btn-checkout").onclick = async () => {
 
   const neededTotal = Object.values(cart).reduce(
     (s, c) => s + effPrice(c.product) * c.soni, 0) + currentDeliveryFee();
-  await submitCheckout(body, () => {
-    Object.keys(cart).forEach((k) => delete cart[k]);
-    cartLocation = null;
-    document.getElementById("loc-status").hidden = true;
-    renderCart();
-  }, neededTotal);
+  // task_2: tugma ichida spinner + "Amalga oshirilmoqda...".
+  await withSpinner(document.getElementById("btn-checkout"), "Amalga oshirilmoqda...", () =>
+    submitCheckout(body, () => {
+      Object.keys(cart).forEach((k) => delete cart[k]);
+      cartLocation = null;
+      document.getElementById("loc-status").hidden = true;
+      renderCart();
+    }, neededTotal));
 };
 
 async function submitCheckout(body, onSuccess, neededTotal) {
@@ -814,7 +1003,9 @@ function renderBuyStep(step) {
     if (buyNow.deliv === "kuryer") body.manzil = buyNow.manzil;
     else body.pickup_points = { [p.store_id]: buyNow.ppid };
     if (buyNow.location) { body.lokatsiya_lat = buyNow.location.lat; body.lokatsiya_lng = buyNow.location.lng; }
-    await submitCheckout(body, () => { buyNow = null; }, jami);
+    // task_2: tasdiqlash tugmasi ichida spinner.
+    await withSpinner(box.querySelector("#bn-confirm"), "Amalga oshirilmoqda...", () =>
+      submitCheckout(body, () => { buyNow = null; }, jami));
   };
 }
 
@@ -855,7 +1046,13 @@ async function loadOrders() {
   const box = document.getElementById("orders");
   const empty = document.getElementById("orders-empty");
   box.innerHTML = "";
-  if (!ok || !data || data.length === 0) { empty.hidden = false; return; }
+  if (!ok || !data || data.length === 0) {
+    empty.hidden = false;
+    renderEmptyState(empty, "📦", "Buyurtmalar yo'q",
+      "Birinchi buyurtmangizni bering — u shu yerda ko'rinadi.",
+      "Katalogni ko'rish", () => switchView("katalog"));
+    return;
+  }
   empty.hidden = true;
   data.forEach((o) => {
     const st = HOLAT_INFO[o.holat] || { emoji: "•", matn: o.holat, cls: "" };

@@ -1,164 +1,282 @@
+/* ARZON Mini App — professional vizual dizayn (Dizayn_Yaxshilash_Prompt).
+ *
+ * ROL-RANG TIZIMI (izchil, aralashtirilmaydi — verification #7):
+ *   🟠 --brand  #E8590C  → mijoz/xarid: katalog, savat, "Sotib olish"/"Savatga".
+ *   🟢 --store  #0F6B4C  → do'kon/admin: do'kon nomi yorlig'i, chegirma foizi.
+ *   🟡 --gold   #C9971A  → balans/pul: ACOM balans, to'ldirish, narx-balans.
+ * Har rang faqat o'z rolida qoladi.
+ */
 :root {
+  /* Telegram mavzu o'zgaruvchilari — fon/matn moslashadi. */
   --bg: var(--tg-theme-bg-color, #ffffff);
-  --text: var(--tg-theme-text-color, #111111);
-  --hint: var(--tg-theme-hint-color, #888888);
+  --text: var(--tg-theme-text-color, #1a1a1a);
+  --hint: var(--tg-theme-hint-color, #6b6b6b);
   --link: var(--tg-theme-link-color, #2481cc);
   --button-text: var(--tg-theme-button-text-color, #ffffff);
   --secondary-bg: var(--tg-theme-secondary-bg-color, #f4f4f5);
-  /* ARZON brend rangi — logotipdagi to'q sariq (task_1). */
-  --brand: #e8590c;
+
+  /* Rol ranglari (rol-rang tizimi) */
+  --brand: #e8590c;          /* 🟠 xarid/savat */
   --brand-dark: #c84605;
+  --store: #0f6b4c;          /* 🟢 do'kon nomi + chegirma (muvaffaqiyat) */
+  --store-soft: rgba(15, 107, 76, 0.12);
+  --gold: #c9971a;           /* 🟡 balans/pul */
+  --gold-soft: rgba(201, 151, 26, 0.14);
+  --warn: #b33a00;           /* ogohlantirish/tugadi */
+
+  /* Yordamchi tuslar */
+  --card-grad-top: #fff8f2;  /* issiq karta foni */
+  --line: #eaeaea;           /* ajratgichlar */
+  --radius: 14px;
+  --radius-sm: 10px;
+  --shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+  --shadow-lift: 0 4px 16px rgba(232, 89, 12, 0.10);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* `hidden` atributi doim ustun bo'lsin — `display:flex/grid` uni bosib
+ * o'tmasligi uchun (aks holda bo'sh savat xulosasi ko'rinib qoladi). */
+[hidden] { display: none !important; }
+
 body {
-  font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: "Inter", "Manrope", -apple-system, "Segoe UI", Roboto, sans-serif;
   background: var(--bg);
   color: var(--text);
-  padding-bottom: 72px;
+  padding-bottom: 76px;
   -webkit-font-smoothing: antialiased;
 }
 
+/* Narx/balans raqamlari tekislanib chiqishi uchun. */
+.num, .card-price, .oc-total, .summary-row, .bn-row, .balance-chip, .big {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* Klaviatura fokusi ko'rinadigan bo'lsin (erishuvchanlik — task_5). */
+:focus-visible {
+  outline: 2.5px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ---------- Header ---------- */
 .app-header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 16px; position: sticky; top: 0; background: var(--bg);
-  z-index: 10; border-bottom: 1px solid var(--secondary-bg);
+  z-index: 10; border-bottom: 1px solid var(--line);
 }
 .app-header .logo { height: 42px; width: auto; display: block; border-radius: 8px; }
-.app-header h1 { font-size: 22px; letter-spacing: 1px; color: var(--brand); }
+.app-header h1 { font-size: 22px; letter-spacing: 1px; color: var(--brand); font-weight: 800; }
 .header-right { display: flex; align-items: center; gap: 8px; }
+
+/* 🟡 Balans pill — HAR DOIM oltin (rol-rang tizimi). */
 .balance-chip {
-  display: inline-flex; align-items: center; gap: 4px;
-  background: var(--secondary-bg); border-radius: 20px; padding: 5px 10px;
-  font-size: 13px; font-weight: 700; color: var(--brand);
+  display: inline-flex; align-items: center; gap: 5px;
+  background: var(--gold-soft); border: 1px solid rgba(201, 151, 26, 0.35);
+  border-radius: 20px; padding: 5px 11px 5px 6px;
+  font-size: 13px; font-weight: 800; color: var(--gold);
+  min-height: 32px;
 }
-.balance-chip .coin-ico { width: 18px; height: 18px; border-radius: 50%; }
+.balance-chip .coin-ico { width: 20px; height: 20px; border-radius: 50%; }
+.balance-chip.bump { animation: chip-pop 0.45s ease; }
+@keyframes chip-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+
 .code-btn {
   background: var(--secondary-bg); color: var(--text); border: none;
   padding: 8px 12px; border-radius: 20px; font-size: 14px; cursor: pointer;
+  min-height: 36px;
 }
 
+/* ---------- Ko'rinishlar + sahifa o'tishi (task_4) ---------- */
 .view { display: none; padding: 16px; }
-.view.active { display: block; }
-.view h2 { font-size: 18px; margin-bottom: 12px; }
+.view.active { display: block; animation: view-in 0.26s ease; }
+@keyframes view-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.view h2 { font-size: 18px; margin-bottom: 12px; font-weight: 800; }
 
 .back-btn {
   background: var(--secondary-bg); color: var(--text); border: none;
-  padding: 8px 14px; border-radius: 10px; font-size: 14px; cursor: pointer;
-  margin-bottom: 12px;
+  padding: 10px 14px; border-radius: var(--radius-sm); font-size: 14px;
+  cursor: pointer; margin-bottom: 12px; min-height: 44px;
 }
 
-/* Qidiruv va saralash (task_5) */
+/* ---------- Banner strip (task_1) ---------- */
+.banner-strip {
+  display: flex; gap: 12px; overflow-x: auto; padding-bottom: 6px;
+  margin-bottom: 14px; scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch; scrollbar-width: none;
+}
+.banner-strip::-webkit-scrollbar { display: none; }
+.banner {
+  flex: 0 0 82%; scroll-snap-align: start; border-radius: var(--radius);
+  padding: 18px 16px; color: #fff; cursor: pointer; min-height: 96px;
+  display: flex; flex-direction: column; justify-content: center; gap: 4px;
+  box-shadow: var(--shadow);
+}
+.banner .b-title { font-size: 17px; font-weight: 800; }
+.banner .b-sub { font-size: 12.5px; opacity: 0.92; }
+.banner.b-brand { background: linear-gradient(135deg, #f2711c, var(--brand-dark)); }
+.banner.b-gold  { background: linear-gradient(135deg, #d9a927, var(--gold)); }
+.banner.b-store { background: linear-gradient(135deg, #1c9268, var(--store)); }
+
+/* ---------- Kategoriya chiplari (task_1) ---------- */
+.cat-chips {
+  display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px;
+  margin-bottom: 12px; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.cat-chips::-webkit-scrollbar { display: none; }
+.cat-chip {
+  flex: 0 0 auto; background: var(--secondary-bg); color: var(--text);
+  border: 1.5px solid transparent; border-radius: 20px;
+  padding: 8px 16px; font-size: 13.5px; cursor: pointer; white-space: nowrap;
+  min-height: 40px; font-weight: 600;
+}
+.cat-chip.active { background: var(--brand); color: #fff; border-color: var(--brand); }
+
+/* ---------- Qidiruv va saralash (task_5) ---------- */
 .search-bar { display: flex; gap: 8px; margin-bottom: 12px; }
 .search-bar input {
-  flex: 1; padding: 10px 12px; border-radius: 10px;
-  border: 1px solid var(--secondary-bg); background: var(--secondary-bg);
+  flex: 1; padding: 12px; border-radius: var(--radius-sm); min-height: 44px;
+  border: 1px solid var(--line); background: var(--secondary-bg);
   color: var(--text); font-size: 14px;
 }
 .search-bar select {
-  max-width: 46%; padding: 10px 8px; border-radius: 10px;
-  border: 1px solid var(--secondary-bg); background: var(--secondary-bg);
+  max-width: 46%; padding: 10px 8px; border-radius: var(--radius-sm); min-height: 44px;
+  border: 1px solid var(--line); background: var(--secondary-bg);
   color: var(--text); font-size: 13px;
 }
 
-/* Katalog kartasi (task_2) */
+/* ---------- Katalog kartasi (task_1/task_2) ---------- */
 .catalog { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .card {
-  background: var(--secondary-bg); border-radius: 14px; overflow: hidden;
-  display: flex; flex-direction: column;
+  background: linear-gradient(180deg, var(--card-grad-top), #ffffff);
+  border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden;
+  display: flex; flex-direction: column; box-shadow: var(--shadow);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  color: #1a1a1a; /* karta foni doim och — matn doim to'q (dark rejimда ham) */
 }
+.card .card-desc, .card .old-price { color: #6b6b6b; }
+.card .act-cart { background: #ffffff; }
+.card:active { transform: translateY(1px); }
 .card-img { position: relative; width: 100%; overflow: hidden; cursor: pointer; }
-.card-img img { width: 100%; height: 100%; object-fit: cover; display: block; background: #ddd; }
+.card-img img { width: 100%; height: 100%; object-fit: cover; display: block; background: #e6e6e6; }
 .no-img {
   width: 100%; height: 100%; display: flex; align-items: center;
-  justify-content: center; font-size: 40px; background: #d9d9d9;
+  justify-content: center; font-size: 40px; background: #e6e6e6;
 }
-.no-img.big { border-radius: 14px; font-size: 64px; }
+.no-img.big { border-radius: var(--radius); font-size: 64px; }
+
+/* 🟢 Do'kon nomi yorlig'i — HAR DOIM yashil (rol-rang tizimi). */
 .store-chip {
-  position: absolute; left: 6px; top: 6px; font-size: 10px;
-  background: rgba(0, 0, 0, 0.6); color: #fff;
-  padding: 3px 7px; border-radius: 10px; max-width: 85%;
+  position: absolute; left: 6px; top: 6px; font-size: 10px; font-weight: 700;
+  background: var(--store); color: #fff;
+  padding: 3px 8px; border-radius: 10px; max-width: 85%;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .badges { position: absolute; right: 6px; top: 6px; display: flex; gap: 4px; }
 .card-badge {
-  font-size: 10px; color: #fff; background: #e0a800;
-  display: inline-block; padding: 2px 6px; border-radius: 8px;
+  font-size: 10px; color: #fff; background: var(--gold); font-weight: 700;
+  display: inline-block; padding: 2px 7px; border-radius: 8px;
 }
-.card-badge.sale { background: #e53935; font-weight: 700; }
+/* 🟢 Chegirma (muvaffaqiyat) — do'kon yashilидан (dizayn yo'nalishi). */
+.card-badge.sale { background: var(--store); font-weight: 800; }
 .card-badge.out { background: #757575; }
 .out-overlay {
   position: absolute; inset: 0; display: flex; align-items: center;
-  justify-content: center; background: rgba(255, 255, 255, 0.45);
-  color: #444; font-weight: 800; font-size: 18px; letter-spacing: 1px;
+  justify-content: center; background: rgba(255, 255, 255, 0.5);
+  color: var(--warn); font-weight: 800; font-size: 18px; letter-spacing: 1px;
 }
-/* Tugagan mahsulot xiralashadi (task_2). */
 .card.sold-out .card-img img, .card.sold-out .no-img { filter: grayscale(1); opacity: 0.6; }
 .card.sold-out .card-body { opacity: 0.6; }
 
 .card-body { padding: 10px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
-.card-name { font-weight: 600; font-size: 14px; cursor: pointer; }
+.card-name { font-weight: 700; font-size: 14px; cursor: pointer; }
 .card-desc {
   font-size: 11px; color: var(--hint); line-height: 1.35;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.card-store { font-size: 11px; color: var(--hint); }
-.card-price { margin-top: auto; font-size: 14px; }
-.card-price b { font-weight: 700; }
-.old-price { color: var(--hint); font-size: 12px; margin-right: 4px; }
+/* 🟢 Do'kon nomi matni ham yashil rolда. */
+.card-store { font-size: 11px; color: var(--store); font-weight: 600; }
+.card-price { margin-top: auto; font-size: 14px; font-weight: 600; }
+.card-price b { font-weight: 800; }
+.old-price { color: var(--hint); font-size: 12px; margin-right: 4px; font-weight: 400; }
 
-.card-actions { display: flex; gap: 6px; padding: 0 8px 8px; }
+/* 🟠 Karta tugmalari — xarid rolда, to'q sariq. */
+.card-actions { display: flex; gap: 6px; padding: 0 8px 10px; }
 .card-actions button {
-  flex: 1; border: none; padding: 8px 4px; border-radius: 10px;
-  cursor: pointer; font-size: 11.5px; white-space: nowrap;
+  flex: 1; border: none; padding: 10px 4px; border-radius: var(--radius-sm);
+  cursor: pointer; font-size: 11.5px; white-space: nowrap; min-height: 40px;
+  font-weight: 700;
 }
 .card-actions .act-cart { background: var(--bg); color: var(--brand); border: 1.5px solid var(--brand); }
-.card-actions .act-buy { background: var(--brand); color: #fff; font-weight: 600; }
+.card-actions .act-buy { background: var(--brand); color: #fff; }
 .card-actions button:disabled { opacity: 0.4; cursor: default; }
 
-/* Batafsil sahifa (task_3) */
+/* ---------- Skeleton yuklanish (task_2) ---------- */
+.skeleton-card {
+  border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line);
+  background: var(--secondary-bg); display: flex; flex-direction: column;
+}
+.sk { background: linear-gradient(90deg, #e9e9ec 25%, #f3f3f5 50%, #e9e9ec 75%);
+  background-size: 400% 100%; animation: sk-pulse 1.3s ease-in-out infinite; }
+.skeleton-card .sk-img { width: 100%; aspect-ratio: 1 / 1; }
+.skeleton-card .sk-body { padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.skeleton-card .sk-line { height: 11px; border-radius: 6px; }
+.skeleton-card .sk-line.short { width: 55%; }
+.skeleton-card .sk-line.price { width: 40%; height: 14px; }
+.skeleton-card .sk-btns { display: flex; gap: 6px; padding: 0 10px 12px; }
+.skeleton-card .sk-btn { flex: 1; height: 36px; border-radius: var(--radius-sm); }
+@keyframes sk-pulse {
+  0% { background-position: 100% 0; }
+  100% { background-position: 0 0; }
+}
+
+/* ---------- Batafsil sahifa (task_3 detail) ---------- */
 .carousel-wrap { position: relative; }
 .carousel {
   display: flex; overflow-x: auto; scroll-snap-type: x mandatory;
-  border-radius: 14px; background: #ddd; width: 100%;
+  border-radius: var(--radius); background: #e6e6e6; width: 100%;
   -webkit-overflow-scrolling: touch; scrollbar-width: none;
 }
 .carousel::-webkit-scrollbar { display: none; }
-.carousel img {
-  flex: 0 0 100%; width: 100%; object-fit: cover; scroll-snap-align: center;
-}
+.carousel img { flex: 0 0 100%; width: 100%; object-fit: cover; scroll-snap-align: center; }
 .car-counter {
   position: absolute; right: 10px; bottom: 10px; font-size: 12px;
-  background: rgba(0, 0, 0, 0.6); color: #fff; padding: 3px 9px;
-  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.6); color: #fff; padding: 3px 9px; border-radius: 12px;
 }
 .detail-body { padding: 14px 2px; display: flex; flex-direction: column; gap: 10px; }
-.detail-name { font-size: 19px; }
-.detail-price { font-size: 18px; }
+.detail-name { font-size: 19px; font-weight: 800; }
+.detail-price { font-size: 18px; font-weight: 700; }
 .detail-desc { font-size: 14px; color: var(--text); line-height: 1.5; white-space: pre-wrap; }
 .var-group { display: flex; flex-direction: column; gap: 6px; }
 .var-label { font-size: 13px; color: var(--hint); }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip {
   background: var(--secondary-bg); color: var(--text);
-  border: 1.5px solid var(--secondary-bg); border-radius: 10px;
-  padding: 8px 14px; font-size: 14px; cursor: pointer;
+  border: 1.5px solid var(--secondary-bg); border-radius: var(--radius-sm);
+  padding: 10px 16px; font-size: 14px; cursor: pointer; min-height: 44px;
 }
 .chip.active { border-color: var(--brand); color: var(--brand); font-weight: 700; }
 .detail-actions { display: flex; gap: 8px; margin-top: 6px; }
 .detail-actions button { flex: 1; }
 
-/* Buy Now (task_4) */
+/* ---------- Buy Now (task_4 oqim) ---------- */
 .bn-product {
   background: var(--secondary-bg); border-radius: 12px; padding: 12px;
   margin-bottom: 14px; display: flex; flex-direction: column; gap: 4px;
 }
 #buynow-box h3 { font-size: 15px; margin-bottom: 10px; }
 #buynow-box input[type="text"] {
-  width: 100%; padding: 11px; border-radius: 10px;
-  border: 1px solid var(--secondary-bg); background: var(--secondary-bg);
+  width: 100%; padding: 12px; border-radius: var(--radius-sm); min-height: 44px;
+  border: 1px solid var(--line); background: var(--secondary-bg);
   color: var(--text); margin-bottom: 10px;
 }
 .row2 { display: flex; gap: 8px; margin-top: 10px; }
@@ -168,85 +286,101 @@ body {
   display: flex; flex-direction: column; gap: 8px;
 }
 .bn-row { display: flex; justify-content: space-between; font-size: 14px; gap: 10px; }
-.bn-row.total { border-top: 1px solid rgba(128, 128, 128, 0.25); padding-top: 8px; font-size: 16px; }
+.bn-row.total { border-top: 1px solid var(--line); padding-top: 8px; font-size: 16px; font-weight: 700; }
 .variant { color: var(--hint); font-size: 12px; }
 
-/* Savat */
+/* ---------- Savat ---------- */
 .cart-row {
-  display: flex; align-items: center; gap: 10px; padding: 10px 0;
-  border-bottom: 1px solid var(--secondary-bg);
+  display: flex; align-items: center; gap: 10px; padding: 12px 0;
+  border-bottom: 1px solid var(--line);
 }
 .cart-row .grow { flex: 1; }
 .qty { display: flex; align-items: center; gap: 8px; }
 .qty button {
-  width: 28px; height: 28px; border-radius: 8px; border: none;
+  width: 34px; height: 34px; border-radius: 8px; border: none;
   background: var(--secondary-bg); color: var(--text); font-size: 16px; cursor: pointer;
 }
 .cart-summary { margin-top: 16px; display: flex; flex-direction: column; gap: 10px; }
-.cart-summary input { padding: 10px; border-radius: 10px; border: 1px solid var(--secondary-bg);
-  background: var(--secondary-bg); color: var(--text); }
-.total { font-size: 18px; font-weight: 700; }
+.cart-summary input { padding: 12px; border-radius: var(--radius-sm); min-height: 44px;
+  border: 1px solid var(--line); background: var(--secondary-bg); color: var(--text); }
 
-/* Yetkazib berish */
+/* ---------- Yetkazib berish ---------- */
 .delivery { display: flex; flex-direction: column; gap: 8px; }
 .deliv-label { font-size: 13px; color: var(--hint); }
 .deliv-toggle { display: flex; gap: 8px; margin-bottom: 8px; }
 .deliv-btn {
-  flex: 1; padding: 10px; border-radius: 10px; border: 2px solid var(--secondary-bg);
+  flex: 1; padding: 12px; border-radius: var(--radius-sm); min-height: 44px;
+  border: 2px solid var(--secondary-bg);
   background: var(--secondary-bg); color: var(--text); cursor: pointer; font-size: 14px;
 }
 .deliv-btn.active { border-color: var(--brand); color: var(--brand); font-weight: 700; }
-.pickup-store { background: var(--secondary-bg); border-radius: 10px; padding: 10px; margin-top: 6px; }
-.pickup-title { font-weight: 600; font-size: 13px; margin-bottom: 6px; }
-.pickup-opt { display: block; font-size: 13px; padding: 6px 0; cursor: pointer; }
+.pickup-store { background: var(--secondary-bg); border-radius: var(--radius-sm); padding: 10px; margin-top: 6px; }
+.pickup-title { font-weight: 700; font-size: 13px; margin-bottom: 6px; color: var(--store); }
+.pickup-opt { display: block; font-size: 13px; padding: 8px 0; cursor: pointer; min-height: 40px; }
 
-button.primary {
+/* ---------- Umumiy tugmalar (task_5: yagona radius/balandlik) ---------- */
+button.primary, button.btn-primary {
   background: var(--brand); color: #fff; border: none;
-  padding: 12px; border-radius: 12px; font-size: 15px; cursor: pointer; width: 100%;
-  font-weight: 600;
+  padding: 13px; border-radius: 12px; font-size: 15px; cursor: pointer; width: 100%;
+  font-weight: 700; min-height: 48px;
 }
-button.primary:active { background: var(--brand-dark); }
-button.ghost {
+button.primary:active, button.btn-primary:active { background: var(--brand-dark); }
+button.ghost, button.btn-secondary {
   background: var(--bg); color: var(--brand); border: 1.5px solid var(--brand);
-  padding: 12px; border-radius: 12px; font-size: 15px; cursor: pointer; width: 100%;
+  padding: 13px; border-radius: 12px; font-size: 15px; cursor: pointer; width: 100%;
+  font-weight: 700; min-height: 48px;
 }
-button.ghost:disabled, button.primary:disabled { opacity: 0.4; cursor: default; }
+button.ghost:disabled, button.primary:disabled,
+button.btn-primary:disabled, button.btn-secondary:disabled { opacity: 0.55; cursor: default; }
 
-/* Yetkazish: joylashuv tugmasi + savat xulosasi */
-.loc-btn {
-  width: 100%; padding: 11px; border-radius: 10px; margin-top: 8px;
-  border: 1.5px dashed var(--brand); background: var(--bg); color: var(--brand);
-  font-size: 14px; cursor: pointer;
+/* Tugma ichidagi spinner (task_2). */
+.spinner {
+  display: inline-block; width: 15px; height: 15px; vertical-align: -2px;
+  border: 2px solid rgba(255, 255, 255, 0.45); border-top-color: #fff;
+  border-radius: 50%; animation: spin 0.7s linear infinite; margin-right: 7px;
 }
-.loc-status { font-size: 13px; color: #2e7d32; margin-top: 6px; font-weight: 600; }
+button.ghost .spinner, button.btn-secondary .spinner {
+  border-color: rgba(232, 89, 12, 0.35); border-top-color: var(--brand);
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- Joylashuv + savat xulosasi ---------- */
+.loc-btn {
+  width: 100%; padding: 12px; border-radius: var(--radius-sm); margin-top: 8px;
+  border: 1.5px dashed var(--brand); background: var(--bg); color: var(--brand);
+  font-size: 14px; cursor: pointer; min-height: 44px;
+}
+.loc-status { font-size: 13px; color: var(--store); margin-top: 6px; font-weight: 700; }
 .summary-box {
   background: var(--secondary-bg); border-radius: 12px; padding: 12px;
   display: flex; flex-direction: column; gap: 8px; margin-top: 6px;
 }
 .summary-row { display: flex; justify-content: space-between; font-size: 14px; color: var(--text); }
-.summary-row.total {
-  border-top: 1px solid rgba(128,128,128,0.25); padding-top: 8px;
-  font-size: 17px; font-weight: 700;
-}
-.summary-row.total b { color: var(--brand); }
+.summary-row.total { border-top: 1px solid var(--line); padding-top: 8px; font-size: 17px; font-weight: 800; }
+/* 🟡 Jami (pul) — oltin rolда. */
+.summary-row.total b { color: var(--gold); }
 
-/* Buyurtmalar — chiroyli karta, kod kattaroq/aniq */
+/* ---------- Buyurtmalar ---------- */
 .order-card {
-  background: var(--secondary-bg); border-radius: 16px; padding: 16px;
-  margin-bottom: 12px; border: 1px solid rgba(232,89,12,0.12);
+  background: linear-gradient(180deg, var(--card-grad-top), #ffffff);
+  border-radius: 16px; padding: 16px; margin-bottom: 12px;
+  border: 1px solid var(--line); box-shadow: var(--shadow);
+  color: #1a1a1a; /* och fon — to'q matn (dark rejimда ham o'qiladi) */
 }
+.order-card .oc-label, .order-card .oc-row { color: #6b6b6b; }
+.order-card .oc-total span:first-child { color: #1a1a1a; }
 .oc-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
 .oc-label { font-size: 12px; color: var(--hint); text-transform: uppercase; letter-spacing: 0.5px; }
 .status-badge {
-  font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 20px;
-  background: rgba(128,128,128,0.15); color: var(--text);
+  font-size: 12px; font-weight: 700; padding: 5px 11px; border-radius: 20px;
+  background: rgba(128, 128, 128, 0.15); color: var(--text);
 }
-.status-badge.st-new { background: rgba(33,150,243,0.15); color: #1976d2; }
-.status-badge.st-prep { background: rgba(255,152,0,0.18); color: #e65100; }
-.status-badge.st-way { background: rgba(232,89,12,0.16); color: var(--brand); }
-.status-badge.st-done { background: rgba(46,125,50,0.16); color: #2e7d32; }
-.status-badge.st-cancel { background: rgba(211,47,47,0.14); color: #c62828; }
-/* Katta, aniq buyurtma kodi */
+.status-badge.st-new { background: rgba(33, 150, 243, 0.15); color: #1976d2; }
+.status-badge.st-prep { background: rgba(255, 152, 0, 0.18); color: #e65100; }
+.status-badge.st-way { background: rgba(232, 89, 12, 0.16); color: var(--brand); }
+.status-badge.st-done { background: var(--store-soft); color: var(--store); }
+.status-badge.st-cancel { background: rgba(211, 47, 47, 0.14); color: #c62828; }
+/* 🟠 Buyurtma kodi — xarid rolда, to'q sariq. */
 .oc-code {
   font-family: "SF Mono", "Roboto Mono", ui-monospace, monospace;
   font-size: 32px; font-weight: 800; letter-spacing: 4px; color: var(--brand);
@@ -254,76 +388,114 @@ button.ghost:disabled, button.primary:disabled { opacity: 0.4; cursor: default; 
 }
 .oc-rows { display: flex; flex-direction: column; gap: 6px; }
 .oc-row { display: flex; justify-content: space-between; font-size: 14px; color: var(--text); }
-.oc-row.oc-total { border-top: 1px solid rgba(128,128,128,0.2); padding-top: 8px; font-weight: 700; }
+/* 🟡 Buyurtma jami (pul) — oltin. */
+.oc-row.oc-total { border-top: 1px solid var(--line); padding-top: 8px; font-weight: 800; }
+.oc-row.oc-total span:last-child { color: var(--gold); }
 
-/* Chat */
+/* ---------- Chat ---------- */
 .chat-log { display: flex; flex-direction: column; gap: 8px; min-height: 50vh; }
 .msg { padding: 10px 12px; border-radius: 14px; max-width: 80%; font-size: 14px; }
 .msg.user { align-self: flex-end; background: var(--brand); color: #fff; }
 .msg.bot { align-self: flex-start; background: var(--secondary-bg); }
-.chat-input { display: flex; gap: 8px; position: sticky; bottom: 72px; padding-top: 8px; background: var(--bg); }
-.chat-input input { flex: 1; padding: 10px; border-radius: 20px; border: 1px solid var(--secondary-bg);
-  background: var(--secondary-bg); color: var(--text); }
-.chat-input button { width: 44px; border-radius: 50%; }
+.chat-input { display: flex; gap: 8px; position: sticky; bottom: 76px; padding-top: 8px; background: var(--bg); }
+.chat-input input { flex: 1; padding: 12px; border-radius: 20px; min-height: 44px;
+  border: 1px solid var(--line); background: var(--secondary-bg); color: var(--text); }
+.chat-input button { width: 48px; height: 48px; border-radius: 50%; }
 
-/* Sodiqlik */
-.loyalty-box { background: var(--secondary-bg); border-radius: 14px; padding: 16px; }
+/* ---------- Sodiqlik ---------- */
+.loyalty-box { background: var(--secondary-bg); border-radius: var(--radius); padding: 16px; }
+/* 🟡 Umumiy xaridlar soni neytral — lekin referal pul emas, brendда qoldiramiz. */
 .loyalty-box .big { font-size: 32px; font-weight: 800; color: var(--brand); }
 .ref-link { word-break: break-all; color: var(--link); font-size: 13px; margin-top: 8px; }
 
-/* Tabbar */
+/* ---------- Tabbar ---------- */
 .tabbar {
   position: fixed; bottom: 0; left: 0; right: 0; display: flex;
-  background: var(--bg); border-top: 1px solid var(--secondary-bg);
+  background: var(--bg); border-top: 1px solid var(--line);
 }
 .tab {
   flex: 1; background: none; border: none; color: var(--hint); cursor: pointer;
   padding: 8px 0; font-size: 20px; display: flex; flex-direction: column;
-  align-items: center; gap: 2px; position: relative;
+  align-items: center; gap: 2px; position: relative; min-height: 52px;
 }
 .tab span { font-size: 10px; }
 .tab.active { color: var(--brand); }
-/* Savat belgisi — son (task_5). */
+/* 🟠 Savat belgisi — xarid rolда, to'q sariq (ilgari qizil edi). */
 .tab b {
-  position: absolute; top: 2px; right: 22px; background: #e53935; color: #fff;
-  font-size: 10px; border-radius: 10px; padding: 0 5px;
+  position: absolute; top: 2px; right: 22px; background: var(--brand); color: #fff;
+  font-size: 10px; font-weight: 700; border-radius: 10px; padding: 0 5px; min-width: 16px;
+}
+.tab b.pop { animation: badge-pop 0.4s ease; }
+@keyframes badge-pop {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.5); }
+  100% { transform: scale(1); }
 }
 
+/* ---------- Bo'sh holatlar (task_3) ---------- */
 .empty { text-align: center; color: var(--hint); padding: 30px 0; }
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  text-align: center; padding: 44px 20px; color: var(--hint);
+}
+.empty-state .es-icon { font-size: 52px; line-height: 1; }
+.empty-state .es-title { font-size: 16px; font-weight: 700; color: var(--text); }
+.empty-state .es-sub { font-size: 13.5px; line-height: 1.5; max-width: 280px; }
+.empty-state .es-btn {
+  margin-top: 6px; background: var(--brand); color: #fff; border: none;
+  padding: 11px 22px; border-radius: 12px; font-size: 14px; font-weight: 700;
+  cursor: pointer; min-height: 44px;
+}
 
-/* Balans to'ldirish oynasi (task_3) */
+/* ---------- Fly-to-cart doirasi (task_4) ---------- */
+.fly-dot {
+  position: fixed; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--brand); color: #fff; z-index: 200; pointer-events: none;
+  display: flex; align-items: center; justify-content: center; font-size: 12px;
+  box-shadow: 0 3px 10px rgba(232, 89, 12, 0.5);
+  transition: transform 0.6s cubic-bezier(0.5, -0.3, 0.7, 1), opacity 0.6s ease;
+}
+
+/* ---------- Balans to'ldirish oynasi ---------- */
 .modal-overlay {
   position: fixed; inset: 0; background: rgba(0, 0, 0, 0.55);
-  display: flex; align-items: flex-end; justify-content: center;
-  z-index: 100; padding: 0;
+  display: flex; align-items: flex-end; justify-content: center; z-index: 100;
 }
 .modal-overlay[hidden] { display: none; }
 .modal {
   background: var(--bg); color: var(--text); width: 100%; max-width: 480px;
   border-radius: 18px 18px 0 0; padding: 20px 16px 28px;
   max-height: 92vh; overflow-y: auto; position: relative;
+  animation: sheet-up 0.28s ease;
 }
-.modal h3 { font-size: 18px; margin-bottom: 10px; }
+@keyframes sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+/* 🟡 To'ldirish sarlavhasi (pul) — oltin. */
+.modal h3 { font-size: 18px; margin-bottom: 10px; color: var(--gold); }
 .modal-close {
   position: absolute; right: 12px; top: 12px; background: var(--secondary-bg);
-  border: none; color: var(--text); width: 32px; height: 32px; border-radius: 50%;
+  border: none; color: var(--text); width: 36px; height: 36px; border-radius: 50%;
   font-size: 16px; cursor: pointer;
 }
-.topup-msg { font-size: 14px; color: var(--text); margin-bottom: 14px; line-height: 1.5; }
+.topup-msg {
+  font-size: 14px; color: var(--text); margin-bottom: 14px; line-height: 1.5;
+  background: var(--gold-soft); border-radius: var(--radius-sm); padding: 12px;
+}
+.topup-msg b { color: var(--gold); }
 .topup-label { display: block; font-size: 13px; color: var(--hint); margin: 12px 0 6px; }
 .modal input[type="number"], .modal input[type="file"] {
-  width: 100%; padding: 11px; border-radius: 10px;
-  border: 1px solid var(--secondary-bg); background: var(--secondary-bg); color: var(--text);
+  width: 100%; padding: 12px; border-radius: var(--radius-sm); min-height: 44px;
+  border: 1px solid var(--line); background: var(--secondary-bg); color: var(--text);
 }
 .topup-methods { display: flex; flex-wrap: wrap; gap: 8px; }
 .method-btn {
   background: var(--secondary-bg); color: var(--text);
-  border: 1.5px solid var(--secondary-bg); border-radius: 10px;
-  padding: 9px 12px; font-size: 14px; cursor: pointer;
+  border: 1.5px solid var(--secondary-bg); border-radius: var(--radius-sm);
+  padding: 11px 14px; font-size: 14px; cursor: pointer; min-height: 44px;
 }
-.method-btn.active { border-color: var(--brand); color: var(--brand); font-weight: 700; }
+/* 🟡 To'lov usuli tanlash (pul konteksti) — oltin. */
+.method-btn.active { border-color: var(--gold); color: var(--gold); font-weight: 700; }
 .topup-detail {
-  background: var(--secondary-bg); border-radius: 10px; padding: 12px;
+  background: var(--secondary-bg); border-radius: var(--radius-sm); padding: 12px;
   font-size: 14px; margin-top: 10px; line-height: 1.5; word-break: break-word;
 }
 .topup-detail .qr-img { width: 100%; max-width: 220px; display: block; margin: 0 auto 10px; border-radius: 8px; }
