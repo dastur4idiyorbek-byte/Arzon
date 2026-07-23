@@ -136,8 +136,9 @@ def main_menu(miniapp_url: str = "") -> ReplyKeyboardMarkup:
 async def is_channel_member(bot, user_id: int) -> bool:
     """Mijoz rasmiy kanalга a'zomi? NEWS_CHANNEL_ID bo'sh bo'lса — True (o'chiq).
 
-    Xatolik (bot kanalда admin emas va h.k.) bo'lса — fail-open (True) + log,
-    aks holda noto'g'ri sozlash barcha mijozlarni bloklab qo'yardi.
+    Tekshirib bo'lmasа (masalan bot kanalда admin emas): standart holatда
+    fail-open (True) — noto'g'ri sozlash barcha mijozlarni bloklab qo'ymasin.
+    NEWS_CHANNEL_STRICT=true bo'lса — fail-closed (False), obuna qat'iy majburiy.
     """
     channel = settings.news_channel_id.strip()
     if not channel:
@@ -145,10 +146,19 @@ async def is_channel_member(bot, user_id: int) -> bool:
     chat_id = int(channel) if channel.lstrip("-").isdigit() else channel
     try:
         m = await bot.get_chat_member(chat_id, user_id)
-        return m.status in ("member", "administrator", "creator", "owner")
+        # "left"/"kicked" — a'zo emas; "restricted" — is_member bo'yicha.
+        if m.status in ("member", "administrator", "creator", "owner"):
+            return True
+        if m.status == "restricted":
+            return bool(getattr(m, "is_member", False))
+        return False  # left / kicked
     except Exception as e:  # noqa: BLE001
-        logger.warning("Kanal a'zoligini tekshirib bo'lmadi: %s", e)
-        return True  # fail-open
+        logger.warning(
+            "Kanal a'zoligini tekshirib bo'lmadi (bot '%s' kanalда ADMIN "
+            "ekanini tekshiring): %s", channel, e,
+        )
+        # Strict rejimда — tekshirib bo'lmasа kirgizmaymiz (obuna majburiy).
+        return not settings.news_channel_strict
 
 
 def _join_markup() -> InlineKeyboardMarkup:

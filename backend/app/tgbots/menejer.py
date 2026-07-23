@@ -32,7 +32,8 @@ logger = logging.getLogger("arzon.menejer")
 
 BTN_SOROVLAR = "🏪 Do'kon so'rovlari"
 BTN_ADMINLAR = "👤 Adminlar"
-BTN_OCHIRISH = "🗑 Do'kon/mahsulot o'chirish"
+BTN_DOKON_OCHIR = "🗑 Do'kon o'chirish"
+BTN_MAHSULOT_OCHIR = "🗑 Mahsulot o'chirish"
 BTN_ARENDA = "💰 Arenda nazorati"
 BTN_XABAR = "📢 Xabar yuborish"
 BTN_REPORT = "📊 Hisobot"
@@ -58,8 +59,9 @@ def menu_markup() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [
             [KeyboardButton(BTN_SOROVLAR), KeyboardButton(BTN_ADMINLAR)],
-            [KeyboardButton(BTN_OCHIRISH), KeyboardButton(BTN_XABAR)],
-            [KeyboardButton(BTN_ARENDA), KeyboardButton(BTN_REPORT)],
+            [KeyboardButton(BTN_DOKON_OCHIR), KeyboardButton(BTN_MAHSULOT_OCHIR)],
+            [KeyboardButton(BTN_XABAR), KeyboardButton(BTN_ARENDA)],
+            [KeyboardButton(BTN_REPORT)],
         ],
         resize_keyboard=True,
     )
@@ -244,21 +246,44 @@ async def admin_add_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 
 
 # ---------------------------------------------------------------------------
-# 🗑 Do'kon / mahsulot o'chirish (moderatsiya)
+# 🗑 Do'kon o'chirish (moderatsiya) — mahsulot o'chirishдан alohida
 # ---------------------------------------------------------------------------
-async def ochirish(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def dokon_ochirish(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _guard(update):
         return
     rows = await api.menejer_stores(update.effective_user.id)
     if not rows:
         await update.message.reply_text("Do'konlar yo'q.")
         return
+    await update.message.reply_text("🗑 <b>Do'kon o'chirish</b> — do'konni tanlang:",
+                                    parse_mode="HTML")
     for s in rows[:30]:
         kb = InlineKeyboardMarkup(
-            [
-                [InlineKeyboardButton("📦 Mahsulotlar", callback_data=f"mpr_{s['id']}")],
-                [InlineKeyboardButton("🗑 Do'konni o'chirish", callback_data=f"mds_{s['id']}")],
-            ]
+            [[InlineKeyboardButton("🗑 Do'konni o'chirish", callback_data=f"mds_{s['id']}")]]
+        )
+        await update.message.reply_text(
+            f"🏪 {s['nomi']} (ID {s['id']}) — {s['mahsulot_soni']} mahsulot",
+            reply_markup=kb,
+        )
+
+
+# ---------------------------------------------------------------------------
+# 🗑 Mahsulot o'chirish (moderatsiya) — do'kon o'chirishдан alohida
+# ---------------------------------------------------------------------------
+async def mahsulot_ochirish(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await _guard(update):
+        return
+    rows = await api.menejer_stores(update.effective_user.id)
+    if not rows:
+        await update.message.reply_text("Do'konlar yo'q.")
+        return
+    await update.message.reply_text(
+        "🗑 <b>Mahsulot o'chirish</b> — avval do'konni tanlang, keyin mahsulotni:",
+        parse_mode="HTML",
+    )
+    for s in rows[:30]:
+        kb = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("📦 Mahsulotlar", callback_data=f"mpr_{s['id']}")]]
         )
         await update.message.reply_text(
             f"🏪 {s['nomi']} (ID {s['id']}) — {s['mahsulot_soni']} mahsulot",
@@ -520,7 +545,8 @@ def build_application(token: str) -> Application:
     app.add_handler(CallbackQueryHandler(approve_do, pattern="^md_ok_"))
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_SOROVLAR}$"), sorovlar))
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_ADMINLAR}$"), adminlar))
-    app.add_handler(MessageHandler(filters.Regex(f"^{BTN_OCHIRISH}$"), ochirish))
+    app.add_handler(MessageHandler(filters.Regex(f"^{BTN_DOKON_OCHIR}$"), dokon_ochirish))
+    app.add_handler(MessageHandler(filters.Regex(f"^{BTN_MAHSULOT_OCHIR}$"), mahsulot_ochirish))
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_ARENDA}$"), arenda))
     app.add_handler(MessageHandler(filters.Regex(f"^{BTN_REPORT}$"), report))
 

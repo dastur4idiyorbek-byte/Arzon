@@ -380,6 +380,29 @@ def cancel_order(
     }
 
 
+def delete_order_for_user(db: Session, order: Order, user: User) -> None:
+    """Mijoz o'z buyurtmasini tarixidan o'chiradi (faqat tugagan buyurtma).
+
+    Faqat egasi va faqat yakuniy holatдаги (topshirildi/bekor_qilindi)
+    buyurtмани o'chira oladi — faol buyurtмани o'chirib bo'lmaydi (avval
+    bekor qilinishi kerak, coin qaytarilishi uchun).
+    """
+    if order.user_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Bu buyurtma sizniki emas.",
+        )
+    if order.holat not in ("topshirildi", "bekor_qilindi"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Faol buyurtмани o'chirib bo'lmaydi. Avval uni bekor qiling."
+            ),
+        )
+    db.delete(order)
+    db.commit()
+
+
 def confirm_order_code(db: Session, kod: str, admin_id: int) -> Order:
     """Buyurtma kodini tasdiqlaydi (phase 3.3).
 

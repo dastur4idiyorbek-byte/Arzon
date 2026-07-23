@@ -95,6 +95,10 @@ class Settings(BaseSettings):
     # kerak (getChatMember ishlashi uchun).
     news_channel_id: str = ""
     news_channel_link: str = ""
+    # NEWS_CHANNEL_STRICT: "true" bo'lса — a'zolikni tekshirib bo'lmasа
+    # (masalan bot kanalда admin emas) mijoz KIRITILMAYDI (fail-closed).
+    # Bu majburiy obunani qat'iy qiladi. Standart: "false" (fail-open).
+    news_channel_strict: bool = False
 
     @property
     def super_admin_id_list(self) -> List[int]:

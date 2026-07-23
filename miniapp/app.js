@@ -871,10 +871,18 @@ function renderBuyStep(step) {
   const box = document.getElementById("buynow-box");
   const p = buyNow.product;
   const variant = [buyNow.olcham, buyNow.rang].filter(Boolean).join(" · ");
+  // Tavarni rasmini ham ko'rsatamiz (mijoz nima olayotganini ko'rsin).
+  const bnImg = p.rasm_url || (p.rasm_urls && p.rasm_urls[0]);
+  const bnThumb = bnImg
+    ? `<img class="bn-thumb" src="${esc(bnImg)}" alt="">`
+    : `<div class="bn-thumb no-img">🛍️</div>`;
   const header = `
     <div class="bn-product">
-      <div class="card-name">${esc(p.nomi)}${variant ? ` <span class="variant">(${esc(variant)})</span>` : ""}</div>
-      <div class="card-price">${priceHtml(p)}</div>
+      ${bnThumb}
+      <div class="bn-info">
+        <div class="card-name">${esc(p.nomi)}${variant ? ` <span class="variant">(${esc(variant)})</span>` : ""}</div>
+        <div class="card-price">${priceHtml(p)}</div>
+      </div>
     </div>`;
 
   if (step === 1) {
@@ -1059,6 +1067,10 @@ async function loadOrders() {
     const yetk = o.yetkazish_turi === "kuryer" ? "🚚 Kuryer" : "🏬 Punktdan olish";
     const feeRow = o.yetkazish_narxi
       ? `<div class="oc-row"><span>Yetkazish</span><span>${money(o.yetkazish_narxi)} som</span></div>` : "";
+    // Tugagan buyurtмани mijoz tarixidan o'chira oladi.
+    const tugagan = o.holat === "topshirildi" || o.holat === "bekor_qilindi";
+    const delBtn = tugagan
+      ? `<button class="oc-del" data-id="${o.id}">🗑 O'chirish</button>` : "";
     const el = document.createElement("div");
     el.className = "order-card";
     el.innerHTML = `
@@ -1071,8 +1083,29 @@ async function loadOrders() {
         <div class="oc-row"><span>${yetk}</span><span></span></div>
         ${feeRow}
         <div class="oc-row oc-total"><span>Jami</span><span>${money(o.jami_narx)} som</span></div>
-      </div>`;
+      </div>
+      ${delBtn}`;
+    const db = el.querySelector(".oc-del");
+    if (db) db.onclick = () => deleteOrder(o.id, db);
     box.appendChild(el);
+  });
+}
+
+async function deleteOrder(id, btn) {
+  const yes = await confirmDialog("Bu buyurtмани tarixdan o'chirasizmi?");
+  if (!yes) return;
+  await withSpinner(btn, "O'chirilmoqda...", async () => {
+    const { ok, data } = await api(`/api/orders/${id}`, { method: "DELETE" });
+    if (ok) loadOrders();
+    else notify((data && data.detail) || "O'chirib bo'lmadi.");
+  });
+}
+
+/* Telegram tasdiqlash oynasi (bo'lmasa — oddiy confirm). */
+function confirmDialog(text) {
+  return new Promise((resolve) => {
+    if (tg && tg.showConfirm) tg.showConfirm(text, (ok) => resolve(!!ok));
+    else resolve(confirm(text));
   });
 }
 

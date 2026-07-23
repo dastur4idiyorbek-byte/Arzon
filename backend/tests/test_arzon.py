@@ -543,6 +543,55 @@ def test_spec_cancel_order_with_reason():
     assert r.json()["order"]["holat"] == "bekor_qilindi"
 
 
+def test_customer_delete_finished_order():
+    """Mijoz faqat tugagan buyurtмани o'chira oladi (faolни emas)."""
+    store_a, _ = setup_two_stores()
+    p = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/products",
+        headers=admin_headers(ADMIN_A),
+        json={"nomi": "O'chir tovar", "narxi": 500, "korinish": "ommaviy"},
+    ).json()
+    cust = customer_headers(5522)
+    client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700000009"})
+    give_balance(5522, 100000)
+    order = client.post(
+        "/api/checkout", headers=cust,
+        json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Uy 1"},
+    ).json()["buyurtmalar"][0]
+
+    # Faol (yangi) buyurtмани o'chirib bo'lmaydi.
+    r = client.delete(f"/api/orders/{order['id']}", headers=cust)
+    assert r.status_code == 400, r.text
+
+    # Bekor qilinsa — tugagan holatga o'tadi, endi o'chirса bo'ladi.
+    client.post(
+        f"/api/admin/orders/{order['id']}/cancel",
+        headers=admin_headers(ADMIN_A),
+        json={"sabab": "test"},
+    )
+    r = client.delete(f"/api/orders/{order['id']}", headers=cust)
+    assert r.status_code == 200, r.text
+    assert r.json()["ochirildi"] is True
+    # Tarixдан yo'qoladi.
+    orders = client.get("/api/orders", headers=cust).json()
+    assert all(o["id"] != order["id"] for o in orders)
+
+    # Boshqa mijoz o'chira olmaydi (egasi emas).
+    other = customer_headers(5523)
+    client.post("/api/confirm-phone", headers=other, json={"tel": "+996700000010"})
+    order2 = client.post(
+        "/api/checkout", headers=cust,
+        json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Uy 2"},
+    ).json()["buyurtmalar"][0]
+    client.post(
+        f"/api/admin/orders/{order2['id']}/cancel",
+        headers=admin_headers(ADMIN_A),
+        json={"sabab": "test"},
+    )
+    r = client.delete(f"/api/orders/{order2['id']}", headers=other)
+    assert r.status_code == 403, r.text
+
+
 def test_spec_order_search_store_scoped():
     """Qidiruv faqat o'z do'koni doirasida (spec2 task_4 verification #4)."""
     store_a, store_b = setup_two_stores()

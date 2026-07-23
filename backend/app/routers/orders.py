@@ -131,6 +131,20 @@ def my_orders(
     return [OrderOut.model_validate(o) for o in rows]
 
 
+@router.delete("/orders/{order_id}")
+def delete_order(
+    order_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Mijoz eski (tugagan) buyurtмани tarixidan o'chiradi."""
+    order = db.get(Order, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="Buyurtma topilmadi.")
+    order_service.delete_order_for_user(db, order, user)
+    return {"ochirildi": True}
+
+
 @router.get("/pickup-points", response_model=List[PickupPointOut])
 def pickup_points(
     store_ids: str,
