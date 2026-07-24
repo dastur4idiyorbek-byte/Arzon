@@ -13,8 +13,7 @@ from zoneinfo import ZoneInfo
 from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    KeyboardButton,
-    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
     Update,
 )
 from telegram.ext import (
@@ -215,6 +214,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "Sizga hali do'kon biriktirilmagan. Do'kon ochish uchun Savdo "
             "botiдаги '🏪 Do'kon ochish' orqali so'rov yuboring."
         )
+    # Eski pastki (reply) klaviaturани olib tashlaymiz — endi faqat inline menyu.
+    await update.effective_message.reply_text("🏪 ARZON Admin", reply_markup=ReplyKeyboardRemove())
     await update.effective_message.reply_text(text, reply_markup=menu_markup(uid))
 
 

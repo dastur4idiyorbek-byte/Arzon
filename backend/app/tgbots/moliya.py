@@ -15,8 +15,7 @@ import logging
 from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    KeyboardButton,
-    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
     Update,
 )
 from telegram.ext import (
@@ -141,9 +140,12 @@ async def _guard(update: Update) -> bool:
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _guard(update):
         return
+    # Eski pastki (reply) klaviaturани olib tashlaymiz — endi faqat inline menyu.
     await update.effective_message.reply_text(
-        "💰 ARZON Moliya Boti\n\nACOM coin so'rovlarini boshqaring 👇",
-        reply_markup=menu_markup(),
+        "💰 ARZON Moliya Boti", reply_markup=ReplyKeyboardRemove()
+    )
+    await update.effective_message.reply_text(
+        "ACOM coin so'rovlarini boshqaring 👇", reply_markup=menu_markup()
     )
 
 
