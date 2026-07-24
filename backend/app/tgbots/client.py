@@ -235,13 +235,17 @@ class BotApi:
         )
 
     async def change_status(
-        self, admin_id: int, order_id: int, holat: str
+        self, admin_id: int, order_id: int, holat: str,
+        kuryer_tel: str | None = None,
     ) -> httpx.Response:
+        body = {"holat": holat}
+        if kuryer_tel:
+            body["kuryer_tel"] = kuryer_tel
         return await self._request(
             "PATCH",
             f"/api/admin/orders/{order_id}/status",
             headers=self._admin(admin_id),
-            json={"holat": holat},
+            json=body,
         )
 
     async def search_orders(

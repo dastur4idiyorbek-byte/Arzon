@@ -179,6 +179,8 @@ class Order(Base):
     yetkazish_turi: Mapped[str] = mapped_column(String(10), default="kuryer")
     # Kuryer uchun manzil matni.
     manzil: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # Kuryer telefon raqami — "Yo'lda" holatiда admin qo'lда kiritadi (task_2).
+    kuryer_tel: Mapped[str | None] = mapped_column(String(20), nullable=True)
     # Yetkazib berish narxi (som). Manzilga qarab hisoblanadi (hozircha 100).
     yetkazish_narxi: Mapped[float | None] = mapped_column(
         Numeric(12, 2), nullable=True, default=0
@@ -273,6 +275,8 @@ class PickupPoint(Base):
     manzil: Mapped[str] = mapped_column(String(512))
     ish_vaqti: Mapped[str | None] = mapped_column(String(255), nullable=True)
     holat: Mapped[str] = mapped_column(String(10), default="faol")
+    # Lokatsiyadан avtomatik generatsiya qilinadigan Google Maps havolasi (task_3).
+    google_maps_link: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class UnlockedStore(Base):

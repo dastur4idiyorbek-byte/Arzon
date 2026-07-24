@@ -209,13 +209,26 @@ def admin_orders(
 
 class StatusChange(BaseModel):
     holat: str
+    kuryer_tel: Optional[str] = None
 
 
-# Holat o'zgarganда mijozга yuboriladigan chiroyli xabar (mijoz tomoni).
+# Holat o'zgarganда mijozга yuboriladigan chiroyli, qator-qator xabar (task_4).
 _HOLAT_XABAR = {
-    "tayyorlanmoqda": "👨‍🍳 Buyurtmangiz *{kod}* qabul qilindi va tayyorlanmoqda!",
-    "yolda": "🚚 Buyurtmangiz *{kod}* yo'lga chiqdi! Tez orada yetkazamiz.",
-    "topshirildi": "✅ Buyurtmangiz *{kod}* topshirildi. Xaridingiz uchun rahmat! 🎉",
+    "tayyorlanmoqda": (
+        "👨‍🍳 <b>Buyurtmangiz qabul qilindi!</b>\n\n"
+        "🔑 Kod: <b>{kod}</b>\n"
+        "⏳ Hozir tayyorlanmoqda — tez orada jo'natamiz."
+    ),
+    "yolda": (
+        "🚚 <b>Buyurtmangiz yo'lda!</b>\n\n"
+        "🔑 Kod: <b>{kod}</b>{kuryer}\n"
+        "📞 Savol bo'lsa, kuryerга qo'ng'iroq qiling."
+    ),
+    "topshirildi": (
+        "✅ <b>Buyurtmangiz topshirildi!</b>\n\n"
+        "🔑 Kod: <b>{kod}</b>\n"
+        "🎉 Xaridingiz uchun rahmat! Yana kutamiz."
+    ),
 }
 
 
@@ -231,9 +244,9 @@ def change_status(
         raise HTTPException(status_code=404, detail="Buyurtma topilmadi.")
     check_store_access(admin_id, order.store_id, db)  # rule 7
     order = order_service.change_order_status(
-        db, order, payload.holat, admin_id
+        db, order, payload.holat, admin_id, kuryer_tel=payload.kuryer_tel
     )
-    # Mijozга holat o'zgargani haqida xabar (chiroyli, tushunarli).
+    # Mijozга holat o'zgargani haqida xabar (chiroyli, qator-qator — task_4).
     xabar = _HOLAT_XABAR.get(order.holat)
     if xabar:
         try:
@@ -242,10 +255,15 @@ def change_status(
 
             u = db.get(_User, order.user_id)
             if u:
-                # Kod harf+raqam (Markdown xavfsiz) — chiroyli qalin ko'rinadi.
+                kuryer_qator = (
+                    f"\n🚚 Kuryer: <b>{order.kuryer_tel}</b>"
+                    if order.holat == "yolda" and order.kuryer_tel
+                    else ""
+                )
                 notify.notify_customer(
-                    u.telegram_id, xabar.format(kod=order.kod),
-                    parse_mode="Markdown",
+                    u.telegram_id,
+                    xabar.format(kod=order.kod, kuryer=kuryer_qator),
+                    parse_mode="HTML",
                 )
         except ImportError:
             pass

@@ -299,9 +299,13 @@ def _apply_promo(
 
 
 def change_order_status(
-    db: Session, order: Order, yangi_holat: str, admin_id: int
+    db: Session, order: Order, yangi_holat: str, admin_id: int,
+    kuryer_tel: str | None = None,
 ) -> Order:
-    """Buyurtma holatini o'zgartiradi (ruxsat etilgan o'tishlar bo'yicha)."""
+    """Buyurtma holatini o'zgartiradi (ruxsat etilgan o'tishlar bo'yicha).
+
+    'yolda' holatiga o'tganда kuryer telefon raqami saqlanadi (task_2).
+    """
     if yangi_holat not in ORDER_STATES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -317,6 +321,8 @@ def change_order_status(
             ),
         )
     order.holat = yangi_holat
+    if yangi_holat == "yolda" and kuryer_tel:
+        order.kuryer_tel = kuryer_tel.strip()[:20]
     db.commit()
     db.refresh(order)
     return order

@@ -1239,6 +1239,56 @@ async def buyurtmalar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+K_PHONE = 100  # kuryer telefon so'rash holati (task_2)
+
+
+async def kuryer_phone_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """"Yo'lda" (kuryer) bosilganда — kuryer telefon raqamini so'raydi (task_2)."""
+    q = update.callback_query
+    await q.answer()
+    order_id = int(q.data.split("_")[1])
+    context.user_data["kuryer_order"] = order_id
+    await update.effective_message.reply_text(
+        "📱 <b>Kuryerning telefon raqamini kiriting:</b>\n\n"
+        "Masalan: <code>+996700111222</code>\n"
+        "Bu raqam mijozга yuboriladi.",
+        parse_mode="HTML",
+        reply_markup=cancel_markup(),
+    )
+    return K_PHONE
+
+
+async def kuryer_phone_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if _is_menu_press(update.message.text):
+        return await bekor(update, context)
+    tel = (update.message.text or "").strip()
+    order_id = context.user_data.pop("kuryer_order", None)
+    if order_id is None:
+        return ConversationHandler.END
+    r = await api.change_status(
+        update.effective_user.id, order_id, "yolda", kuryer_tel=tel
+    )
+    if r.status_code == 200:
+        o = r.json()
+        await update.effective_message.reply_text(
+            f"🚚 <b>Buyurtma yo'lда!</b>\n\n"
+            f"🔑 Kod: <b>{o['kod']}</b>\n"
+            f"📞 Kuryer: <b>{tel}</b>\n\n"
+            "✅ Mijozга kuryer raqami bilan xabar yuborildi.",
+            parse_mode="HTML",
+            reply_markup=menu_markup(update.effective_user.id),
+        )
+    else:
+        try:
+            detail = r.json().get("detail", "Xatolik")
+        except Exception:  # noqa: BLE001
+            detail = "Xatolik"
+        await update.effective_message.reply_text(
+            f"❌ {detail}", reply_markup=menu_markup(update.effective_user.id)
+        )
+    return ConversationHandler.END
+
+
 async def order_status_advance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Holatni keyingi bosqichga o'tkazadi (holat_<id>_<yangi_holat>)."""
     query = update.callback_query
@@ -1792,8 +1842,16 @@ def build_application(token: str) -> Application:
 
     # Inline callbacklar
     app.add_handler(CallbackQueryHandler(order_accept, pattern="^qabul_"))
+    # 🚚 "Yo'lda" (kuryer) — avval kuryer telefon raqami so'raladi (task_2).
+    kuryer_conv = _conv(
+        [CallbackQueryHandler(kuryer_phone_start, pattern=r"^holat_\d+_yolda$")],
+        {K_PHONE: [MessageHandler(TXT, kuryer_phone_save)]},
+        "kuryer_phone",
+    )
+    app.add_handler(kuryer_conv)
+    # Boshqa holat o'tishlari (yolda'dan tashqari) — to'g'ridan-to'g'ri.
     app.add_handler(
-        CallbackQueryHandler(order_status_advance, pattern=r"^holat_\d+_")
+        CallbackQueryHandler(order_status_advance, pattern=r"^holat_\d+_(?!yolda$)")
     )
     app.add_handler(CallbackQueryHandler(del_pick, pattern="^pdel_\\d"))
     app.add_handler(CallbackQueryHandler(del_confirm, pattern="^pdelok_"))

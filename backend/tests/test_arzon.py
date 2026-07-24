@@ -1381,8 +1381,11 @@ def test_order_status_progression():
 
     # O'z admini: tayyorlanmoqda -> yolda -> topshirildi.
     r1 = client.patch(f"/api/admin/orders/{oid}/status",
-                     headers=admin_headers(ADMIN_A), json={"holat": "yolda"})
+                     headers=admin_headers(ADMIN_A),
+                     json={"holat": "yolda", "kuryer_tel": "+996700111222"})
     assert r1.status_code == 200 and r1.json()["holat"] == "yolda", r1.text
+    # task_2: kuryer telefon raqami saqlanadi va qaytariladi.
+    assert r1.json()["kuryer_tel"] == "+996700111222"
     r2 = client.patch(f"/api/admin/orders/{oid}/status",
                      headers=admin_headers(ADMIN_A), json={"holat": "topshirildi"})
     assert r2.status_code == 200 and r2.json()["holat"] == "topshirildi"

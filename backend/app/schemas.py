@@ -120,6 +120,7 @@ class OrderOut(BaseModel):
     amal_qilish_muddati: Optional[datetime] = None
     yetkazish_turi: Optional[str] = "kuryer"
     manzil: Optional[str] = None
+    kuryer_tel: Optional[str] = None
     pickup_point_id: Optional[int] = None
     yetkazish_narxi: Optional[float] = 0
     lokatsiya_lat: Optional[float] = None
