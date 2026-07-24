@@ -10,6 +10,7 @@ UptimeRobot pinger uni uyg'oq tutadi.
 """
 from __future__ import annotations
 
+import html as _html
 import logging
 import os
 from datetime import datetime, time, timedelta, timezone
@@ -133,18 +134,24 @@ def check_arenda(db) -> dict[int, list[str]]:
             if s.holat == "faol":
                 s.holat = "vaqtincha_toxtatilgan"
                 ozgardi = True
+                nomi_h = _html.escape(s.nomi)
                 for aid in s.admin_ids or []:
                     xabarlar.setdefault(aid, []).append(
-                        f"🔴 '{s.nomi}' do'koningiz arenda to'lanmagani uchun "
-                        "vaqtincha to'xtatildi. Mahsulotlaringiz sotilib turibdi, "
-                        "lekin boshqarish uchun arendani to'lang (Menejer bilan bog'laning)."
+                        f"🔴 <b>Arenda muddati o'tdi!</b>\n\n"
+                        f"🏪 Do'kon: <b>{nomi_h}</b>\n"
+                        f"⏸ Do'koningiz vaqtincha to'xtatildi.\n\n"
+                        "Mahsulotlaringiz sotilib turibdi, lekin boshqarish uchun "
+                        "arendani to'lang (Menejer bilan bog'laning)."
                     )
         elif 0 <= qolgan_kun <= ogoh_kun and s.holat == "faol":
+            nomi_h = _html.escape(s.nomi)
             for aid in s.admin_ids or []:
                 xabarlar.setdefault(aid, []).append(
-                    f"⚠️ '{s.nomi}' do'koningiz arenda muddati {qolgan_kun} kundан "
-                    f"keyin tugaydi. Davom etish uchun {summa:,.0f} som to'lang "
-                    "(Menejer bilan bog'laning)."
+                    f"⚠️ <b>Arenda muddati tugayapti!</b>\n\n"
+                    f"🏪 Do'kon: <b>{nomi_h}</b>\n"
+                    f"📅 Qolgan muddat: <b>{qolgan_kun} kun</b>\n"
+                    f"💰 To'lov: <b>{summa:,.0f} som</b>\n\n"
+                    "Davom etish uchun arendani to'lang (Menejer bilan bog'laning)."
                 )
     if ozgardi:
         db.commit()
@@ -161,7 +168,9 @@ async def daily_tick(bot) -> None:
             for admin_id, msgs in arenda_xabarlar.items():
                 for msg in msgs:
                     try:
-                        await bot.send_message(chat_id=admin_id, text=msg)
+                        await bot.send_message(
+                            chat_id=admin_id, text=msg, parse_mode="HTML"
+                        )
                     except Exception as e:  # noqa: BLE001
                         logger.warning("Arenda xabari ketmadi: %s", e)
         except Exception as e:  # noqa: BLE001

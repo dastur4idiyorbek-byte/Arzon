@@ -508,17 +508,17 @@ async def report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     sana = datetime.now().strftime("%d.%m.%Y")
     text = (
-        f"📊 Umumiy holat — {sana}\n\n"
-        f"💰 Jami mijozlar balansi: {d['jami_mijozlar_balansi']:,.0f} som\n"
-        f"🏪 Jami adminlar balansi: {d['jami_adminlar_balansi']:,.0f} som\n"
-        f"🏦 Platforma hisobida: ~{d['platforma_hisobida']:,.0f} som\n\n"
-        f"Bugungi harakatlar:\n"
-        f"+ To'ldirishlar: {d['bugun_toldirish_summa']:,.0f} som ({d['bugun_toldirish_soni']})\n"
-        f"- Xaridlar: {d['bugun_xarid_summa']:,.0f} som ({d['bugun_xarid_soni']})\n"
-        f"- Pul yechishlar: {d['bugun_yechish_summa']:,.0f} som ({d['bugun_yechish_soni']})\n"
-        f"- Komissiya: {d['bugun_komissiya']:,.0f} som"
+        f"📊 <b>Umumiy holat</b> — {sana}\n\n"
+        f"💰 Mijozlar balansi: <b>{d['jami_mijozlar_balansi']:,.0f} som</b>\n"
+        f"🏪 Adminlar balansi: <b>{d['jami_adminlar_balansi']:,.0f} som</b>\n"
+        f"🏦 Platforma hisobida: <b>~{d['platforma_hisobida']:,.0f} som</b>\n\n"
+        f"📅 <b>Bugungi harakatlar:</b>\n"
+        f"➕ To'ldirish: <b>{d['bugun_toldirish_summa']:,.0f} som</b> ({d['bugun_toldirish_soni']} ta)\n"
+        f"🛍 Xaridlar: <b>{d['bugun_xarid_summa']:,.0f} som</b> ({d['bugun_xarid_soni']} ta)\n"
+        f"➖ Pul yechish: <b>{d['bugun_yechish_summa']:,.0f} som</b> ({d['bugun_yechish_soni']} ta)\n"
+        f"🪙 Komissiya: <b>{d['bugun_komissiya']:,.0f} som</b>"
     )
-    await update.effective_message.reply_text(text)
+    await update.effective_message.reply_text(text, parse_mode="HTML")
 
 
 # ---------------------------------------------------------------------------
