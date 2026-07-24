@@ -74,24 +74,59 @@ def _is_super(uid: int) -> bool:
     return uid in settings.super_admin_id_list
 
 
-def menu_markup() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
+def menu_markup() -> InlineKeyboardMarkup:
+    # Inline menyu (Menyu_Inline_Prompt).
+    return InlineKeyboardMarkup(
         [
-            [KeyboardButton(BTN_TOPUPS), KeyboardButton(BTN_WITHDRAWS)],
-            [KeyboardButton(BTN_REFUNDS), KeyboardButton(BTN_DOKON_TOLOV)],
-            [KeyboardButton(BTN_METHODS), KeyboardButton(BTN_REPORT)],
-        ],
-        resize_keyboard=True,
+            [InlineKeyboardButton(BTN_TOPUPS, callback_data="fm:topups"),
+             InlineKeyboardButton(BTN_WITHDRAWS, callback_data="fm:withdraws")],
+            [InlineKeyboardButton(BTN_REFUNDS, callback_data="fm:refunds"),
+             InlineKeyboardButton(BTN_DOKON_TOLOV, callback_data="fm:dokon_tolov")],
+            [InlineKeyboardButton(BTN_METHODS, callback_data="fm:methods"),
+             InlineKeyboardButton(BTN_REPORT, callback_data="fm:report")],
+        ]
     )
 
 
-async def _guard(update: Update) -> bool:
-    if not _is_super(update.effective_user.id):
-        await update.effective_message.reply_text(
-            "⛔️ Bu bot faqat super-admin (loyiha egasi) uchun."
-        )
-        return False
-    return True
+def back_home_f() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [[InlineKeyboardButton("⬅️ Bosh menyu", callback_data="fm:home")]]
+    )
+
+
+def cancel_kb_f() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [[InlineKeyboardButton("❌ Bekor qilish", callback_data="conv:cancel")]]
+    )
+
+
+async def menu_home_f(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    q = update.callback_query
+    await q.answer()
+    try:
+        await q.edit_message_text("Bosh menyu 👇", reply_markup=menu_markup())
+    except Exception:  # noqa: BLE001
+        await update.effective_message.reply_text("Bosh menyu 👇", reply_markup=menu_markup())
+
+
+async def menu_router_f(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    q = update.callback_query
+    await q.answer()
+    key = q.data.split(":", 1)[1]
+    fn = {"topups": topups, "withdraws": withdraws, "refunds": refunds,
+          "dokon_tolov": dokon_tolovlari, "report": report, "methods": methods}.get(key)
+    if fn:
+        await fn(update, context)
+
+
+async def cancel_conv_f(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if update.callback_query:
+        await update.callback_query.answer()
+    context.user_data.clear()
+    await update.effective_message.reply_text(
+        "❌ Bekor qilindi. Bosh menyu 👇", reply_markup=menu_markup()
+    )
+    return ConversationHandler.END
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -123,7 +158,7 @@ async def topups(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     uid = update.effective_user.id
     rows = await api.moliya_topups(uid)
     if not rows:
-        await update.message.reply_text("Kutilayotgan to'ldirish so'rovi yo'q. ✅")
+        await update.effective_message.reply_text("Kutilayotgan to'ldirish so'rovi yo'q. ✅")
         return
     xulosa_map = {
         "mos_keladi": "✅ Mos keladi",
@@ -156,7 +191,7 @@ async def topups(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 continue
             except Exception:  # noqa: BLE001
                 pass
-        await update.message.reply_text(text, reply_markup=_topup_kb(s["id"]))
+        await update.effective_message.reply_text(text, reply_markup=_topup_kb(s["id"]))
 
 
 async def topup_approve(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -182,7 +217,7 @@ async def withdraws(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     rows = await api.moliya_withdraws(update.effective_user.id)
     if not rows:
-        await update.message.reply_text("Kutilayotgan pul yechish so'rovi yo'q. ✅")
+        await update.effective_message.reply_text("Kutilayotgan pul yechish so'rovi yo'q. ✅")
         return
     for s in rows[:20]:
         text = (
@@ -194,7 +229,7 @@ async def withdraws(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         kb = InlineKeyboardMarkup(
             [[InlineKeyboardButton("✅ To'landi", callback_data=f"mw_ok_{s['id']}")]]
         )
-        await update.message.reply_text(text, reply_markup=kb)
+        await update.effective_message.reply_text(text, reply_markup=kb)
 
 
 async def withdraw_paid(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -219,7 +254,7 @@ async def refunds(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     rows = await api.moliya_refunds(update.effective_user.id)
     if not rows:
-        await update.message.reply_text("Kutilayotgan qaytarish so'rovi yo'q. ✅")
+        await update.effective_message.reply_text("Kutilayotgan qaytarish so'rovi yo'q. ✅")
         return
     for s in rows[:20]:
         text = (
@@ -236,7 +271,7 @@ async def refunds(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 ]
             ]
         )
-        await update.message.reply_text(text, reply_markup=kb)
+        await update.effective_message.reply_text(text, reply_markup=kb)
 
 
 async def refund_approve(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -269,7 +304,10 @@ async def reject_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         context.user_data["reject"] = ("dokon_tolov", int(data.replace("dt_no_", "")))
     else:
         context.user_data["reject"] = ("refund", int(data.replace("mr_no_", "")))
-    await _edit(query, "❌ Rad etish sababini yozing (so'rovchiga yuboriladi):")
+    await query.message.reply_text(
+        "❌ Rad etish sababini yozing (so'rovchiga yuboriladi):",
+        reply_markup=cancel_kb_f(),
+    )
     return R_SABAB
 
 
@@ -287,7 +325,7 @@ async def reject_reason(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     else:
         r = await api.moliya_refund_reject(uid, sorov_id, sabab)
     msg = "✅ Rad etildi, so'rovchiga xabar berildi." if r.status_code == 200 else f"❌ {r.text[:200]}"
-    await update.message.reply_text(msg, reply_markup=menu_markup())
+    await update.effective_message.reply_text(msg, reply_markup=menu_markup())
     return ConversationHandler.END
 
 
@@ -300,7 +338,7 @@ async def dokon_tolovlari(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     uid = update.effective_user.id
     rows = await api.moliya_dokon_tolovlari(uid)
     if not rows:
-        await update.message.reply_text("Kutilayotgan do'kon to'lovi yo'q. ✅")
+        await update.effective_message.reply_text("Kutilayotgan do'kon to'lovi yo'q. ✅")
         return
     xmap = {"mos_keladi": "✅ Mos", "mos_kelmaydi": "⚠️ Mos emas", "aniq_emas": "❓"}
     for s in rows[:20]:
@@ -335,7 +373,7 @@ async def dokon_tolovlari(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 continue
             except Exception:  # noqa: BLE001
                 pass
-        await update.message.reply_text(text, reply_markup=kb)
+        await update.effective_message.reply_text(text, reply_markup=kb)
 
 
 async def dokon_tolov_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -362,7 +400,7 @@ async def report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     d = await api.moliya_report(update.effective_user.id)
     if not d:
-        await update.message.reply_text("Hisobot olinmadi.")
+        await update.effective_message.reply_text("Hisobot olinmadi.")
         return
     sana = datetime.now().strftime("%d.%m.%Y")
     text = (
@@ -380,7 +418,7 @@ async def report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"({d['bugun_yechish_soni']} ta so'rov)\n"
         f"- Komissiya yig'ildi: {d['bugun_komissiya']:,.0f} som"
     )
-    await update.message.reply_text(text)
+    await update.effective_message.reply_text(text)
 
 
 # ---------------------------------------------------------------------------
@@ -411,17 +449,15 @@ async def methods(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _guard(update):
         return
     rows = await api.moliya_tolov_usullari(update.effective_user.id)
-    await update.message.reply_text(
+    await update.effective_message.reply_text(
         "💳 To'lov usullari" + ("" if rows else "\n\nHozircha usul yo'q."),
-        reply_markup=ReplyKeyboardMarkup(
-            [[KeyboardButton(BTN_HOME)]], resize_keyboard=True
-        ),
+        reply_markup=cancel_kb_f(),
     )
     for u in rows:
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             _usul_line(u), parse_mode="HTML", reply_markup=_usul_row_kb(u)
         )
-    await update.message.reply_text(
+    await update.effective_message.reply_text(
         "➕ Yangi to'lov usuli qo'shish:",
         reply_markup=InlineKeyboardMarkup(
             [[InlineKeyboardButton("➕ Yangi usul qo'shish", callback_data="madd")]]
@@ -490,9 +526,7 @@ async def method_type(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     field, prompt = _FIELD_SEQ[turi][0]
     await query.message.reply_text(
         prompt,
-        reply_markup=ReplyKeyboardMarkup(
-            [[KeyboardButton(BTN_HOME)]], resize_keyboard=True
-        ),
+        reply_markup=cancel_kb_f(),
     )
     return M_STEP
 
@@ -512,11 +546,11 @@ async def method_step(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 
     if m["step"] < len(seq):
         _, prompt = seq[m["step"]]
-        await update.message.reply_text(prompt)
+        await update.effective_message.reply_text(prompt)
         return M_STEP
     # Maydonlar tugadi.
     if turi == "qr_kod":
-        await update.message.reply_text("🔳 QR kod rasmini yuboring:")
+        await update.effective_message.reply_text("🔳 QR kod rasmini yuboring:")
         return M_QR
     return await _method_save(update, context)
 
@@ -526,7 +560,7 @@ async def method_qr(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         context.user_data.pop("m", None)
         return await _to_menu(update)
     if not update.message.photo:
-        await update.message.reply_text("Iltimos, QR kod RASMINI yuboring:")
+        await update.effective_message.reply_text("Iltimos, QR kod RASMINI yuboring:")
         return M_QR
     file_id = update.message.photo[-1].file_id
     context.user_data["m"]["data"]["qr_rasm_url"] = f"/media/{file_id}"
@@ -558,9 +592,7 @@ async def method_edit_start(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     context.user_data["edit_usul"] = int(query.data.replace("med_", ""))
     await query.message.reply_text(
         "✏️ Yangi nomni kiriting (o'zgartirmaslik uchun '-'):",
-        reply_markup=ReplyKeyboardMarkup(
-            [[KeyboardButton(BTN_HOME)]], resize_keyboard=True
-        ),
+        reply_markup=cancel_kb_f(),
     )
     return ME_NOMI
 
@@ -570,7 +602,7 @@ async def method_edit_nomi(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return await _to_menu(update)
     matn = update.message.text.strip()
     context.user_data["edit_nomi"] = None if matn == "-" else matn
-    await update.message.reply_text("Yangi qiymatni kiriting (karta/tel/manzil), '-' = o'zgartirmaslik:")
+    await update.effective_message.reply_text("Yangi qiymatni kiriting (karta/tel/manzil), '-' = o'zgartirmaslik:")
     return ME_QIYMAT
 
 
@@ -586,11 +618,11 @@ async def method_edit_qiymat(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if matn != "-":
         data["qiymat"] = matn
     if not data:
-        await update.message.reply_text("O'zgarish yo'q.", reply_markup=menu_markup())
+        await update.effective_message.reply_text("O'zgarish yo'q.", reply_markup=menu_markup())
         return ConversationHandler.END
     r = await api.moliya_update_tolov(update.effective_user.id, usul_id, data)
     msg = "✅ Yangilandi." if r.status_code == 200 else f"❌ {r.text[:200]}"
-    await update.message.reply_text(msg, reply_markup=menu_markup())
+    await update.effective_message.reply_text(msg, reply_markup=menu_markup())
     return ConversationHandler.END
 
 
@@ -617,7 +649,7 @@ async def _edit(query, text: str) -> None:
 
 
 async def _to_menu(update: Update) -> int:
-    await update.message.reply_text("Bosh menyu 👇", reply_markup=menu_markup())
+    await update.effective_message.reply_text("Bosh menyu 👇", reply_markup=menu_markup())
     return ConversationHandler.END
 
 
@@ -626,6 +658,7 @@ def build_application(token: str) -> Application:
 
     TXT = filters.TEXT & ~filters.COMMAND
 
+    conv_cancel = CallbackQueryHandler(cancel_conv_f, pattern="^conv:cancel$")
     # Rad etish sababi (to'ldirish/qaytarish) — callbackдан kiradi.
     reject_conv = ConversationHandler(
         entry_points=[
@@ -634,7 +667,7 @@ def build_application(token: str) -> Application:
             CallbackQueryHandler(reject_start, pattern="^dt_no_"),
         ],
         states={R_SABAB: [MessageHandler(TXT, reject_reason)]},
-        fallbacks=[CommandHandler("start", start)],
+        fallbacks=[CommandHandler("start", start), conv_cancel],
         name="moliya_reject",
         persistent=False,
     )
@@ -649,7 +682,7 @@ def build_application(token: str) -> Application:
                 MessageHandler(TXT, method_qr),
             ],
         },
-        fallbacks=[CommandHandler("start", start)],
+        fallbacks=[CommandHandler("start", start), conv_cancel],
         name="moliya_method_add",
         persistent=False,
     )
@@ -660,22 +693,21 @@ def build_application(token: str) -> Application:
             ME_NOMI: [MessageHandler(TXT, method_edit_nomi)],
             ME_QIYMAT: [MessageHandler(TXT, method_edit_qiymat)],
         },
-        fallbacks=[CommandHandler("start", start)],
+        fallbacks=[CommandHandler("start", start), conv_cancel],
         name="moliya_method_edit",
         persistent=False,
     )
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.Regex(f"^{BTN_HOME}$"), start))
     app.add_handler(reject_conv)
     app.add_handler(method_add_conv)
     app.add_handler(method_edit_conv)
-    app.add_handler(MessageHandler(filters.Regex(f"^{BTN_TOPUPS}$"), topups))
-    app.add_handler(MessageHandler(filters.Regex(f"^{BTN_WITHDRAWS}$"), withdraws))
-    app.add_handler(MessageHandler(filters.Regex(f"^{BTN_REFUNDS}$"), refunds))
-    app.add_handler(MessageHandler(filters.Regex(f"^{BTN_REPORT}$"), report))
-    app.add_handler(MessageHandler(filters.Regex(f"^{BTN_METHODS}$"), methods))
-    app.add_handler(MessageHandler(filters.Regex(f"^{BTN_DOKON_TOLOV}$"), dokon_tolovlari))
+    # Inline menyu (Menyu_Inline_Prompt).
+    app.add_handler(CallbackQueryHandler(menu_home_f, pattern="^fm:home$"))
+    app.add_handler(CallbackQueryHandler(
+        menu_router_f,
+        pattern="^fm:(topups|withdraws|refunds|dokon_tolov|report|methods)$",
+    ))
 
     # Inline callbacklar (menyu ro'yxati va push xabarlaridан).
     app.add_handler(CallbackQueryHandler(topup_approve, pattern="^mt_ok_"))
