@@ -133,6 +133,13 @@ class BotApi:
             headers=self._admin(admin_id),
         )
 
+    async def order_by_code(self, admin_id: int, kod: str) -> httpx.Response:
+        return await self._request(
+            "GET",
+            f"/api/admin/orders/by-code/{kod}",
+            headers=self._admin(admin_id),
+        )
+
     async def confirm_code(self, admin_id: int, kod: str) -> httpx.Response:
         return await self._request(
             "POST",

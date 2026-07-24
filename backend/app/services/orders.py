@@ -445,7 +445,8 @@ def confirm_order_code(db: Session, kod: str, admin_id: int) -> Order:
         )
     order.tasdiqlangan_vaqt = _now()
     order.tasdiqlagan_kim = admin_id
-    if order.holat == "yolda":
+    # "Topshirdim" — faol holatdан topshirildiга o'tadi (punkt/kuryer, task_1).
+    if order.holat in ("yolda", "tayyorlanmoqda", "yangi"):
         order.holat = "topshirildi"
     db.commit()
     db.refresh(order)

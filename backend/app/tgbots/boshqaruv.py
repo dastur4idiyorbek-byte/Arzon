@@ -41,6 +41,7 @@ BTN_SECRET = "🔑 Mahfiy kod"
 BTN_STATS = "📊 Statistika"
 BTN_ORDERS = "📋 Buyurtmalar"
 BTN_SEARCH = "🔍 Buyurtma qidirish"
+BTN_CHECK = "🔎 Punktda tekshirish"
 BTN_PICKUP = "📍 Punktlar"
 BTN_WITHDRAW = "💰 Pul yechish"
 # Navigatsiya
@@ -84,7 +85,7 @@ _NAV_CB = {
 _MENU_CB = {
     BTN_ADD: "bm:add", BTN_EDIT: "bm:edit", BTN_DEL: "bm:del",
     BTN_SECRET: "bm:secret", BTN_PROMO: "bm:promo", BTN_STATS: "bm:stats",
-    BTN_ORDERS: "bm:orders", BTN_SEARCH: "bm:search",
+    BTN_ORDERS: "bm:orders", BTN_SEARCH: "bm:search", BTN_CHECK: "bm:check",
     BTN_PICKUP: "bm:pickup", BTN_WITHDRAW: "bm:withdraw",
 }
 
@@ -97,6 +98,7 @@ def menu_markup(uid: int = 0) -> InlineKeyboardMarkup:
     def b(t):
         return InlineKeyboardButton(t, callback_data=_MENU_CB[t])
     rows = [
+        [b(BTN_CHECK)],
         [b(BTN_ADD), b(BTN_EDIT)],
         [b(BTN_DEL), b(BTN_SECRET)],
         [b(BTN_PROMO), b(BTN_STATS)],
@@ -1239,6 +1241,102 @@ async def buyurtmalar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+CHECK_KOD = 101  # punktда kod tekshirish holati (task_1)
+
+_HOLAT_LABEL = {
+    "yangi": "🆕 Yangi", "tayyorlanmoqda": "👨‍🍳 Tayyorlanmoqda",
+    "yolda": "🚚 Yo'lda", "topshirildi": "✅ Topshirilgan",
+    "bekor_qilindi": "❌ Bekor qilingan",
+}
+
+
+async def check_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """🔎 Punktда tekshirish — kod so'raydi (task_1)."""
+    if update.callback_query:
+        await update.callback_query.answer()
+    await update.effective_message.reply_text(
+        "🔎 <b>Punktда tekshirish</b>\n\n"
+        "Mijozning <b>6 xonali kodini</b> kiriting:",
+        parse_mode="HTML",
+        reply_markup=cancel_markup(),
+    )
+    return CHECK_KOD
+
+
+async def check_kod(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if _is_menu_press(update.message.text):
+        return await bekor(update, context)
+    kod = (update.message.text or "").strip().upper()
+    r = await api.order_by_code(update.effective_user.id, kod)
+    if r.status_code == 403:
+        await update.effective_message.reply_text(
+            "⛔️ Bu buyurtma sizning do'koningizniki emas.",
+            reply_markup=menu_markup(update.effective_user.id),
+        )
+        return ConversationHandler.END
+    if r.status_code != 200:
+        await update.effective_message.reply_text(
+            "❌ Bunday kodli buyurtma topilmadi.\n\nQaytadan kiriting:",
+            reply_markup=cancel_markup(),
+        )
+        return CHECK_KOD
+    o = r.json()
+    lines = []
+    for m in o.get("mahsulotlar", []):
+        variant = ", ".join(str(x) for x in [m.get("olcham"), m.get("rang")] if x)
+        vt = f", {variant}" if variant else ""
+        lines.append(f"📦 <b>{m.get('nomi')}</b>{vt} — {m.get('soni')} dona")
+    yetk = "🚚 Kuryer" if o.get("yetkazish_turi") == "kuryer" else "🏬 Punktdan olish"
+    text = (
+        f"🔎 Kod: <b>{o['kod']}</b>\n\n"
+        + "\n".join(lines) + "\n\n"
+        f"💰 Jami: <b>{o['jami_narx']:,.0f} som</b>\n"
+        f"{yetk}\n"
+        f"👤 Mijoz: <b>{o.get('mijoz_ism') or 'nomalum'}</b>, "
+        f"{o.get('mijoz_tel') or '-'}\n"
+        f"📊 Holat: {_HOLAT_LABEL.get(o.get('holat'), o.get('holat'))}"
+    )
+    if o.get("holat") == "topshirildi":
+        await update.effective_message.reply_text(
+            text + "\n\n✅ Bu buyurtma allaqachon topshirilgan.",
+            parse_mode="HTML",
+            reply_markup=menu_markup(update.effective_user.id),
+        )
+    else:
+        kb = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("✅ Topshirdim", callback_data=f"topshir_{o['kod']}")]]
+        )
+        await update.effective_message.reply_text(
+            text, parse_mode="HTML", reply_markup=kb
+        )
+    return ConversationHandler.END
+
+
+async def topshir_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """✅ Topshirdim — buyurtmani tasdiqlaydi va topshirildiга o'tkazadi (task_1)."""
+    q = update.callback_query
+    await q.answer()
+    kod = q.data.split("_", 1)[1]
+    r = await api.confirm_code(update.effective_user.id, kod)
+    if r.status_code == 200:
+        o = r.json()
+        try:
+            await q.edit_message_text(
+                f"✅ <b>Topshirildi!</b>\n\n"
+                f"🔑 Kod: <b>{o['kod']}</b>\n\n"
+                "📩 Mijozга xabar yuborildi.",
+                parse_mode="HTML",
+            )
+        except Exception:  # noqa: BLE001
+            pass
+    else:
+        try:
+            detail = r.json().get("detail", "Xatolik")
+        except Exception:  # noqa: BLE001
+            detail = "Xatolik"
+        await q.answer(detail, show_alert=True)
+
+
 K_PHONE = 100  # kuryer telefon so'rash holati (task_2)
 
 
@@ -1849,6 +1947,14 @@ def build_application(token: str) -> Application:
         "kuryer_phone",
     )
     app.add_handler(kuryer_conv)
+    # 🔎 Punktда tekshirish — kod -> to'liq ma'lumot -> Topshirdim (task_1).
+    check_conv = _conv(
+        [CallbackQueryHandler(check_start, pattern="^bm:check$")],
+        {CHECK_KOD: [MessageHandler(TXT, check_kod)]},
+        "punkt_check",
+    )
+    app.add_handler(check_conv)
+    app.add_handler(CallbackQueryHandler(topshir_confirm, pattern="^topshir_"))
     # Boshqa holat o'tishlari (yolda'dan tashqari) — to'g'ridan-to'g'ri.
     app.add_handler(
         CallbackQueryHandler(order_status_advance, pattern=r"^holat_\d+_(?!yolda$)")

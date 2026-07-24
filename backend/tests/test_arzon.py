@@ -1396,6 +1396,40 @@ def test_order_status_progression():
     assert bad.status_code == 400, bad.text
 
 
+def test_punkt_lookup_and_topshirdim():
+    """task_1: kod bo'yicha to'liq ma'lumot (tasdiqlamasdan) + Topshirdim."""
+    store_a, _ = setup_two_stores()
+    p = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/products",
+        headers=admin_headers(ADMIN_A),
+        json={"nomi": "Nike Air", "narxi": 3200, "korinish": "ommaviy"},
+    ).json()
+    cust = customer_headers(8801)
+    client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700123456"})
+    give_balance(8801, 100000)
+    o = client.post(
+        "/api/checkout", headers=cust,
+        json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Uy 1"},
+    ).json()["buyurtmalar"][0]
+
+    # Kod bo'yicha ko'rish — mahsulot + mijoz, tasdiqlamasdan.
+    look = client.get(f"/api/admin/orders/by-code/{o['kod']}", headers=admin_headers(ADMIN_A))
+    assert look.status_code == 200, look.text
+    d = look.json()
+    assert d["mijoz_tel"] == "+996700123456"
+    assert d["mahsulotlar"][0]["nomi"] == "Nike Air"
+    assert d["tasdiqlangan"] is False
+
+    # Boshqa admin ko'ra olmaydi (rule 7).
+    forb = client.get(f"/api/admin/orders/by-code/{o['kod']}", headers=admin_headers(ADMIN_B))
+    assert forb.status_code == 403, forb.text
+
+    # Topshirdim -> topshirildi + tasdiqlangan.
+    c = client.post("/api/admin/orders/confirm-code",
+                    headers=admin_headers(ADMIN_A), json={"kod": o["kod"]})
+    assert c.status_code == 200 and c.json()["holat"] == "topshirildi", c.text
+
+
 def test_order_code_alphanumeric():
     """Buyurtma kodi harf+raqam aralash, 6 belgi, katta harflar."""
     store_a, _ = setup_two_stores()

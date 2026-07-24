@@ -372,6 +372,39 @@ def search_orders(
     ]
 
 
+@router.get("/orders/by-code/{kod}")
+def order_by_code(
+    kod: str,
+    admin_id: int = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Kod bo'yicha buyurtma tafsilotini qaytaradi — TASDIQLAMASDAN (task_1).
+
+    Punktда admin kod kiritganда darhol mahsulot + mijoz ko'rinsin. Faqat
+    shu adminning do'koni (rule 7).
+    """
+    from ..models import User as _User
+
+    kod_norm = (kod or "").strip().upper()
+    order = db.scalar(select(Order).where(Order.kod == kod_norm))
+    if order is None:
+        raise HTTPException(status_code=404, detail="Bunday kodli buyurtma topilmadi.")
+    check_store_access(admin_id, order.store_id, db)  # rule 7
+    u = db.get(_User, order.user_id)
+    return {
+        "id": order.id,
+        "kod": order.kod,
+        "holat": order.holat,
+        "jami_narx": float(order.jami_narx),
+        "yetkazish_turi": order.yetkazish_turi,
+        "kuryer_tel": order.kuryer_tel,
+        "tasdiqlangan": order.tasdiqlangan_vaqt is not None,
+        "mahsulotlar": order.mahsulotlar or [],
+        "mijoz_ism": u.ism if u else None,
+        "mijoz_tel": u.tel if u else None,
+    }
+
+
 class CodeConfirm(BaseModel):
     kod: str = Field(min_length=6, max_length=6)
 
@@ -394,6 +427,21 @@ def confirm_code(
         )
     check_store_access(admin_id, order.store_id, db)  # rule 7
     order = order_service.confirm_order_code(db, kod_norm, admin_id)
+    # Mijozга "topshirildi" xabari (chiroyli, qator-qator — task_1/task_4).
+    if order.holat == "topshirildi":
+        try:
+            from ..models import User as _User
+            from ..tgbots import notify
+
+            u = db.get(_User, order.user_id)
+            if u:
+                notify.notify_customer(
+                    u.telegram_id,
+                    _HOLAT_XABAR["topshirildi"].format(kod=order.kod, kuryer=""),
+                    parse_mode="HTML",
+                )
+        except ImportError:
+            pass
     return OrderOut.model_validate(order)
 
 
