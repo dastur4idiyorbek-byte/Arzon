@@ -119,16 +119,27 @@ def _usul_detail(usul: dict, summa: float) -> str:
     return f"<b>{summa:,.0f} som</b> o'tkazing va chekni yuboring."
 
 
-def main_menu(miniapp_url: str = "") -> ReplyKeyboardMarkup:
-    # Katalog (Do'kon) tugmasi bosh menyudan olib tashlandi — do'konga kirish
-    # faqat pastdagi ko'k menyu tugmasi (BotFather MenuButtonWebApp) orqali.
+def main_menu(miniapp_url: str = "") -> InlineKeyboardMarkup:
+    # Inline menyu (Menyu_Inline_Prompt) — tugmalar xabarга biriktiriladi,
+    # doimiy pastki klaviatura emas. Do'konga kirish pastdagi ko'k menyu
+    # tugmasi (BotFather MenuButtonWebApp) orqali.
     rows = [
-        [KeyboardButton(BTN_ORDERS), KeyboardButton(BTN_BALANCE)],
-        [KeyboardButton(BTN_LOYALTY), KeyboardButton(BTN_FAV)],
-        [KeyboardButton(BTN_DOKON)],
-        [KeyboardButton(BTN_HELP), KeyboardButton(BTN_ASK)],
+        [InlineKeyboardButton(BTN_ORDERS, callback_data="m:orders"),
+         InlineKeyboardButton(BTN_BALANCE, callback_data="m:balance")],
+        [InlineKeyboardButton(BTN_LOYALTY, callback_data="m:loyalty"),
+         InlineKeyboardButton(BTN_FAV, callback_data="m:fav")],
+        [InlineKeyboardButton(BTN_DOKON, callback_data="m:dokon")],
+        [InlineKeyboardButton(BTN_HELP, callback_data="m:help"),
+         InlineKeyboardButton(BTN_ASK, callback_data="m:ask")],
     ]
-    return ReplyKeyboardMarkup(rows, resize_keyboard=True)
+    return InlineKeyboardMarkup(rows)
+
+
+def back_home() -> InlineKeyboardMarkup:
+    """Har natijadan keyin asosiy menyuга qaytish tugmasi (Menyu_Inline_Prompt)."""
+    return InlineKeyboardMarkup(
+        [[InlineKeyboardButton("⬅️ Bosh menyu", callback_data="m:home")]]
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -194,10 +205,22 @@ async def _ask_phone(update: Update) -> None:
 
 async def _show_welcome(update: Update, short: bool = False) -> None:
     text = WELCOME_SHORT if short else WELCOME_TEXT
-    kb = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("🛒 Do'konga kirish", callback_data="enter_shop")]]
-    )
-    await update.effective_message.reply_text(text, reply_markup=kb)
+    # Inline asosiy menyu xabarга biriktiriladi (Menyu_Inline_Prompt).
+    await update.effective_message.reply_text(text, reply_markup=main_menu())
+
+
+async def menu_home(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """⬅️ Bosh menyu — mavjud xabarni tahrirlab asosiy menyuга qaytaradi."""
+    q = update.callback_query
+    await q.answer()
+    try:
+        await q.edit_message_text(
+            "🏠 Bosh menyu 👇 Kerakli bo'limни tanlang:", reply_markup=main_menu()
+        )
+    except Exception:  # noqa: BLE001
+        await update.effective_message.reply_text(
+            "🏠 Bosh menyu 👇", reply_markup=main_menu()
+        )
 
 
 async def _gate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
@@ -298,11 +321,15 @@ async def enter_shop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 # Menyu tugmalari (har birida onboarding eshigi tekshiriladi — rule 3)
 # ---------------------------------------------------------------------------
 async def orders(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.callback_query:
+        await update.callback_query.answer()
     if not await _gate(update, context):
         return
     rows = await api.my_orders(update.effective_user.id)
     if not rows:
-        await update.message.reply_text("Sizда hali buyurtmalar yo'q.")
+        await update.effective_message.reply_text(
+            "Sizда hali buyurtmalar yo'q.", reply_markup=back_home()
+        )
         return
     lines = ["📦 *Buyurtmalaringiz:*\n"]
     for o in rows[:10]:
@@ -312,10 +339,14 @@ async def orders(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         lines.append(
             f"• `{o['kod']}` — {o['jami_narx']:,.0f} som — _{o['holat']}_ — {yetk}"
         )
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    await update.effective_message.reply_text(
+        "\n".join(lines), parse_mode="Markdown", reply_markup=back_home()
+    )
 
 
 async def loyalty(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.callback_query:
+        await update.callback_query.answer()
     if not await _gate(update, context):
         return
     # Havola uchun sozlamadagi username afzal (noto'g'ri link bo'lmasligi uchun).
@@ -324,7 +355,9 @@ async def loyalty(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         settings.savdo_bot_username or context.bot.username or "",
     )
     if not data:
-        await update.message.reply_text("Ma'lumot olinmadi.")
+        await update.effective_message.reply_text(
+            "Ma'lumot olinmadi.", reply_markup=back_home()
+        )
         return
     karta = data.get("karta_turi") or "yo'q"
     qolgan = data.get("keyingi_karta_uchun_qolgan")
@@ -357,22 +390,28 @@ async def loyalty(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"🪙 Referaldan ishlagan: <b>{data.get('referral_jami_acom', 0):,.0f} ACOM</b>"
         f"{vau_txt}",
         parse_mode="HTML",
+        reply_markup=back_home(),
     )
 
 
 async def favorites(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.callback_query:
+        await update.callback_query.answer()
     if not await _gate(update, context):
         return
-    await update.message.reply_text(
+    await update.effective_message.reply_text(
         "❤️ Sevimlilar bo'limi tez orada qo'shiladi.\n"
-        "Hozircha katalogда yoqqan mahsulotni savatga qo'shib qo'ying. 🙂"
+        "Hozircha katalogда yoqqan mahsulotni savatga qo'shib qo'ying. 🙂",
+        reply_markup=back_home(),
     )
 
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.callback_query:
+        await update.callback_query.answer()
     if not await _gate(update, context):
         return
-    await update.message.reply_text(
+    await update.effective_message.reply_text(
         "❓ *Yordam*\n\n"
         "🛒 Do'kon — pastdagi ko'k menyu tugmasi orqali oching (mahsulotlarni "
         "ko'rish va buyurtma berish)\n"
@@ -382,25 +421,31 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "💬 Savol berish — menга yozing, javob beraman\n\n"
         "Savolingiz bo'lsa — shu yerга yozing!",
         parse_mode="Markdown",
+        reply_markup=back_home(),
     )
 
 
 async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.callback_query:
+        await update.callback_query.answer()
     if not await _gate(update, context):
         return
-    await update.message.reply_text(
-        "💬 Savolingizni yozing — mahsulot tanlashда yordam beraman."
+    await update.effective_message.reply_text(
+        "💬 Savolingizni yozing — mahsulot tanlashда yordam beraman.",
+        reply_markup=back_home(),
     )
 
 
 # ---------------------------------------------------------------------------
 # 💰 Balansim — ACOM coin (1 ACOM = 1 som, KGS)
 # ---------------------------------------------------------------------------
-def _menu_kb(context) -> ReplyKeyboardMarkup:
+def _menu_kb(context) -> InlineKeyboardMarkup:
     return main_menu(context.bot_data.get("miniapp_url", ""))
 
 
 async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.callback_query:
+        await update.callback_query.answer()
     if not await _gate(update, context):
         return
     data = await api.coin_balance(update.effective_user.id)
@@ -409,9 +454,10 @@ async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         [
             [InlineKeyboardButton("➕ Hisobni to'ldirish", callback_data="bal_topup")],
             [InlineKeyboardButton("↩️ Balansni qaytarish", callback_data="bal_refund")],
+            [InlineKeyboardButton("⬅️ Bosh menyu", callback_data="m:home")],
         ]
     )
-    await update.message.reply_text(
+    await update.effective_message.reply_text(
         f"🪙 ACOM balansingiz: <b>{bal:,.0f}</b> ACOM ({bal:,.0f} som)\n\n"
         "1 ACOM = 1 som. Xaridlar shu balansdan amalga oshadi.",
         reply_markup=kb,
@@ -419,8 +465,11 @@ async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
-def _home_kb() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup([[KeyboardButton(BTN_HOME)]], resize_keyboard=True)
+def _home_kb() -> InlineKeyboardMarkup:
+    # Jarayonning har qadamida "Bekor qilish" inline tugmasi (Menyu_Inline_Prompt task_2).
+    return InlineKeyboardMarkup(
+        [[InlineKeyboardButton("❌ Bekor qilish", callback_data="conv:cancel")]]
+    )
 
 
 # --- To'ldirish oqimi (task_1 + task_8) ---
@@ -679,10 +728,12 @@ DOKON_ONTALIK = 100  # har 10 mahsulot uchun (som) — backend bilan mos
 
 
 async def dokon_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if update.callback_query:
+        await update.callback_query.answer()
     if not await _gate(update, context):
         return ConversationHandler.END
     context.user_data["d"] = {}
-    await update.message.reply_text(
+    await update.effective_message.reply_text(
         "🏪 <b>Do'kon ochish</b>\n\n"
         "ARZON platformasida o'z do'koningizni oching!\n\n"
         "Avval do'koningiz nomini kiriting (masalan: Diyorbek Shop):",
@@ -888,10 +939,14 @@ async def dokon_chek(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 
 async def _cancel_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if update.callback_query:
+        await update.callback_query.answer()
     confirm.clear(context.user_data)
     for k in ("topup_summa", "refund_summa", "refund_karta", "d"):
         context.user_data.pop(k, None)
-    await update.message.reply_text("Bosh menyu 👇", reply_markup=_menu_kb(context))
+    await update.effective_message.reply_text(
+        "❌ Bekor qilindi. Bosh menyu 👇", reply_markup=main_menu()
+    )
     return ConversationHandler.END
 
 
@@ -914,11 +969,14 @@ def build_application(token: str, miniapp_url: str) -> Application:
     app.add_handler(CallbackQueryHandler(enter_shop, pattern="^enter_shop$"))
     app.add_handler(MessageHandler(filters.CONTACT, contact))
 
-    app.add_handler(MessageHandler(filters.Regex(f"^{BTN_ORDERS}$"), orders))
-    app.add_handler(MessageHandler(filters.Regex(f"^{BTN_LOYALTY}$"), loyalty))
-    app.add_handler(MessageHandler(filters.Regex(f"^{BTN_FAV}$"), favorites))
-    app.add_handler(MessageHandler(filters.Regex(f"^{BTN_HELP}$"), help_cmd))
-    app.add_handler(MessageHandler(filters.Regex(f"^{BTN_ASK}$"), ask))
+    # Inline menyu tugmalari (Menyu_Inline_Prompt) — callback orqali.
+    app.add_handler(CallbackQueryHandler(menu_home, pattern="^m:home$"))
+    app.add_handler(CallbackQueryHandler(orders, pattern="^m:orders$"))
+    app.add_handler(CallbackQueryHandler(balance, pattern="^m:balance$"))
+    app.add_handler(CallbackQueryHandler(loyalty, pattern="^m:loyalty$"))
+    app.add_handler(CallbackQueryHandler(favorites, pattern="^m:fav$"))
+    app.add_handler(CallbackQueryHandler(help_cmd, pattern="^m:help$"))
+    app.add_handler(CallbackQueryHandler(ask, pattern="^m:ask$"))
 
     # 💰 Balansim — coin balansi va to'ldirish/qaytarish oqimlari (ACOM coin).
     TXT = filters.TEXT & ~filters.COMMAND
@@ -941,7 +999,7 @@ def build_application(token: str, miniapp_url: str) -> Application:
         },
         fallbacks=[
             CommandHandler("start", start),
-            MessageHandler(filters.Regex(f"^{BTN_HOME}$"), _cancel_to_menu),
+            CallbackQueryHandler(_cancel_to_menu, pattern="^conv:cancel$"),
         ],
         name="balance_flow",
         persistent=False,
@@ -950,7 +1008,7 @@ def build_application(token: str, miniapp_url: str) -> Application:
 
     # 🏪 Do'kon ochish (pullik so'rov).
     dokon_conv = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex(f"^{BTN_DOKON}$"), dokon_start)],
+        entry_points=[CallbackQueryHandler(dokon_start, pattern="^m:dokon$")],
         states={
             D_NOMI: [MessageHandler(TXT, dokon_nomi)],
             D_ADMIN_ID: [MessageHandler(TXT, dokon_admin_id)],
@@ -964,15 +1022,12 @@ def build_application(token: str, miniapp_url: str) -> Application:
         },
         fallbacks=[
             CommandHandler("start", start),
-            MessageHandler(filters.Regex(f"^{BTN_HOME}$"), _cancel_to_menu),
+            CallbackQueryHandler(_cancel_to_menu, pattern="^conv:cancel$"),
         ],
         name="dokon_flow",
         persistent=False,
     )
     app.add_handler(dokon_conv)
-
-    app.add_handler(MessageHandler(filters.Regex(f"^{BTN_BALANCE}$"), balance))
-    app.add_handler(MessageHandler(filters.Regex(f"^{BTN_HOME}$"), start))
 
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, text_message)
