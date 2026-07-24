@@ -129,6 +129,15 @@ async def cancel_conv_f(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     return ConversationHandler.END
 
 
+async def _guard(update: Update) -> bool:
+    if not _is_super(update.effective_user.id):
+        await update.effective_message.reply_text(
+            "⛔️ Bu bot faqat super-admin (loyiha egasi) uchun."
+        )
+        return False
+    return True
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _guard(update):
         return
