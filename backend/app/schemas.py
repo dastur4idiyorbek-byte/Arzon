@@ -92,6 +92,7 @@ class PickupPointOut(BaseModel):
     nomi: str
     manzil: str
     ish_vaqti: Optional[str] = None
+    google_maps_link: Optional[str] = None
 
 
 class CheckoutRequest(BaseModel):

@@ -705,6 +705,7 @@ class PickupCreate(BaseModel):
     nomi: str = Field(min_length=1, max_length=255)
     manzil: str = Field(min_length=1, max_length=512)
     ish_vaqti: Optional[str] = Field(default=None, max_length=255)
+    google_maps_link: Optional[str] = Field(default=None, max_length=500)
 
 
 @router.post("/stores/{store_id}/pickup-points")
@@ -722,6 +723,7 @@ def add_pickup_point(
         nomi=payload.nomi.strip(),
         manzil=payload.manzil.strip(),
         ish_vaqti=(payload.ish_vaqti or "").strip() or None,
+        google_maps_link=(payload.google_maps_link or "").strip() or None,
     )
     db.add(pp)
     db.commit()
@@ -742,7 +744,8 @@ def list_pickup_points(
         select(PickupPoint).where(PickupPoint.store_id == store_id)
     ).all()
     return [
-        {"id": p.id, "nomi": p.nomi, "manzil": p.manzil, "ish_vaqti": p.ish_vaqti}
+        {"id": p.id, "nomi": p.nomi, "manzil": p.manzil, "ish_vaqti": p.ish_vaqti,
+         "google_maps_link": p.google_maps_link}
         for p in rows
     ]
 

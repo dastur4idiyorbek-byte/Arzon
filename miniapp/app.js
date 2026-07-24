@@ -779,7 +779,8 @@ async function loadPickupPoints() {
       pts.forEach((p) => {
         const lbl = document.createElement("label");
         lbl.className = "pickup-opt";
-        lbl.innerHTML = `<input type="radio" name="pp_${sid}" value="${p.id}"> <b>${esc(p.nomi)}</b> — ${esc(p.manzil)}${p.ish_vaqti ? " (" + esc(p.ish_vaqti) + ")" : ""}`;
+        const mapsA = p.google_maps_link ? ` <a href="${esc(p.google_maps_link)}" target="_blank" rel="noopener">📍 Xarita</a>` : "";
+        lbl.innerHTML = `<input type="radio" name="pp_${sid}" value="${p.id}"> <b>${esc(p.nomi)}</b> — ${esc(p.manzil)}${p.ish_vaqti ? " (" + esc(p.ish_vaqti) + ")" : ""}${mapsA}`;
         lbl.querySelector("input").onchange = () => { pickupChoice[sid] = p.id; };
         box.appendChild(lbl);
       });
@@ -1031,7 +1032,8 @@ async function loadBuyNowPoints() {
   pts.forEach((pt) => {
     const lbl = document.createElement("label");
     lbl.className = "pickup-opt";
-    lbl.innerHTML = `<input type="radio" name="bn_pp" value="${pt.id}" ${buyNow.ppid === pt.id ? "checked" : ""}> <b>${esc(pt.nomi)}</b> — ${esc(pt.manzil)}${pt.ish_vaqti ? " (" + esc(pt.ish_vaqti) + ")" : ""}`;
+    const mapsA = pt.google_maps_link ? ` <a href="${esc(pt.google_maps_link)}" target="_blank" rel="noopener">📍 Xarita</a>` : "";
+    lbl.innerHTML = `<input type="radio" name="bn_pp" value="${pt.id}" ${buyNow.ppid === pt.id ? "checked" : ""}> <b>${esc(pt.nomi)}</b> — ${esc(pt.manzil)}${pt.ish_vaqti ? " (" + esc(pt.ish_vaqti) + ")" : ""}${mapsA}`;
     lbl.querySelector("input").onchange = () => {
       buyNow.ppid = pt.id;
       buyNow.ppNomi = pt.nomi;

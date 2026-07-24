@@ -847,6 +847,20 @@ def test_delivery_pickup_flow():
     ).json()
     assert any(x["id"] == pp_id for x in pts)
 
+    # task_3: google_maps_link bilan punkt — havola saqlanadi va qaytadi.
+    pp2 = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/pickup-points",
+        headers=admin_headers(ADMIN_A),
+        json={"nomi": "Filial 2", "manzil": "Osh 5",
+              "google_maps_link": "https://www.google.com/maps?q=40.5,72.8"},
+    )
+    assert pp2.status_code == 200, pp2.text
+    pts2 = client.get(
+        f"/api/pickup-points?store_ids={store_a['store_id']}", headers=cust
+    ).json()
+    match = [x for x in pts2 if x["id"] == pp2.json()["id"]]
+    assert match and match[0]["google_maps_link"] == "https://www.google.com/maps?q=40.5,72.8"
+
     # Punkt tanlanmasa (pickup, lekin punktsiz) -> 400.
     bad = client.post(
         "/api/checkout", headers=cust,

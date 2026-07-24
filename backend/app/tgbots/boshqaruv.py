@@ -1242,6 +1242,7 @@ async def buyurtmalar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 CHECK_KOD = 101  # punktда kod tekshirish holati (task_1)
+PP_LOC = 102  # punkt lokatsiyasini so'rash holati (task_3)
 
 _HOLAT_LABEL = {
     "yangi": "🆕 Yangi", "tayyorlanmoqda": "👨‍🍳 Tayyorlanmoqda",
@@ -1705,34 +1706,63 @@ async def pickup_manzil(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return PP_VAQT
 
 
-async def _pickup_save(update, context, ish_vaqti):
+async def _pickup_save(update, context, maps_link=None):
     r = await api.add_pickup(
         update.effective_user.id,
         context.user_data["pp_store"],
         {
             "nomi": context.user_data["pp_nomi"],
             "manzil": context.user_data["pp_manzil"],
-            "ish_vaqti": ish_vaqti,
+            "ish_vaqti": context.user_data.get("pp_vaqt"),
+            "google_maps_link": maps_link,
         },
     )
+    xarita = "\n📍 Xarita havolasi saqlandi." if maps_link else ""
     msg = (
-        f"✅ Punkt qo'shildi: {context.user_data['pp_nomi']}"
+        f"✅ <b>Punkt qo'shildi:</b> {context.user_data['pp_nomi']}{xarita}"
         if r.status_code == 200
         else f"❌ {r.text[:300]}"
     )
-    await _back_to_menu(update, msg)
+    await update.effective_message.reply_text(
+        msg, parse_mode="HTML", reply_markup=menu_markup(update.effective_user.id)
+    )
     context.user_data.clear()
     return ConversationHandler.END
+
+
+async def _pickup_ask_location(update: Update) -> int:
+    await update.effective_message.reply_text(
+        "📍 <b>Punkt joylashuvini yuboring</b> (Telegram 📎 → Location),\n"
+        f"yoki '{BTN_SKIP}' bosing:",
+        parse_mode="HTML",
+        reply_markup=nav_markup([BTN_SKIP], back=False),
+    )
+    return PP_LOC
 
 
 async def pickup_vaqt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if _is_menu_press(update.message.text):
         await _warn_finish_first(update)
         return PP_VAQT
-    return await _pickup_save(update, context, update.message.text.strip())
+    context.user_data["pp_vaqt"] = update.message.text.strip()
+    return await _pickup_ask_location(update)
 
 
 async def pickup_vaqt_skip(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["pp_vaqt"] = None
+    return await _pickup_ask_location(update)
+
+
+async def pickup_loc(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Punkt uchun lokatsiya — Google Maps havolasига aylantiriladi (task_3)."""
+    loc = update.message.location
+    maps_link = f"https://www.google.com/maps?q={loc.latitude},{loc.longitude}"
+    return await _pickup_save(update, context, maps_link)
+
+
+async def pickup_loc_skip(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.callback_query:
+        await update.callback_query.answer()
     return await _pickup_save(update, context, None)
 
 
@@ -1887,6 +1917,10 @@ def build_application(token: str) -> Application:
             PP_VAQT: [
                 CallbackQueryHandler(_cb(pickup_vaqt_skip), pattern="^nav:skip$"),
                 MessageHandler(TXT, pickup_vaqt),
+            ],
+            PP_LOC: [
+                MessageHandler(filters.LOCATION, pickup_loc),
+                CallbackQueryHandler(_cb(pickup_loc_skip), pattern="^nav:skip$"),
             ],
         },
         "pickup",

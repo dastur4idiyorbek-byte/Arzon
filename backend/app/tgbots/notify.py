@@ -29,23 +29,24 @@ def _submit(coro) -> None:
     fut.add_done_callback(_log_err)
 
 
-async def _send_admin(chat_id: int, text: str, order_id: int) -> None:
+async def _send_admin(
+    chat_id: int, text: str, order_id: int, maps_link: str | None = None
+) -> None:
     app = registry.get("boshqaruv")
     if app is None:
         return
-    kb = InlineKeyboardMarkup(
+    rows = [
         [
-            [
-                InlineKeyboardButton(
-                    "✅ Qabul qilish", callback_data=f"qabul_{order_id}"
-                ),
-                InlineKeyboardButton(
-                    "❌ Bekor qilish", callback_data=f"rad_{order_id}"
-                ),
-            ]
+            InlineKeyboardButton("✅ Qabul qilish", callback_data=f"qabul_{order_id}"),
+            InlineKeyboardButton("❌ Bekor qilish", callback_data=f"rad_{order_id}"),
         ]
+    ]
+    if maps_link:  # 📍 bosiladigan Google Maps havolasi (task_3)
+        rows.append([InlineKeyboardButton("📍 Xaritada ko'rish", url=maps_link)])
+    await app.bot.send_message(
+        chat_id=chat_id, text=text,
+        reply_markup=InlineKeyboardMarkup(rows), parse_mode="HTML",
     )
-    await app.bot.send_message(chat_id=chat_id, text=text, reply_markup=kb)
 
 
 def notify_new_order(
@@ -57,26 +58,30 @@ def notify_new_order(
     mijoz_ism: str | None,
     mijoz_tel: str | None,
     yetkazish_txt: str = "",
+    maps_link: str | None = None,
 ) -> None:
-    """Yangi buyurtma haqida do'kon adminlariga xabar (spec2 task_1).
+    """Yangi buyurtma haqida do'kon adminlariga xabar (task_1 + task_4 format).
 
     Sync koddан chaqiriladi (checkout) — yuborish fon rejимда bo'ladi.
     """
+    import html as _h
+
     items = "\n".join(
-        f"  • {m.get('nomi')} x{m.get('soni')} — {m.get('narxi'):,.0f} som"
+        f"  • <b>{_h.escape(str(m.get('nomi')))}</b> ×{m.get('soni')} — "
+        f"{m.get('narxi'):,.0f} som"
         for m in (mahsulotlar or [])
     )
+    tel_qator = f", {_h.escape(str(mijoz_tel))}" if mijoz_tel else ""
     text = (
-        f"🆕 Yangi buyurtma!\n\n"
-        f"Kod: {kod}\n"
-        f"Mijoz: {mijoz_ism or 'nomalum'}"
-        + (f" ({mijoz_tel})" if mijoz_tel else "")
-        + f"\n\nMahsulotlar:\n{items}\n\n"
-        f"Jami: {jami:,.0f} som"
-        + (f"\n{yetkazish_txt}" if yetkazish_txt else "")
+        f"🆕 <b>Yangi buyurtma!</b>\n\n"
+        f"🔑 Kod: <b>{_h.escape(str(kod))}</b>\n"
+        f"👤 Mijoz: <b>{_h.escape(str(mijoz_ism or 'nomalum'))}</b>{tel_qator}\n\n"
+        f"📦 <b>Mahsulotlar:</b>\n{items}\n\n"
+        f"💰 Jami: <b>{jami:,.0f} som</b>"
+        + (f"\n\n{yetkazish_txt}" if yetkazish_txt else "")
     )
     for admin_id in admin_ids or []:
-        _submit(_send_admin(admin_id, text, order_id))
+        _submit(_send_admin(admin_id, text, order_id, maps_link))
 
 
 async def _send_customer(telegram_id: int, text: str, parse_mode=None) -> None:

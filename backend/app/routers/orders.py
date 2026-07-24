@@ -77,23 +77,27 @@ def checkout(
         from ..models import PickupPoint, Store
         from ..tgbots import notify
 
+        import html as _h
+
         for o in orders:
             store = db.get(Store, o.store_id)
             if o.yetkazish_turi == "pickup" and o.pickup_point_id:
                 pp = db.get(PickupPoint, o.pickup_point_id)
                 yetk = (
-                    f"🏬 Olib ketish: {pp.nomi}, {pp.manzil}"
+                    f"🏬 Olib ketish: <b>{_h.escape(pp.nomi)}</b>, "
+                    f"{_h.escape(pp.manzil)}"
                     if pp
                     else "🏬 Olib ketish"
                 )
             else:
-                yetk = f"🚚 Kuryer: {o.manzil or '-'}"
+                yetk = f"🚚 Kuryer: <b>{_h.escape(o.manzil or '-')}</b>"
                 if o.yetkazish_narxi:
-                    yetk += f"\n💵 Yetkazish narxi: {float(o.yetkazish_narxi):,.0f} som"
-            # Lokatsiya bo'lsa — xaritaga havola (admin ochib ko'radi).
+                    yetk += f"\n💵 Yetkazish: {float(o.yetkazish_narxi):,.0f} som"
+            # Lokatsiya bo'lsa — Google Maps havolasi (inline tugma, task_3).
+            maps_link = None
             if o.lokatsiya_lat is not None and o.lokatsiya_lng is not None:
-                yetk += (
-                    f"\n📍 Joylashuv: https://maps.google.com/?q="
+                maps_link = (
+                    f"https://www.google.com/maps?q="
                     f"{o.lokatsiya_lat},{o.lokatsiya_lng}"
                 )
             notify.notify_new_order(
@@ -105,6 +109,7 @@ def checkout(
                 mijoz_ism=user.ism,
                 mijoz_tel=user.tel,
                 yetkazish_txt=yetk,
+                maps_link=maps_link,
             )
     except ImportError:
         pass
