@@ -1,0 +1,10 @@
+node_modules/
+.expo/
+dist/
+web-build/
+*.log
+.DS_Store
+# EAS / build artefaktlari
+*.aab
+*.ipa
+*.apk

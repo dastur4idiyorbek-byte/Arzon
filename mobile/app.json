@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "ARZON",
+    "slug": "arzon",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "arzon",
+    "userInterfaceStyle": "light",
+    "primaryColor": "#E8590C",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#FFF8F2"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "kg.arzon.app"
+    },
+    "android": {
+      "package": "kg.arzon.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#E8590C"
+      }
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "extra": {
+      "apiUrl": "https://arzon-backend.onrender.com"
+    }
+  }
+}
