@@ -96,13 +96,31 @@ def get_current_user(
     x_telegram_init_data: str = Header(
         default="", alias="X-Telegram-Init-Data"
     ),
+    authorization: str = Header(default=""),
     db: Session = Depends(get_db),
 ) -> User:
     """Har bir mijoz-endpoint uchun dependency.
 
-    initData'ni tekshiradi, foydalanuvchini bazadan topadi yoki yaratadi
-    (get-or-create) va User obyektini qaytaradi.
+    Ikki usulni qo'llab-quvvatlaydi:
+      * Native ilova — `Authorization: Bearer <JWT>` (Phase 2 auth);
+      * Telegram Mini App — `X-Telegram-Init-Data` (initData HMAC).
+    Foydalanuvchi topiladi/yaratiladi va User obyekti qaytariladi.
     """
+    # 1) Native JWT (agar bo'lsa) — ustuvor.
+    if authorization.lower().startswith("bearer "):
+        from .services import auth as auth_service
+
+        uid = auth_service.decode_token(authorization[7:].strip())
+        if uid is not None:
+            user = db.get(User, uid)
+            if user is not None:
+                return user
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Sessiya yaroqsiz — qaytadan kiring.",
+        )
+
+    # 2) Telegram initData.
     tg_user = verify_init_data(x_telegram_init_data)
     telegram_id = tg_user.get("id")
     if telegram_id is None:

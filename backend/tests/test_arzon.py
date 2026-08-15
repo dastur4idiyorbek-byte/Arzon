@@ -1839,3 +1839,19 @@ def test_auth_role_by_email():
     m = client.post("/api/auth/register",
                     json={"email": "menejer@arzon.kg", "parol": "mng12345"})
     assert "menejer" in m.json()["roles"]
+
+
+def test_native_jwt_accesses_customer_endpoints():
+    """Native JWT (Bearer) mijoz endpointlarига kira oladi (initData'siz)."""
+    reg = client.post("/api/auth/register",
+                      json={"email": "shop@mail.com", "parol": "shop1234", "ism": "Shopper"})
+    token = reg.json()["token"]
+    h = {"Authorization": f"Bearer {token}"}
+    # /api/balance — JWT bilan ishlaydi.
+    b = client.get("/api/balance", headers=h)
+    assert b.status_code == 200 and "coin_balans" in b.json(), b.text
+    # /api/products — ochiq katalog.
+    p = client.get("/api/products", headers=h)
+    assert p.status_code == 200
+    # Yaroqsiz token -> 401.
+    assert client.get("/api/balance", headers={"Authorization": "Bearer xxx"}).status_code == 401

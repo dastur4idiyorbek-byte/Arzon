@@ -25,7 +25,7 @@ ilova undan REST API orqali foydalanadi.
 |---|---|---|
 | 1 | Loyiha asosi | ✅ |
 | 2 | Kirish + rol | ✅ |
-| 3 | Mijoz ekranlari: katalog, mahsulot, savat/checkout, buyurtma, balans, sodiqlik | keyingi |
+| 3 | Mijoz ekranlari: katalog, mahsulot, savat/checkout, buyurtma, balans | ✅ (asosiy oqim) |
 | 4 | Admin / Moliya / Menejer ekranlari | |
 | 5 | Push-bildirishnoma | |
 | 6 | Build fayllari (.aab/.ipa/.exe/.dmg/.AppImage) | |
