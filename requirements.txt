@@ -12,6 +12,11 @@ httpx==0.28.1
 python-multipart==0.0.20
 # PostgreSQL (Neon) drayveri — doimiy baza uchun.
 psycopg2-binary==2.9.10
+# Native ilova autentifikatsiyasi: parol hash (bcrypt), JWT sessiya,
+# Apple id_token imzosini tekshirish (RS256 -> cryptography).
+bcrypt==4.2.1
+PyJWT==2.10.1
+cryptography==44.0.0
 # Telegram botlar (webhook rejimi — bulutда, backend ichida ishlaydi).
 # [job-queue] — kunlik hisobot uchun (APScheduler).
 python-telegram-bot[job-queue]==22.8

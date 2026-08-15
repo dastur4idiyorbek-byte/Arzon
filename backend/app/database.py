@@ -71,6 +71,18 @@ def _auto_migrate() -> None:
             with engine.begin() as conn:
                 conn.execute(text(stmt))
 
+    # Native ilova: users.telegram_id endi NULL bo'lishi mumkin (email/OAuth
+    # foydalanuvchilarида yo'q). Postgres'да mavjud NOT NULL cheklovини olib
+    # tashlaymiz (SQLite'да jadval modeldан yaratilgani uchun shart emas).
+    if not is_sqlite and insp.has_table("users"):
+        try:
+            with engine.begin() as conn:
+                conn.execute(
+                    text("ALTER TABLE users ALTER COLUMN telegram_id DROP NOT NULL")
+                )
+        except Exception:  # noqa: BLE001 — allaqachon nullable bo'lса o'tadi
+            pass
+
 
 def init_db() -> None:
     """Barcha jadvallarni yaratadi (agar mavjud bo'lmasa) va migratsiya qiladi."""

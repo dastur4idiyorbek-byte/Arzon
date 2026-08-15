@@ -123,11 +123,22 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     # BigInteger — Telegram ID'lar 2.1 mlrd (INT4) dан oshishi mumkin (Postgres).
-    telegram_id: Mapped[int] = mapped_column(
-        BigInteger, unique=True, index=True
+    # Native ilova (email/Google/Apple) foydalanuvchilarida telegram_id bo'lmaydi
+    # -> nullable (Telegram bot foydalanuvchilarида to'ladi).
+    telegram_id: Mapped[int | None] = mapped_column(
+        BigInteger, unique=True, index=True, nullable=True
     )
     ism: Mapped[str | None] = mapped_column(String(255), nullable=True)
     tel: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # --- Native ilova autentifikatsiyasi (Phase 2) ---
+    email: Mapped[str | None] = mapped_column(String(255), unique=True, index=True, nullable=True)
+    parol_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)  # bcrypt
+    google_sub: Mapped[str | None] = mapped_column(String(255), unique=True, index=True, nullable=True)
+    apple_sub: Mapped[str | None] = mapped_column(String(255), unique=True, index=True, nullable=True)
+    parol_reset_token: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    parol_reset_muddat: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # Kontaktni ulashish orqali tasdiqlanadi (rule 8, 2-bosqich).
     tel_tasdiqlangan: Mapped[bool] = mapped_column(Boolean, default=False)
     # ACOM coin balansi (KGS bilan 1:1). NULL bardoshli: kodда `or 0`.

@@ -1780,3 +1780,62 @@ def test_menejer_broadcast():
     forb = client.post("/api/menejer/broadcast", headers=admin_headers(ADMIN_A),
                        json={"target": "admin", "matn": "x"})
     assert forb.status_code == 403, forb.text
+
+
+# ===========================================================================
+# Native ilova autentifikatsiyasi (Phase 2)
+# ===========================================================================
+def test_auth_email_register_login_me():
+    r = client.post("/api/auth/register",
+                    json={"email": "Aziz@Mail.com", "parol": "parol123", "ism": "Aziz"})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["token"] and d["roles"] == ["mijoz"]
+    assert d["user"]["email"] == "aziz@mail.com"  # normallashtirilgan
+
+    # Takroriy email -> 409.
+    dup = client.post("/api/auth/register",
+                      json={"email": "aziz@mail.com", "parol": "boshqa1"})
+    assert dup.status_code == 409
+
+    # Login: noto'g'ri parol.
+    bad = client.post("/api/auth/login",
+                      json={"email": "aziz@mail.com", "parol": "notogri"})
+    assert bad.status_code == 401
+    # Login: to'g'ri.
+    ok = client.post("/api/auth/login",
+                     json={"email": "aziz@mail.com", "parol": "parol123"})
+    assert ok.status_code == 200, ok.text
+    token = ok.json()["token"]
+
+    # /me — token bilan.
+    me = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert me.status_code == 200 and me.json()["user"]["email"] == "aziz@mail.com"
+    # Tokensiz -> 401.
+    assert client.get("/api/auth/me").status_code == 401
+
+
+def test_auth_password_reset():
+    client.post("/api/auth/register",
+                json={"email": "reset@mail.com", "parol": "eski1234"})
+    f = client.post("/api/auth/forgot", json={"email": "reset@mail.com"})
+    assert f.status_code == 200
+    token = f.json()["reset_token"]
+    rr = client.post("/api/auth/reset", json={"token": token, "yangi_parol": "yangi1234"})
+    assert rr.status_code == 200
+    # Yangi parol bilan kirish ishlaydi, eski ishlamaydi.
+    assert client.post("/api/auth/login",
+                       json={"email": "reset@mail.com", "parol": "yangi1234"}).status_code == 200
+    assert client.post("/api/auth/login",
+                       json={"email": "reset@mail.com", "parol": "eski1234"}).status_code == 401
+
+
+def test_auth_role_by_email():
+    # super_admin_emails ro'yxatidagi email -> 'moliya' roli.
+    r = client.post("/api/auth/register",
+                    json={"email": "boss@arzon.kg", "parol": "boss1234"})
+    assert r.status_code == 200
+    assert "moliya" in r.json()["roles"]
+    m = client.post("/api/auth/register",
+                    json={"email": "menejer@arzon.kg", "parol": "mng12345"})
+    assert "menejer" in m.json()["roles"]

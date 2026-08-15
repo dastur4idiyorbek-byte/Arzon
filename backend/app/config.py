@@ -49,6 +49,31 @@ class Settings(BaseSettings):
     # Odatda savdo_bot_token bilan bir xil, lekin alohida sozlash mumkin.
     miniapp_bot_token: str = ""
 
+    # --- Native ilova autentifikatsiyasi (JWT + OAuth) ---
+    # JWT imzo kaliti — MAJBURIY o'zgartiring (uzun tasodifiy satr).
+    jwt_secret: str = "arzon-dev-secret-CHANGE-ME"
+    jwt_expire_days: int = 30
+    # Google OAuth — id_token 'aud' shu ID(lar)ga mos kelishi tekshiriladi
+    # (vergul bilan: web, android, ios client ID'lari).
+    google_client_ids: str = ""
+    # Apple Sign In — ilova bundle IDsi (aud tekshiruvi uchun).
+    apple_bundle_id: str = "kg.arzon.app"
+    # Rol berish (native): telegram_id'дан tashqari email bo'yicha ham.
+    super_admin_emails: str = ""
+    menejer_emails: str = ""
+
+    @property
+    def google_client_id_list(self) -> List[str]:
+        return [x.strip() for x in self.google_client_ids.split(",") if x.strip()]
+
+    @property
+    def super_admin_email_list(self) -> List[str]:
+        return [x.strip().lower() for x in self.super_admin_emails.split(",") if x.strip()]
+
+    @property
+    def menejer_email_list(self) -> List[str]:
+        return [x.strip().lower() for x in self.menejer_emails.split(",") if x.strip()]
+
     # --- Claude AI (mijoz bilan suhbat — rule 3) ---
     anthropic_api_key: str = ""
     claude_model: str = "claude-sonnet-4-6"

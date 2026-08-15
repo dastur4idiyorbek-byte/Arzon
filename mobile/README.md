@@ -9,23 +9,26 @@ ilova undan REST API orqali foydalanadi.
 
 ---
 
-## Hozirgi holat — 1-BOSQICH tayyor (loyiha asosi)
+## Hozirgi holat — 1 va 2-BOSQICH tayyor
 
-- ✅ Expo + TypeScript loyiha asosi
-- ✅ Pastki tab-navigatsiya (React Navigation)
-- ✅ Rol-rang dizayn tizimi (`src/theme.ts`) — 🟠 xarid / 🟢 do'kon / 🟡 balans
-- ✅ Backend API mijozi (`src/api.ts`)
-- ✅ EAS Build sozlamasi (`eas.json`)
+**1-bosqich (asos):**
+- ✅ Expo + TypeScript, pastki tab-navigatsiya, rol-rang dizayn tizimi, API mijozi, EAS sozlamasi
+
+**2-bosqich (kirish + rol):**
+- ✅ Backend: `/api/auth/*` — Email(bcrypt)/Google/Apple + JWT + parol tiklash + rol aniqlash (`backend/app/routers/auth.py`)
+- ✅ Ilova: kirish/ro'yxatdan o'tish ekrani (email), JWT xavfsiz saqlash (SecureStore), auth-gate (kirmaган -> Login), Profil + Chiqish
+- ⏳ Google/Apple tugmalari — 6-bosqichда (build) client ID'lar sozlangач yoqiladi
 
 ## Keyingi bosqichlar (spec bo'yicha)
 
-| Bosqich | Nima |
-|---|---|
-| 2 | Kirish: Google / Apple / Email (bcrypt + JWT) + rol aniqlash |
-| 3 | Mijoz ekranlari: katalog, mahsulot, savat/checkout, buyurtma, balans, sodiqlik |
-| 4 | Admin / Moliya / Menejer ekranlari |
-| 5 | Push-bildirishnoma (buyurtma holati, balans, arenda) |
-| 6 | Build fayllari (.aab/.ipa/.exe/.dmg/.AppImage) — EAS + Electron |
+| Bosqich | Nima | Holat |
+|---|---|---|
+| 1 | Loyiha asosi | ✅ |
+| 2 | Kirish + rol | ✅ |
+| 3 | Mijoz ekranlari: katalog, mahsulot, savat/checkout, buyurtma, balans, sodiqlik | keyingi |
+| 4 | Admin / Moliya / Menejer ekranlari | |
+| 5 | Push-bildirishnoma | |
+| 6 | Build fayllari (.aab/.ipa/.exe/.dmg/.AppImage) | |
 
 ---
 

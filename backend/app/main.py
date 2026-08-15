@@ -18,6 +18,7 @@ from .config import settings
 from .database import init_db
 from .routers import (
     admin,
+    auth,
     bot,
     chat,
     instagram,
@@ -95,6 +96,8 @@ def health():
     return {"status": "ok", "xizmat": "arzon-backend", "botlar": faol_botlar}
 
 
+# Native ilova autentifikatsiyasi (Email/Google/Apple + JWT + rol)
+app.include_router(auth.router)
 # Mijoz endpointlari (Mini App — initData bilan)
 app.include_router(products.router)
 app.include_router(orders.router)
