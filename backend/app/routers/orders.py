@@ -12,6 +12,7 @@ from fastapi import (
     UploadFile,
     status,
 )
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -350,6 +351,52 @@ def topup_request(
     except ImportError:
         pass
     return {"sorov_id": sorov.id, "holat": sorov.holat}
+
+
+class PromoCheck(BaseModel):
+    kod: str = Field(min_length=1, max_length=32)
+    store_ids: list[int] = []
+
+
+@router.post("/promo/check")
+def promo_check(
+    payload: PromoCheck,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Promo kodni buyurtmadan OLDIN tekshiradi.
+
+    Mijoz savatda kodni kiritganda darhol javob ko'rsin: kod to'g'rimi, necha
+    foiz chegirma va qaysi do'konga tegishli. Chegirma checkout'da qo'llanadi
+    (services/orders._apply_promo) — bu yerda faqat tekshiruv, hech narsa
+    o'zgarmaydi va ishlatilish soni oshmaydi.
+    """
+    from ..models import PromoCode, Store, _as_aware, _now
+
+    kod = payload.kod.strip()
+    q = select(PromoCode).where(PromoCode.kod == kod)
+    if payload.store_ids:
+        q = q.where(PromoCode.store_id.in_(payload.store_ids))
+    promo = db.scalar(q)
+
+    if promo is None:
+        return {
+            "ok": False,
+            "sabab": "Bunday promo kod topilmadi yoki savatingizdagi "
+                     "do'konlarga tegishli emas.",
+        }
+    if promo.muddat and _as_aware(promo.muddat) < _now():
+        return {"ok": False, "sabab": "Promo kod muddati tugagan."}
+
+    store = db.get(Store, promo.store_id)
+    return {
+        "ok": True,
+        "kod": promo.kod,
+        "chegirma_foizi": promo.chegirma_foizi,
+        "store_id": promo.store_id,
+        "store_nomi": store.nomi if store else None,
+        "muddat": _as_aware(promo.muddat).isoformat() if promo.muddat else None,
+    }
 
 
 @router.post("/confirm-phone")

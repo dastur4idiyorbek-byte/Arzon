@@ -14,7 +14,8 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { money } from "../api";
 import { colors, radius, spacing, font, shadow, tracking } from "../theme";
-import { Product, effPrice, rasmUrl } from "../types";
+import { Glass, ChegirmaTaymer } from "../ui/Glass";
+import { Product, effPrice, rasmlar, nisbat } from "../types";
 import { useCart } from "../cart/CartContext";
 
 const { width: EKRAN } = Dimensions.get("window");
@@ -29,7 +30,9 @@ export default function ProductScreen({ route, navigation }: any) {
   const [olcham, setOlcham] = useState<string | null>(olchamlar.length === 1 ? olchamlar[0] : null);
   const [rang, setRang] = useState<string | null>(ranglar.length === 1 ? ranglar[0] : null);
   const [toast, setToast] = useState<string | null>(null);
-  const img = rasmUrl(p);
+  const suratlar = rasmlar(p);
+  const nisbatSoni = nisbat(p);
+  const [joriy, setJoriy] = useState(0);
   const sotuv = effPrice(p);
   const chegirma = !!p.skidka_foizi && p.skidka_foizi > 0;
 
@@ -78,24 +81,56 @@ export default function ProductScreen({ route, navigation }: any) {
   return (
     <View style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
-        {/* Rasm + suzuvchi tugmalar */}
-        <View style={styles.imgWrap}>
-          {img ? (
-            <Image source={{ uri: img }} style={styles.img} resizeMode="cover" />
+        {/* Rasm karuseli — turli nisbatlarni qo'llab-quvvatlaydi */}
+        <View style={[styles.imgWrap, { height: EKRAN / nisbatSoni }]}>
+          {suratlar.length ? (
+            <ScrollView
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onMomentumScrollEnd={(e) =>
+                setJoriy(Math.round(e.nativeEvent.contentOffset.x / EKRAN))
+              }
+            >
+              {suratlar.map((u, i) => (
+                <Image
+                  key={i}
+                  source={{ uri: u }}
+                  style={{ width: EKRAN, height: EKRAN / nisbatSoni }}
+                  resizeMode="cover"
+                />
+              ))}
+            </ScrollView>
           ) : (
             <Text style={{ fontSize: 72, opacity: 0.4 }}>🛍️</Text>
           )}
+
+          {/* Suzuvchi shisha tugmalar */}
           <View style={styles.suzuvchi}>
-            <TouchableOpacity style={styles.yumaloq} onPress={() => navigation.goBack()}>
-              <Ionicons name="arrow-back" size={20} color={colors.text} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.yumaloq}
-              onPress={() => Share.share({ message: `${p.nomi} — ${money(sotuv)} som (ARZON)` })}
-            >
-              <Ionicons name="share-social-outline" size={19} color={colors.text} />
-            </TouchableOpacity>
+            <Glass style={styles.yumaloq}>
+              <TouchableOpacity style={styles.yumaloqIch} onPress={() => navigation.goBack()}>
+                <Ionicons name="arrow-back" size={20} color={colors.text} />
+              </TouchableOpacity>
+            </Glass>
+            <Glass style={styles.yumaloq}>
+              <TouchableOpacity
+                style={styles.yumaloqIch}
+                onPress={() => Share.share({ message: `${p.nomi} — ${money(sotuv)} som (ARZON)` })}
+              >
+                <Ionicons name="share-social-outline" size={19} color={colors.text} />
+              </TouchableOpacity>
+            </Glass>
           </View>
+
+          {/* Sahifa nuqtalari (bir nechta rasm bo'lsa) */}
+          {suratlar.length > 1 && (
+            <View style={styles.nuqtalar}>
+              {suratlar.map((_, i) => (
+                <View key={i} style={[styles.nuqta, i === joriy && styles.nuqtaFaol]} />
+              ))}
+            </View>
+          )}
+
           {chegirma && (
             <View style={styles.saleTag}>
               <Text style={styles.saleText}>−{p.skidka_foizi}%</Text>
@@ -118,6 +153,13 @@ export default function ProductScreen({ route, navigation }: any) {
             <Text style={styles.som}>som</Text>
             {sotuv < p.narxi && <Text style={styles.old}>{money(p.narxi)} som</Text>}
           </View>
+
+          {/* Chegirma tugashiga qancha qolgani — shoshilish hissi */}
+          {chegirma && !!p.skidka_muddati && (
+            <View style={{ marginTop: 10 }}>
+              <ChegirmaTaymer muddat={p.skidka_muddati} />
+            </View>
+          )}
 
           {olchamlar.length > 0 && (
             <>
@@ -200,7 +242,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgSoft },
 
   imgWrap: {
-    width: EKRAN, height: EKRAN, backgroundColor: colors.secondaryBg,
+    width: EKRAN, backgroundColor: colors.secondaryBg,
     alignItems: "center", justifyContent: "center",
   },
   img: { width: "100%", height: "100%" },
@@ -208,10 +250,17 @@ const styles = StyleSheet.create({
     position: "absolute", top: spacing.md, left: spacing.lg, right: spacing.lg,
     flexDirection: "row", justifyContent: "space-between",
   },
-  yumaloq: {
-    width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.94)",
-    alignItems: "center", justifyContent: "center", ...shadow.sm,
+  yumaloq: { width: 42, height: 42, borderRadius: 21 },
+  yumaloqIch: { width: "100%", height: "100%", alignItems: "center", justifyContent: "center" },
+  nuqtalar: {
+    position: "absolute", bottom: 34, alignSelf: "center",
+    flexDirection: "row", gap: 6,
   },
+  nuqta: {
+    width: 6, height: 6, borderRadius: 3,
+    backgroundColor: "rgba(255,255,255,0.6)",
+  },
+  nuqtaFaol: { width: 20, backgroundColor: "#fff" },
   saleTag: {
     position: "absolute", left: spacing.lg, bottom: spacing.xl + 12,
     backgroundColor: colors.sale, paddingHorizontal: 12, paddingVertical: 6,

@@ -19,6 +19,7 @@ import { colors, radius, spacing, font, shadow, tracking } from "../theme";
 import { SkeletonCatalog } from "../ui/Skeleton";
 import { Press } from "../ui/Press";
 import { Product, effPrice, rasmUrl } from "../types";
+import { ChegirmaTaymer } from "../ui/Glass";
 import { useCart } from "../cart/CartContext";
 
 const HAMMASI = "__hammasi__";
@@ -86,6 +87,19 @@ export default function CatalogScreen({ navigation }: any) {
               <View style={styles.tugadiPill}>
                 <Text style={styles.tugadiText}>Tugadi</Text>
               </View>
+            </View>
+          )}
+          {/* Chegirma taymeri — rasm ustida, shisha yuzada */}
+          {chegirma && !!p.skidka_muddati && !p.tugadi && (
+            <View style={styles.taymerJoy}>
+              <ChegirmaTaymer muddat={p.skidka_muddati} kichik />
+            </View>
+          )}
+          {/* Bir nechta rasm borligi belgisi */}
+          {(p.rasm_urls?.length || 0) > 1 && (
+            <View style={styles.kopRasm}>
+              <Ionicons name="images-outline" size={11} color="#fff" />
+              <Text style={styles.kopRasmText}>{p.rasm_urls!.length}</Text>
             </View>
           )}
         </View>
@@ -330,6 +344,13 @@ const styles = StyleSheet.create({
   },
   tugadiText: { fontWeight: "800", color: "#fff", fontSize: font.small },
 
+  taymerJoy: { position: "absolute", left: 8, bottom: 8, right: 8 },
+  kopRasm: {
+    position: "absolute", right: 8, top: 8, flexDirection: "row",
+    alignItems: "center", gap: 3, backgroundColor: "rgba(15,17,21,0.6)",
+    paddingHorizontal: 7, paddingVertical: 3, borderRadius: radius.xs,
+  },
+  kopRasmText: { color: "#fff", fontSize: 10, fontWeight: "800" },
   info: { paddingHorizontal: 12, paddingTop: 10, paddingBottom: 12 },
   store: { fontSize: font.tiny, fontWeight: "700", color: colors.store, marginBottom: 3 },
   name: {

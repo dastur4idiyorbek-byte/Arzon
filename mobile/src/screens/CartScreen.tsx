@@ -8,6 +8,7 @@ import { colors, radius, spacing, font, shadow } from "../theme";
 import { effPrice, rasmUrl } from "../types";
 import { useCart } from "../cart/CartContext";
 import { usePrompt } from "../ui/Prompt";
+import { ChegirmaTaymer } from "../ui/Glass";
 
 const DELIVERY_FEE = 100;
 
@@ -16,8 +17,33 @@ export default function CartScreen({ navigation }: any) {
   const [manzil, setManzil] = useState("");
   const [busy, setBusy] = useState(false);
   const prompt = usePrompt();
+  const [promo, setPromo] = useState("");
+  const [promoHolat, setPromoHolat] = useState<any>(null);
+  const [promoBusy, setPromoBusy] = useState(false);
+
   const fee = lines.length ? DELIVERY_FEE : 0;
-  const total = subtotal + fee;
+  // Promo faqat o'ziga tegishli do'kon mahsulotlariga tushadi.
+  const promoChegirma = promoHolat?.ok
+    ? lines
+        .filter((l) => l.product.store_id === promoHolat.store_id)
+        .reduce((s, l) => s + effPrice(l.product) * l.soni, 0) *
+      (promoHolat.chegirma_foizi / 100)
+    : 0;
+  const total = Math.max(0, subtotal - promoChegirma) + fee;
+
+  /** Promo kodni buyurtmadan oldin tekshiradi (mijoz darhol javob ko'rsin). */
+  async function promoTekshir() {
+    const kod = promo.trim();
+    if (!kod) return;
+    setPromoBusy(true);
+    const storeIds = Array.from(new Set(lines.map((l) => l.product.store_id)));
+    const { ok, data } = await api<any>("/api/promo/check", {
+      method: "POST", body: { kod, store_ids: storeIds },
+    });
+    setPromoBusy(false);
+    if (ok && data) setPromoHolat(data);
+    else setPromoHolat({ ok: false, sabab: "Tekshirib bo'lmadi. Internetni tekshiring." });
+  }
 
   async function doCheckout(tel?: string) {
     const items = lines.map((l) => ({
@@ -27,7 +53,10 @@ export default function CartScreen({ navigation }: any) {
     if (tel) await api("/api/confirm-phone", { method: "POST", body: { tel } });
     const { ok, status, data } = await api<any>("/api/checkout", {
       method: "POST",
-      body: { items, yetkazish_turi: "kuryer", manzil: manzil.trim() },
+      body: {
+        items, yetkazish_turi: "kuryer", manzil: manzil.trim(),
+        promo_kod: promoHolat?.ok ? promoHolat.kod : undefined,
+      },
     });
     if (ok) {
       const kodlar = (data.buyurtmalar || []).map((o: any) => o.kod).join(", ");
@@ -131,12 +160,66 @@ export default function CartScreen({ navigation }: any) {
           />
         </View>
 
+        {/* Promo kod */}
+        <Text style={styles.label}>Promo kod</Text>
+        <View style={styles.promoRow}>
+          <View style={styles.promoInputWrap}>
+            <Ionicons name="pricetag-outline" size={18} color={colors.textFaint} />
+            <TextInput
+              style={styles.input}
+              placeholder="Kodni kiriting"
+              placeholderTextColor={colors.textFaint}
+              value={promo}
+              onChangeText={(v) => { setPromo(v); setPromoHolat(null); }}
+              autoCapitalize="characters"
+            />
+          </View>
+          <TouchableOpacity
+            style={[styles.promoBtn, (!promo.trim() || promoBusy) && { opacity: 0.5 }]}
+            onPress={promoTekshir}
+            disabled={!promo.trim() || promoBusy}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.promoBtnText}>{promoBusy ? "..." : "Qo'llash"}</Text>
+          </TouchableOpacity>
+        </View>
+        {!!promoHolat && (
+          <View style={[styles.promoJavob, promoHolat.ok ? styles.promoOk : styles.promoXato]}>
+            <Ionicons
+              name={promoHolat.ok ? "checkmark-circle" : "alert-circle"}
+              size={16}
+              color={promoHolat.ok ? colors.store : colors.sale}
+            />
+            <Text style={[styles.promoJavobText, { color: promoHolat.ok ? colors.store : colors.sale }]}>
+              {promoHolat.ok
+                ? `${promoHolat.chegirma_foizi}% chegirma qo'llandi` +
+                  (promoHolat.store_nomi ? ` — ${promoHolat.store_nomi}` : "")
+                : promoHolat.sabab}
+            </Text>
+          </View>
+        )}
+        {promoHolat?.ok && !!promoHolat.muddat && (
+          <View style={{ marginTop: 8 }}>
+            <ChegirmaTaymer muddat={promoHolat.muddat} />
+          </View>
+        )}
+
         {/* Hisob-kitob */}
         <View style={styles.summary}>
           <View style={styles.sumRow}>
             <Text style={styles.sumLabel}>Mahsulotlar</Text>
             <Text style={styles.sumVal}>{money(subtotal)} som</Text>
           </View>
+          {promoChegirma > 0 && (
+            <View style={styles.sumRow}>
+              <Text style={[styles.sumLabel, { color: colors.store }]}>
+                Promo ({promoHolat.chegirma_foizi}%)
+              </Text>
+              <Text style={[styles.sumVal, { color: colors.store }]}>
+                −{money(promoChegirma)} som
+              </Text>
+            </View>
+          )}
           <View style={styles.sumRow}>
             <Text style={styles.sumLabel}>🚚 Yetkazish</Text>
             <Text style={styles.sumVal}>{money(fee)} som</Text>
@@ -205,6 +288,24 @@ const styles = StyleSheet.create({
     borderRadius: radius.md, paddingHorizontal: 14, height: 50, ...shadow.sm,
   },
   input: { flex: 1, color: colors.text, fontSize: font.body, padding: 0 },
+  promoRow: { flexDirection: "row", gap: 10 },
+  promoInputWrap: {
+    flex: 1, flexDirection: "row", alignItems: "center", gap: 8,
+    backgroundColor: colors.bg, borderRadius: radius.md,
+    paddingHorizontal: 14, height: 50, ...shadow.sm,
+  },
+  promoBtn: {
+    paddingHorizontal: 20, height: 50, borderRadius: radius.md,
+    backgroundColor: colors.text, alignItems: "center", justifyContent: "center",
+  },
+  promoBtnText: { color: "#fff", fontWeight: "800", fontSize: font.small },
+  promoJavob: {
+    flexDirection: "row", alignItems: "center", gap: 7, marginTop: 10,
+    borderRadius: radius.sm, padding: 11,
+  },
+  promoOk: { backgroundColor: colors.storeSoft },
+  promoXato: { backgroundColor: colors.saleSoft },
+  promoJavobText: { flex: 1, fontWeight: "700", fontSize: font.small },
 
   summary: { backgroundColor: colors.bg, borderRadius: radius.lg, padding: spacing.lg, marginTop: spacing.lg, gap: 10, ...shadow.sm },
   sumRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },

@@ -14,6 +14,12 @@ export type Product = {
   store_id: number;
   olcham?: string | null;
   rang?: string | null;
+  /** Chegirma qachon tugashi (ISO) — taymer shu bo'yicha ishlaydi. */
+  skidka_muddati?: string | null;
+  /** Rasm nisbati: '1:1' | '4:3' | '3:4' | '9:16' | '16:9'. */
+  rasm_nisbati?: string | null;
+  /** Omborda qolgan dona (null = cheksiz). */
+  miqdor?: number | null;
 };
 
 export type CartLine = {
@@ -21,6 +27,12 @@ export type CartLine = {
   soni: number;
   olcham?: string | null;
   rang?: string | null;
+  /** Chegirma qachon tugashi (ISO) — taymer shu bo'yicha ishlaydi. */
+  skidka_muddati?: string | null;
+  /** Rasm nisbati: '1:1' | '4:3' | '3:4' | '9:16' | '16:9'. */
+  rasm_nisbati?: string | null;
+  /** Omborda qolgan dona (null = cheksiz). */
+  miqdor?: number | null;
 };
 
 export type Order = {
@@ -37,10 +49,34 @@ export function effPrice(p: Product): number {
   return p.sotuv_narxi != null ? p.sotuv_narxi : p.narxi;
 }
 
-/** Mahsulot rasmi manzili — nisbiy bo'lsa (/media/...) to'liq URL qilinadi.
- *  Backend rasmni "/media/db/1" yoki "/media/<file_id>" ko'rinishida beradi. */
-export function rasmUrl(p: Product): string | null {
-  const u = p.rasm_url || (p.rasm_urls && p.rasm_urls[0]) || null;
+/** Nisbiy manzilni (/media/...) to'liq URL'ga aylantiradi. */
+export function toliqUrl(u?: string | null): string | null {
   if (!u) return null;
   return u.startsWith("http") ? u : API_URL + u;
+}
+
+/** Mahsulotning BIRINCHI rasmi (kartochka uchun). */
+export function rasmUrl(p: Product): string | null {
+  return toliqUrl(p.rasm_url || (p.rasm_urls && p.rasm_urls[0]) || null);
+}
+
+/** Mahsulotning BARCHA rasmlari (karusel uchun, takrorsiz). */
+export function rasmlar(p: Product): string[] {
+  const hammasi = [p.rasm_url, ...(p.rasm_urls || [])];
+  const koringan = new Set<string>();
+  const natija: string[] = [];
+  for (const u of hammasi) {
+    const t = toliqUrl(u);
+    if (t && !koringan.has(t)) {
+      koringan.add(t);
+      natija.push(t);
+    }
+  }
+  return natija;
+}
+
+/** Rasm nisbati matnini (masalan "4:3") son nisbatiga aylantiradi. */
+export function nisbat(p: Product): number {
+  const [w, h] = (p.rasm_nisbati || "1:1").split(":").map(Number);
+  return w > 0 && h > 0 ? w / h : 1;
 }
