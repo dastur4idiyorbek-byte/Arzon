@@ -1,18 +1,22 @@
 import React, { useCallback, useState } from "react";
-import { View, Text, StyleSheet, FlatList, RefreshControl } from "react-native";
+import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, Linking } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
+import { Ionicons } from "@expo/vector-icons";
 import { api, money } from "../api";
-import { colors, radius, spacing, font } from "../theme";
+import { colors, radius, spacing, font, shadow } from "../theme";
 import { Order } from "../types";
 import { Loader } from "./panels/PanelUI";
 
-const HOLAT: Record<string, { t: string; c: string }> = {
-  yangi: { t: "🆕 Yangi", c: "#1976d2" },
-  tayyorlanmoqda: { t: "👨‍🍳 Tayyorlanmoqda", c: "#e65100" },
-  yolda: { t: "🚚 Yo'lda", c: colors.brand },
-  topshirildi: { t: "✅ Topshirildi", c: colors.store },
-  bekor_qilindi: { t: "❌ Bekor qilindi", c: "#c62828" },
+const HOLAT: Record<string, { t: string; c: string; bg: string; icon: keyof typeof Ionicons.glyphMap }> = {
+  yangi: { t: "Yangi", c: colors.info, bg: "#E8F1FA", icon: "sparkles-outline" },
+  tayyorlanmoqda: { t: "Tayyorlanmoqda", c: colors.warn, bg: colors.brandSoft, icon: "cube-outline" },
+  yolda: { t: "Yo'lda", c: colors.brand, bg: colors.brandSoft, icon: "bicycle-outline" },
+  topshirildi: { t: "Topshirildi", c: colors.store, bg: colors.storeSoft, icon: "checkmark-circle-outline" },
+  bekor_qilindi: { t: "Bekor qilindi", c: colors.sale, bg: colors.saleSoft, icon: "close-circle-outline" },
 };
+
+// Buyurtma qaysi bosqichda ekanini ko'rsatuvchi yo'lak.
+const BOSQICH = ["yangi", "tayyorlanmoqda", "yolda", "topshirildi"];
 
 export default function OrdersScreen() {
   const [rows, setRows] = useState<Order[]>([]);
@@ -30,24 +34,74 @@ export default function OrdersScreen() {
 
   return (
     <FlatList
-      style={{ backgroundColor: colors.bg }}
-      contentContainerStyle={{ padding: spacing.lg }}
+      style={{ backgroundColor: colors.bgSoft }}
+      contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.md }}
       data={rows}
       keyExtractor={(o) => String(o.id)}
-      refreshControl={<RefreshControl refreshing={false} onRefresh={load} />}
-      ListEmptyComponent={<Text style={styles.empty}>Buyurtmalar yo'q.</Text>}
+      refreshControl={<RefreshControl refreshing={false} onRefresh={load} tintColor={colors.brand} />}
+      ListHeaderComponent={
+        rows.length ? <Text style={styles.sarlavha}>Buyurtmalarim</Text> : null
+      }
+      ListEmptyComponent={
+        <View style={styles.empty}>
+          <Text style={{ fontSize: 46 }}>📦</Text>
+          <Text style={styles.emptyTitle}>Buyurtmalar yo'q</Text>
+          <Text style={styles.emptyHint}>Katalogdan mahsulot tanlab, birinchi buyurtmangizni bering.</Text>
+        </View>
+      }
       renderItem={({ item: o }) => {
-        const st = HOLAT[o.holat] || { t: o.holat, c: colors.textMuted };
+        const st = HOLAT[o.holat] || { t: o.holat, c: colors.textMuted, bg: colors.secondaryBg, icon: "ellipse-outline" as const };
+        const joriy = BOSQICH.indexOf(o.holat);
+        const bekor = o.holat === "bekor_qilindi";
         return (
           <View style={styles.card}>
-            <View style={styles.head}>
-              <Text style={styles.label}>Buyurtma kodi</Text>
-              <Text style={[styles.badge, { color: st.c }]}>{st.t}</Text>
+            {/* Yuqori qator: holat */}
+            <View style={[styles.badge, { backgroundColor: st.bg }]}>
+              <Ionicons name={st.icon} size={14} color={st.c} />
+              <Text style={[styles.badgeText, { color: st.c }]}>{st.t}</Text>
             </View>
-            <Text style={styles.code}>{o.kod}</Text>
-            {!!o.kuryer_tel && <Text style={styles.kuryer}>🚚 Kuryer: {o.kuryer_tel}</Text>}
+
+            {/* Buyurtma kodi — kuryerga aytiladigan asosiy narsa */}
+            <Text style={styles.kodLabel}>Buyurtma kodi</Text>
+            <Text style={styles.kod}>{o.kod}</Text>
+
+            {/* Bosqichlar yo'lagi */}
+            {!bekor && (
+              <View style={styles.yolak}>
+                {BOSQICH.map((b, i) => (
+                  <View key={b} style={styles.bosqich}>
+                    <View style={[styles.nuqta, i <= joriy && styles.nuqtaFaol]} />
+                    {i < BOSQICH.length - 1 && (
+                      <View style={[styles.chiziq, i < joriy && styles.chiziqFaol]} />
+                    )}
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Mahsulotlar */}
+            {(o.mahsulotlar || []).slice(0, 3).map((m: any, i: number) => (
+              <Text key={i} style={styles.item} numberOfLines={1}>
+                • {m.nomi} × {m.soni}
+              </Text>
+            ))}
+            {(o.mahsulotlar || []).length > 3 && (
+              <Text style={styles.yana}>+ yana {(o.mahsulotlar || []).length - 3} ta</Text>
+            )}
+
+            {/* Kuryer — bosilsa qo'ng'iroq qilinadi */}
+            {!!o.kuryer_tel && (
+              <TouchableOpacity
+                style={styles.kuryer}
+                onPress={() => Linking.openURL(`tel:${o.kuryer_tel}`)}
+              >
+                <Ionicons name="call-outline" size={16} color={colors.store} />
+                <Text style={styles.kuryerText}>Kuryer: {o.kuryer_tel}</Text>
+              </TouchableOpacity>
+            )}
+
             <View style={styles.totalRow}>
-              <Text>Jami</Text>
+              <Text style={styles.totalLabel}>Jami</Text>
               <Text style={styles.total}>{money(o.jami_narx)} som</Text>
             </View>
           </View>
@@ -58,13 +112,38 @@ export default function OrdersScreen() {
 }
 
 const styles = StyleSheet.create({
-  empty: { textAlign: "center", color: colors.textMuted, marginTop: 40 },
-  card: { backgroundColor: colors.cardTop, borderWidth: 1, borderColor: colors.line, borderRadius: radius.lg, padding: 16, marginBottom: 12 },
-  head: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  label: { fontSize: 12, color: colors.textMuted, textTransform: "uppercase" },
-  badge: { fontWeight: "700", fontSize: 12 },
-  code: { fontSize: 30, fontWeight: "800", letterSpacing: 4, color: colors.brand, textAlign: "center", paddingVertical: 10 },
-  kuryer: { color: colors.store, fontWeight: "600", marginBottom: 6 },
-  totalRow: { flexDirection: "row", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 8 },
-  total: { fontWeight: "800", color: colors.gold },
+  sarlavha: { fontSize: font.h1, fontWeight: "900", color: colors.text, marginBottom: spacing.xs },
+  card: { backgroundColor: colors.bg, borderRadius: radius.lg, padding: spacing.lg, ...shadow.sm },
+  badge: {
+    alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 5,
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: radius.pill,
+  },
+  badgeText: { fontWeight: "800", fontSize: font.tiny },
+  kodLabel: { fontSize: font.tiny, color: colors.textFaint, textTransform: "uppercase", marginTop: 12, letterSpacing: 0.5 },
+  kod: { fontSize: 32, fontWeight: "900", letterSpacing: 6, color: colors.brand, marginTop: 2 },
+
+  yolak: { flexDirection: "row", alignItems: "center", marginTop: 14, marginBottom: 6 },
+  bosqich: { flexDirection: "row", alignItems: "center", flex: 1 },
+  nuqta: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.line },
+  nuqtaFaol: { backgroundColor: colors.brand },
+  chiziq: { flex: 1, height: 2, backgroundColor: colors.line },
+  chiziqFaol: { backgroundColor: colors.brand },
+
+  item: { color: colors.text, marginTop: 6, fontSize: font.body },
+  yana: { color: colors.textMuted, fontSize: font.small, marginTop: 4 },
+  kuryer: {
+    flexDirection: "row", alignItems: "center", gap: 6, marginTop: 10,
+    backgroundColor: colors.storeSoft, borderRadius: radius.sm, padding: 10,
+  },
+  kuryerText: { color: colors.store, fontWeight: "700", fontSize: font.small },
+  totalRow: {
+    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+    borderTopWidth: 1, borderTopColor: colors.lineSoft, paddingTop: 12, marginTop: 12,
+  },
+  totalLabel: { color: colors.textMuted },
+  total: { fontWeight: "900", color: colors.gold, fontSize: font.h2 },
+
+  empty: { alignItems: "center", marginTop: 60, gap: 8, paddingHorizontal: spacing.xl },
+  emptyTitle: { fontSize: font.h2, fontWeight: "800", color: colors.text },
+  emptyHint: { color: colors.textMuted, textAlign: "center", lineHeight: 20 },
 });

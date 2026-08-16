@@ -1,7 +1,10 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert } from "react-native";
+import {
+  View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert, Image,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { api, money } from "../api";
-import { colors, radius, spacing, font } from "../theme";
+import { colors, radius, spacing, font, shadow } from "../theme";
 import { effPrice } from "../types";
 import { useCart } from "../cart/CartContext";
 import { usePrompt } from "../ui/Prompt";
@@ -33,17 +36,19 @@ export default function CartScreen({ navigation }: any) {
         [{ text: "OK", onPress: () => navigation.navigate("Buyurtmalar") }]);
     } else if (status === 428) {
       // Birinchi buyurtma — telefon raqami talab qilinadi (rule 8, 2-bosqich).
-      const tel = await prompt({
+      const t = await prompt({
         title: "Telefon raqami",
         message: "Birinchi buyurtma uchun raqamingizni kiriting:",
         placeholder: "+996 ...",
         keyboardType: "phone-pad",
         submitLabel: "Tasdiqlash",
       });
-      if (tel && tel.trim()) await doCheckout(tel.trim());
+      if (t && t.trim()) await doCheckout(t.trim());
     } else if (status === 402) {
-      Alert.alert("Balans yetarli emas", "Hisobingizni to'ldiring.",
-        [{ text: "Balansга o'tish", onPress: () => navigation.navigate("Balans") }, { text: "Yopish" }]);
+      Alert.alert("Balans yetarli emas", "Hisobingizni to'ldiring.", [
+        { text: "Hisobni to'ldirish", onPress: () => navigation.navigate("Topup") },
+        { text: "Yopish" },
+      ]);
     } else {
       Alert.alert("Xatolik", data?.detail || "Buyurtma berilmadi.");
     }
@@ -51,7 +56,7 @@ export default function CartScreen({ navigation }: any) {
 
   async function checkout() {
     if (!lines.length) return;
-    if (!manzil.trim()) return Alert.alert("Manzil", "Yetkazish manzilини kiriting.");
+    if (!manzil.trim()) return Alert.alert("Manzil", "Yetkazish manzilini kiriting.");
     setBusy(true);
     await doCheckout();
     setBusy(false);
@@ -60,8 +65,9 @@ export default function CartScreen({ navigation }: any) {
   if (!lines.length) {
     return (
       <View style={styles.empty}>
-        <Text style={{ fontSize: 52 }}>🛒</Text>
+        <Text style={{ fontSize: 56 }}>🛒</Text>
         <Text style={styles.emptyTitle}>Savatingiz bo'sh</Text>
+        <Text style={styles.emptyHint}>Katalogdan yoqqan mahsulotni tanlang.</Text>
         <TouchableOpacity style={styles.primary} onPress={() => navigation.navigate("KatalogTab")}>
           <Text style={styles.primaryText}>Katalogni ko'rish</Text>
         </TouchableOpacity>
@@ -71,59 +77,153 @@ export default function CartScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={{ padding: spacing.lg }}>
-        {lines.map((l) => (
-          <View key={keyOf(l)} style={styles.row}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.rowName}>{l.product.nomi}</Text>
-              {(l.olcham || l.rang) && <Text style={styles.variant}>{[l.olcham, l.rang].filter(Boolean).join(" · ")}</Text>}
-              <Text style={styles.rowPrice}>{money(effPrice(l.product))} som</Text>
-            </View>
-            <View style={styles.qty}>
-              <TouchableOpacity onPress={() => changeQty(keyOf(l), -1)} style={styles.qtyBtn}><Text style={styles.qtyBtnText}>−</Text></TouchableOpacity>
-              <Text style={styles.qtyNum}>{l.soni}</Text>
-              <TouchableOpacity onPress={() => changeQty(keyOf(l), 1)} style={styles.qtyBtn}><Text style={styles.qtyBtnText}>+</Text></TouchableOpacity>
-            </View>
-          </View>
-        ))}
+      <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xl }}>
+        {/* Mahsulotlar */}
+        <View style={styles.card}>
+          {lines.map((l, i) => {
+            const img = l.product.rasm_url || (l.product.rasm_urls && l.product.rasm_urls[0]);
+            return (
+              <View key={keyOf(l)} style={[styles.row, i > 0 && styles.rowLine]}>
+                <View style={styles.thumb}>
+                  {img ? (
+                    <Image source={{ uri: img }} style={styles.thumbImg} resizeMode="cover" />
+                  ) : (
+                    <Text style={{ fontSize: 22 }}>🛍️</Text>
+                  )}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.rowName} numberOfLines={2}>{l.product.nomi}</Text>
+                  {(l.olcham || l.rang) && (
+                    <Text style={styles.variant}>
+                      {[l.olcham, l.rang].filter(Boolean).join(" · ")}
+                    </Text>
+                  )}
+                  <Text style={styles.rowPrice}>{money(effPrice(l.product))} som</Text>
+                </View>
+                <View style={styles.qty}>
+                  <TouchableOpacity onPress={() => changeQty(keyOf(l), -1)} style={styles.qtyBtn}>
+                    <Ionicons
+                      name={l.soni === 1 ? "trash-outline" : "remove"}
+                      size={16}
+                      color={l.soni === 1 ? colors.sale : colors.text}
+                    />
+                  </TouchableOpacity>
+                  <Text style={styles.qtyNum}>{l.soni}</Text>
+                  <TouchableOpacity onPress={() => changeQty(keyOf(l), 1)} style={styles.qtyBtn}>
+                    <Ionicons name="add" size={16} color={colors.text} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            );
+          })}
+        </View>
 
-        <Text style={styles.label}>Yetkazish manzili:</Text>
-        <TextInput style={styles.input} placeholder="Ko'cha, uy..." value={manzil} onChangeText={setManzil} />
+        {/* Manzil */}
+        <Text style={styles.label}>Yetkazish manzili</Text>
+        <View style={styles.inputWrap}>
+          <Ionicons name="location-outline" size={18} color={colors.textFaint} />
+          <TextInput
+            style={styles.input}
+            placeholder="Ko'cha, uy, orientir..."
+            placeholderTextColor={colors.textFaint}
+            value={manzil}
+            onChangeText={setManzil}
+          />
+        </View>
 
+        {/* Hisob-kitob */}
         <View style={styles.summary}>
-          <View style={styles.sumRow}><Text>Mahsulotlar:</Text><Text>{money(subtotal)} som</Text></View>
-          <View style={styles.sumRow}><Text>🚚 Yetkazish:</Text><Text>{money(fee)} som</Text></View>
-          <View style={[styles.sumRow, styles.totalRow]}><Text style={styles.totalT}>Jami:</Text><Text style={styles.totalV}>{money(total)} som</Text></View>
+          <View style={styles.sumRow}>
+            <Text style={styles.sumLabel}>Mahsulotlar</Text>
+            <Text style={styles.sumVal}>{money(subtotal)} som</Text>
+          </View>
+          <View style={styles.sumRow}>
+            <Text style={styles.sumLabel}>🚚 Yetkazish</Text>
+            <Text style={styles.sumVal}>{money(fee)} som</Text>
+          </View>
+          <View style={[styles.sumRow, styles.totalRow]}>
+            <Text style={styles.totalT}>Jami</Text>
+            <Text style={styles.totalV}>{money(total)} som</Text>
+          </View>
         </View>
       </ScrollView>
-      <TouchableOpacity style={styles.checkout} onPress={checkout} disabled={busy}>
-        <Text style={styles.checkoutText}>{busy ? "..." : "Buyurtma berish"}</Text>
-      </TouchableOpacity>
+
+      {/* Pastki panel */}
+      <View style={styles.bar}>
+        <View>
+          <Text style={styles.barLabel}>Jami</Text>
+          <Text style={styles.barTotal}>{money(total)} som</Text>
+        </View>
+        <TouchableOpacity
+          style={[styles.checkout, busy && { opacity: 0.6 }]}
+          onPress={checkout}
+          disabled={busy}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.checkoutText}>{busy ? "Yuborilmoqda..." : "Buyurtma berish"}</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
-  empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, backgroundColor: colors.bg },
-  emptyTitle: { fontSize: font.h2, fontWeight: "700", color: colors.text },
-  primary: { backgroundColor: colors.brand, borderRadius: radius.md, paddingVertical: 12, paddingHorizontal: 24 },
+  container: { flex: 1, backgroundColor: colors.bgSoft },
+  empty: {
+    flex: 1, alignItems: "center", justifyContent: "center", gap: 10,
+    backgroundColor: colors.bgSoft, paddingHorizontal: spacing.xl,
+  },
+  emptyTitle: { fontSize: font.h2, fontWeight: "800", color: colors.text },
+  emptyHint: { color: colors.textMuted, textAlign: "center" },
+  primary: {
+    backgroundColor: colors.brand, borderRadius: radius.md,
+    paddingVertical: 14, paddingHorizontal: 28, marginTop: 8,
+  },
   primaryText: { color: "#fff", fontWeight: "800" },
-  row: { flexDirection: "row", alignItems: "center", paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.line },
-  rowName: { fontWeight: "700", color: colors.text },
-  variant: { color: colors.textMuted, fontSize: 12 },
-  rowPrice: { color: colors.store, fontSize: 12, marginTop: 2 },
-  qty: { flexDirection: "row", alignItems: "center", gap: 10 },
-  qtyBtn: { width: 32, height: 32, borderRadius: 8, backgroundColor: colors.secondaryBg, alignItems: "center", justifyContent: "center" },
-  qtyBtnText: { fontSize: 18, color: colors.text },
-  qtyNum: { minWidth: 20, textAlign: "center", fontWeight: "700" },
-  label: { marginTop: spacing.lg, marginBottom: 6, color: colors.textMuted },
-  input: { borderWidth: 1, borderColor: colors.line, backgroundColor: colors.secondaryBg, borderRadius: radius.sm, padding: 12 },
-  summary: { backgroundColor: colors.secondaryBg, borderRadius: radius.md, padding: 12, marginTop: spacing.lg, gap: 8 },
-  sumRow: { flexDirection: "row", justifyContent: "space-between" },
-  totalRow: { borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 8 },
-  totalT: { fontWeight: "800", fontSize: 16 },
-  totalV: { fontWeight: "800", fontSize: 16, color: colors.gold },
-  checkout: { backgroundColor: colors.brand, margin: spacing.lg, borderRadius: radius.md, padding: 15, alignItems: "center" },
-  checkoutText: { color: "#fff", fontWeight: "800", fontSize: 15 },
+
+  card: { backgroundColor: colors.bg, borderRadius: radius.lg, padding: spacing.md, ...shadow.sm },
+  row: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12 },
+  rowLine: { borderTopWidth: 1, borderTopColor: colors.lineSoft },
+  thumb: {
+    width: 56, height: 56, borderRadius: radius.sm, backgroundColor: colors.secondaryBg,
+    alignItems: "center", justifyContent: "center", overflow: "hidden",
+  },
+  thumbImg: { width: "100%", height: "100%" },
+  rowName: { fontWeight: "700", color: colors.text, fontSize: font.body },
+  variant: { color: colors.textMuted, fontSize: font.tiny, marginTop: 2 },
+  rowPrice: { color: colors.store, fontSize: font.small, marginTop: 3, fontWeight: "700" },
+  qty: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    backgroundColor: colors.secondaryBg, borderRadius: radius.pill, padding: 3,
+  },
+  qtyBtn: { width: 30, height: 30, borderRadius: 15, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" },
+  qtyNum: { minWidth: 22, textAlign: "center", fontWeight: "800", color: colors.text },
+
+  label: { marginTop: spacing.xl, marginBottom: 8, color: colors.text, fontWeight: "800", fontSize: font.h3 },
+  inputWrap: {
+    flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.bg,
+    borderRadius: radius.md, paddingHorizontal: 14, height: 50, ...shadow.sm,
+  },
+  input: { flex: 1, color: colors.text, fontSize: font.body, padding: 0 },
+
+  summary: { backgroundColor: colors.bg, borderRadius: radius.lg, padding: spacing.lg, marginTop: spacing.lg, gap: 10, ...shadow.sm },
+  sumRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  sumLabel: { color: colors.textMuted },
+  sumVal: { color: colors.text, fontWeight: "600" },
+  totalRow: { borderTopWidth: 1, borderTopColor: colors.lineSoft, paddingTop: 10 },
+  totalT: { fontWeight: "900", fontSize: font.h2, color: colors.text },
+  totalV: { fontWeight: "900", fontSize: font.h2, color: colors.gold },
+
+  bar: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
+    backgroundColor: colors.bg, borderTopWidth: 1, borderTopColor: colors.line,
+  },
+  barLabel: { color: colors.textMuted, fontSize: font.tiny },
+  barTotal: { fontWeight: "900", fontSize: font.h2, color: colors.gold },
+  checkout: {
+    flex: 1, maxWidth: 220, backgroundColor: colors.brand, borderRadius: radius.md,
+    paddingVertical: 15, alignItems: "center",
+  },
+  checkoutText: { color: "#fff", fontWeight: "800", fontSize: font.body + 1 },
 });

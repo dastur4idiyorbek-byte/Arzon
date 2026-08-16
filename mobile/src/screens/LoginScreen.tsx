@@ -3,7 +3,7 @@ import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, Platform,
 } from "react-native";
 import { api } from "../api";
-import { colors, radius, spacing, font } from "../theme";
+import { colors, radius, spacing, font, shadow } from "../theme";
 import { useAuth, AuthUser } from "../auth/AuthContext";
 
 type AuthResp = { token: string; user: AuthUser; roles: string[] };
@@ -52,8 +52,9 @@ export default function LoginScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
+      <Image source={require("../../assets/icon.png")} style={styles.logoImg} />
       <Text style={styles.logo}>ARZON</Text>
-      <Text style={styles.sub}>Arzon narx, sifatli tanlov</Text>
+      <Text style={styles.sub}>Arzon narx · Sifatli mahsulot · Tez yetkazish</Text>
 
       <View style={styles.tabs}>
         <TouchableOpacity onPress={() => setMode("login")} style={[styles.tab, mode === "login" && styles.tabOn]}>
@@ -65,14 +66,14 @@ export default function LoginScreen() {
       </View>
 
       {mode === "register" && (
-        <TextInput style={styles.input} placeholder="Ismingiz" value={ism} onChangeText={setIsm} />
+        <TextInput style={styles.input} placeholder="Ismingiz" placeholderTextColor={colors.textFaint} value={ism} onChangeText={setIsm} />
       )}
       <TextInput
-        style={styles.input} placeholder="Email" autoCapitalize="none" keyboardType="email-address"
+        style={styles.input} placeholderTextColor={colors.textFaint} placeholder="Email" autoCapitalize="none" keyboardType="email-address"
         value={email} onChangeText={setEmail}
       />
       <TextInput
-        style={styles.input} placeholder="Parol" secureTextEntry value={parol} onChangeText={setParol}
+        style={styles.input} placeholderTextColor={colors.textFaint} placeholder="Parol" secureTextEntry value={parol} onChangeText={setParol}
       />
 
       <TouchableOpacity style={styles.primary} onPress={submitEmail} disabled={busy}>
@@ -104,27 +105,29 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flexGrow: 1, backgroundColor: colors.bg, padding: spacing.xl, justifyContent: "center" },
-  logo: { fontSize: 34, fontWeight: "800", color: colors.brand, textAlign: "center", letterSpacing: 2 },
-  sub: { textAlign: "center", color: colors.textMuted, marginBottom: spacing.xl },
+  container: { flexGrow: 1, backgroundColor: colors.bgSoft, padding: spacing.xl, justifyContent: "center" },
+  logoImg: { width: 88, height: 88, borderRadius: radius.xl, alignSelf: "center", marginBottom: spacing.md },
+  logo: { fontSize: 32, fontWeight: "900", color: colors.brand, textAlign: "center", letterSpacing: 2 },
+  sub: { textAlign: "center", color: colors.textMuted, marginBottom: spacing.xl, fontSize: font.small },
   tabs: { flexDirection: "row", backgroundColor: colors.secondaryBg, borderRadius: radius.md, padding: 4, marginBottom: spacing.lg },
   tab: { flex: 1, paddingVertical: 10, alignItems: "center", borderRadius: radius.sm },
   tabOn: { backgroundColor: colors.bg },
   tabText: { color: colors.textMuted, fontWeight: "700" },
   tabTextOn: { color: colors.brand },
   input: {
-    borderWidth: 1, borderColor: colors.line, backgroundColor: colors.secondaryBg,
-    borderRadius: radius.sm, padding: 14, fontSize: font.body, marginBottom: spacing.md,
+    backgroundColor: colors.bg, borderRadius: radius.md, paddingHorizontal: 16,
+    height: 52, fontSize: font.body, marginBottom: spacing.md, color: colors.text,
+    ...shadow.sm,
   },
-  primary: { backgroundColor: colors.brand, borderRadius: radius.md, padding: 15, alignItems: "center", marginTop: 4 },
+  primary: { backgroundColor: colors.brand, borderRadius: radius.md, paddingVertical: 16, alignItems: "center", marginTop: 4, ...shadow.md },
   primaryText: { color: "#fff", fontWeight: "800", fontSize: 15 },
   forgot: { color: colors.brand, textAlign: "center", marginTop: spacing.md, fontWeight: "600" },
   orRow: { flexDirection: "row", alignItems: "center", marginVertical: spacing.lg, gap: 10 },
   line: { flex: 1, height: 1, backgroundColor: colors.line },
   or: { color: colors.textMuted },
   social: {
-    borderWidth: 1.5, borderColor: colors.line, borderRadius: radius.md, padding: 14,
-    alignItems: "center", marginBottom: spacing.md,
+    backgroundColor: colors.bg, borderRadius: radius.md, paddingVertical: 15,
+    alignItems: "center", marginBottom: spacing.md, ...shadow.sm,
   },
   apple: { backgroundColor: "#000", borderColor: "#000" },
   socialText: { fontWeight: "700", color: colors.text },

@@ -15,7 +15,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import * as Clipboard from "expo-clipboard";
 import { api, money, API_URL, authHeader } from "../api";
-import { colors, radius, spacing, font } from "../theme";
+import { colors, radius, spacing, font, shadow } from "../theme";
 import { Loader } from "./panels/PanelUI";
 
 type Usul = {
@@ -189,7 +189,7 @@ export default function TopupScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
+  container: { flex: 1, backgroundColor: colors.bgSoft },
   step: { fontWeight: "800", color: colors.text, fontSize: font.h2, marginTop: spacing.lg, marginBottom: 10 },
   warn: { backgroundColor: "rgba(224,30,30,0.08)", borderRadius: radius.md, padding: 14 },
   warnText: { color: colors.sale, fontWeight: "600" },
@@ -201,8 +201,8 @@ const styles = StyleSheet.create({
   usulOn: { borderColor: colors.brand, backgroundColor: colors.cardTop },
   usulNomi: { fontWeight: "700", color: colors.textMuted },
   karta: {
-    backgroundColor: colors.cardTop, borderWidth: 1, borderColor: colors.line,
-    borderRadius: radius.lg, padding: 16, marginTop: 12, gap: 6,
+    backgroundColor: colors.bg, borderRadius: radius.lg, padding: 16,
+    marginTop: 12, gap: 6, ...shadow.sm,
   },
   kartaLabel: { color: colors.textMuted, fontSize: 12 },
   kartaRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
@@ -211,8 +211,8 @@ const styles = StyleSheet.create({
   izoh: { color: colors.textMuted, fontSize: 12 },
   qr: { width: "100%", height: 180, marginTop: 8, borderRadius: radius.sm },
   input: {
-    borderWidth: 1, borderColor: colors.line, backgroundColor: colors.secondaryBg,
-    borderRadius: radius.sm, padding: 14, color: colors.text, fontSize: 16,
+    backgroundColor: colors.bg, borderRadius: radius.md, paddingHorizontal: 16,
+    height: 52, color: colors.text, fontSize: 16, ...shadow.sm,
   },
   hisob: { color: colors.textMuted, marginTop: 6, fontSize: 13 },
   hisobB: { color: colors.gold, fontWeight: "800" },
@@ -227,8 +227,8 @@ const styles = StyleSheet.create({
   chekOchir: { alignSelf: "center", marginTop: 8, padding: 8 },
   chekOchirText: { color: colors.sale, fontWeight: "700" },
   yubor: {
-    backgroundColor: colors.brand, borderRadius: radius.md, padding: 16,
-    alignItems: "center", marginTop: spacing.xl,
+    backgroundColor: colors.brand, borderRadius: radius.md, paddingVertical: 16,
+    alignItems: "center", marginTop: spacing.xl, ...shadow.md,
   },
   yuborText: { color: "#fff", fontWeight: "800", fontSize: 15 },
   eslatma: { color: colors.textMuted, fontSize: 12, textAlign: "center", marginTop: 12, lineHeight: 18 },
