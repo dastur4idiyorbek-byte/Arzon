@@ -39,10 +39,34 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
+      - name: Token borligini tekshirish
+        run: |
+          if [ -z "${{ secrets.EXPO_TOKEN }}" ]; then
+            echo "❌ EXPO_TOKEN topilmadi."
+            echo "   GitHub -> Settings -> Secrets and variables -> Actions"
+            echo "   -> New repository secret -> Name: EXPO_TOKEN"
+            exit 1
+          fi
+          echo "✅ EXPO_TOKEN bor. Expo hisobi:"
+          eas whoami
+
       - name: Kutubxonalarni o'rnatish
         working-directory: mobile
         run: npm install
 
+      # Expo loyihasini avtomatik yaratadi/bog'laydi (app.json'ga projectId qo'shadi).
+      # Bu bo'lmasa eas build "projectId yo'q" deb to'xtaydi (birinchi build xatosi).
+      - name: Expo loyihasini bog'lash (projectId)
+        working-directory: mobile
+        run: eas init --force --non-interactive
+
       - name: APK build (Expo bulutida)
         working-directory: mobile
         run: eas build --platform android --profile preview --non-interactive --no-wait
+
+      - name: Qayerdan olish
+        if: success()
+        run: |
+          echo "🎉 Buyurtma Expo'ga topshirildi."
+          echo "APK 15-20 daqiqada tayyor bo'ladi:"
+          echo "  expo.dev -> Projects -> arzon -> Builds -> Download (.apk)"
