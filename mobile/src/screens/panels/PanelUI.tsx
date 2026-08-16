@@ -95,9 +95,21 @@ export function Empty({ text }: { text: string }) {
   return <Text style={styles.empty}>{text}</Text>;
 }
 
+/** Yuklanish belgisi — DARHOL emas, ~250ms kutib chiqadi.
+ *
+ * Tez javoblar (odatdagi holat) da spinner umuman ko'rinmaydi, shuning uchun
+ * ekran "uzilib-uzilib" turmaydi. Faqat sekin tarmoqda ko'rinadi. */
 export function Loader() {
+  const [korinsin, setKorinsin] = React.useState(false);
+  React.useEffect(() => {
+    const t = setTimeout(() => setKorinsin(true), 250);
+    return () => clearTimeout(t);
+  }, []);
+  if (!korinsin) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
   return (
-    <ActivityIndicator color={colors.brand} style={{ marginTop: 40 }} size="large" />
+    <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: 40 }}>
+      <ActivityIndicator color={colors.brand} size="large" />
+    </View>
   );
 }
 

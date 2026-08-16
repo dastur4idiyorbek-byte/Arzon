@@ -7,6 +7,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { api, money } from "../../api";
 import { colors, radius, spacing } from "../../theme";
 import { Loader, Empty, Btn } from "./PanelUI";
+import { usePrompt } from "../../ui/Prompt";
 
 const HOLAT: Record<string, { t: string; c: string }> = {
   yangi: { t: "🆕 Yangi", c: "#1976d2" },
@@ -25,6 +26,8 @@ export default function AdminOrdersScreen({ route }: any) {
   const { storeId } = route.params;
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const prompt = usePrompt();
 
   const load = useCallback(async () => {
     const { ok, data } = await api<any[]>(`/api/admin/stores/${storeId}/orders`);
@@ -33,38 +36,58 @@ export default function AdminOrdersScreen({ route }: any) {
   }, [storeId]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  async function setStatus(o: any, holat: string, kuryer_tel?: string) {
-    const { ok, data } = await api(`/api/admin/orders/${o.id}/status`, {
+  async function setStatus(o: any, holat: string, kuryer_tel?: string, ok_matn = "Holat o'zgardi") {
+    setBusy(true);
+    const { ok, status, data } = await api(`/api/admin/orders/${o.id}/status`, {
       method: "PATCH", body: { holat, kuryer_tel: kuryer_tel || null },
     });
-    if (ok) load();
-    else Alert.alert("Xatolik", (data as any)?.detail || "O'zgartirilmadi.");
-  }
-
-  function advance(o: any) {
-    const nx = NEXT[o.holat];
-    if (!nx) return;
-    if (nx.holat === "yolda") {
-      if (Alert.prompt) {
-        Alert.prompt("Kuryer telefoni", "Kuryer raqamini kiriting (ixtiyoriy):",
-          (tel) => setStatus(o, "yolda", tel?.trim() || undefined));
-      } else {
-        setStatus(o, "yolda");
-      }
+    setBusy(false);
+    if (ok) {
+      Alert.alert("✅ " + ok_matn, "");
+      load();
     } else {
-      setStatus(o, nx.holat);
+      Alert.alert("Xatolik", (data as any)?.detail ||
+        (status === 0 ? "Internet yo'q yoki server javob bermadi." : `Xato kodi: ${status}`));
     }
   }
 
-  function cancel(o: any) {
-    const doCancel = (sabab: string) =>
-      api(`/api/admin/orders/${o.id}/cancel`, { method: "POST", body: { sabab } }).then((r) =>
-        r.ok ? load() : Alert.alert("Xatolik", (r.data as any)?.detail || "Bekor qilinmadi.")
-      );
-    if (Alert.prompt) {
-      Alert.prompt("Bekor qilish", "Sababini kiriting:", (s) => s?.trim() && doCancel(s.trim()));
+  async function advance(o: any) {
+    const nx = NEXT[o.holat];
+    if (!nx) return;
+    if (nx.holat === "yolda") {
+      const tel = await prompt({
+        title: "Kuryer telefoni",
+        message: "Kuryer raqamini kiriting (bo'sh qoldirsangiz ham bo'ladi):",
+        placeholder: "+996 ...",
+        keyboardType: "phone-pad",
+        submitLabel: "Yo'lga chiqarish",
+      });
+      if (tel === null) return; // bekor qilindi
+      setStatus(o, "yolda", tel.trim() || undefined, "Yo'lga chiqarildi");
     } else {
-      doCancel("Admin bekor qildi");
+      setStatus(o, nx.holat, undefined,
+        nx.holat === "topshirildi" ? "Topshirildi" : "Tayyorlanmoqda");
+    }
+  }
+
+  async function cancel(o: any) {
+    const sabab = await prompt({
+      title: "Buyurtmani bekor qilish",
+      message: "Sababini yozing (mijozga yuboriladi):",
+      placeholder: "Masalan: mahsulot tugadi",
+      submitLabel: "Bekor qilish",
+      multiline: true,
+    });
+    if (sabab === null) return;
+    const matn = sabab.trim() || "Admin bekor qildi";
+    setBusy(true);
+    const r = await api(`/api/admin/orders/${o.id}/cancel`, { method: "POST", body: { sabab: matn } });
+    setBusy(false);
+    if (r.ok) {
+      Alert.alert("✅ Bekor qilindi", "");
+      load();
+    } else {
+      Alert.alert("Xatolik", (r.data as any)?.detail || "Bekor qilinmadi.");
     }
   }
 
@@ -98,8 +121,8 @@ export default function AdminOrdersScreen({ route }: any) {
             </View>
             {active && (
               <View style={styles.actions}>
-                {nx && <Btn label={nx.label} onPress={() => advance(o)} tone="store" style={{ flex: 1 }} />}
-                <Btn label="Bekor" onPress={() => cancel(o)} tone="sale" style={{ flex: 1 }} />
+                {nx && <Btn label={nx.label} onPress={() => advance(o)} tone="store" disabled={busy} style={{ flex: 1 }} />}
+                <Btn label="Bekor" onPress={() => cancel(o)} tone="sale" disabled={busy} style={{ flex: 1 }} />
               </View>
             )}
           </View>

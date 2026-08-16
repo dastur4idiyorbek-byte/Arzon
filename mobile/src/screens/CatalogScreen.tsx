@@ -5,6 +5,7 @@ import {
 } from "react-native";
 import { api, money } from "../api";
 import { colors, radius, spacing, font } from "../theme";
+import { Loader } from "./panels/PanelUI";
 import { Product, effPrice } from "../types";
 import { useCart } from "../cart/CartContext";
 
@@ -63,7 +64,7 @@ export default function CatalogScreen({ navigation }: any) {
       </View>
       <TextInput style={styles.search} placeholder="🔍 Mahsulot qidirish..." value={q} onChangeText={setQ} />
       {loading ? (
-        <ActivityIndicator color={colors.brand} style={{ marginTop: 40 }} />
+        <Loader />
       ) : (
         <FlatList
           data={list}

@@ -4,6 +4,7 @@ import { api, money } from "../api";
 import { colors, radius, spacing, font } from "../theme";
 import { effPrice } from "../types";
 import { useCart } from "../cart/CartContext";
+import { usePrompt } from "../ui/Prompt";
 
 const DELIVERY_FEE = 100;
 
@@ -11,6 +12,7 @@ export default function CartScreen({ navigation }: any) {
   const { lines, subtotal, changeQty, clear, keyOf } = useCart();
   const [manzil, setManzil] = useState("");
   const [busy, setBusy] = useState(false);
+  const prompt = usePrompt();
   const fee = lines.length ? DELIVERY_FEE : 0;
   const total = subtotal + fee;
 
@@ -30,9 +32,15 @@ export default function CartScreen({ navigation }: any) {
       Alert.alert("✅ Buyurtma qabul qilindi", `Kod(lar): ${kodlar}`,
         [{ text: "OK", onPress: () => navigation.navigate("Buyurtmalar") }]);
     } else if (status === 428) {
-      Alert.prompt?.("Telefon raqami", "Birinchi buyurtma uchun raqamingizni kiriting:",
-        (v) => v && doCheckout(v));
-      if (!Alert.prompt) Alert.alert("Telefon kerak", "Profil orqali telefon raqamingizni tasdiqlang.");
+      // Birinchi buyurtma — telefon raqami talab qilinadi (rule 8, 2-bosqich).
+      const tel = await prompt({
+        title: "Telefon raqami",
+        message: "Birinchi buyurtma uchun raqamingizni kiriting:",
+        placeholder: "+996 ...",
+        keyboardType: "phone-pad",
+        submitLabel: "Tasdiqlash",
+      });
+      if (tel && tel.trim()) await doCheckout(tel.trim());
     } else if (status === 402) {
       Alert.alert("Balans yetarli emas", "Hisobingizni to'ldiring.",
         [{ text: "Balansга o'tish", onPress: () => navigation.navigate("Balans") }, { text: "Yopish" }]);

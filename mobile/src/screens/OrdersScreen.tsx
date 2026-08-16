@@ -1,9 +1,10 @@
 import React, { useCallback, useState } from "react";
-import { View, Text, StyleSheet, FlatList, RefreshControl, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, FlatList, RefreshControl } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { api, money } from "../api";
 import { colors, radius, spacing, font } from "../theme";
 import { Order } from "../types";
+import { Loader } from "./panels/PanelUI";
 
 const HOLAT: Record<string, { t: string; c: string }> = {
   yangi: { t: "🆕 Yangi", c: "#1976d2" },
@@ -25,7 +26,7 @@ export default function OrdersScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  if (loading) return <ActivityIndicator color={colors.brand} style={{ marginTop: 40 }} />;
+  if (loading) return <Loader />;
 
   return (
     <FlatList

@@ -8,6 +8,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { api, money } from "../../api";
 import { colors, radius, spacing, font } from "../../theme";
 import { Screen, Segmented, Card, Btn, Loader, Empty, Field } from "./PanelUI";
+import { usePrompt } from "../../ui/Prompt";
 
 const TABS = [
   { key: "sorovlar", label: "🏪 Do'kon so'rovlari" },
@@ -20,9 +21,10 @@ export default function MenejerHomeScreen() {
   const [rows, setRows] = useState<any[]>([]);
   const [report, setReport] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const prompt = usePrompt();
 
   const load = useCallback(async () => {
-    setLoading(true);
     if (tab === "report") {
       const { ok, data } = await api("/api/menejer/report");
       setReport(ok ? data : null);
@@ -35,16 +37,32 @@ export default function MenejerHomeScreen() {
   }, [tab]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  async function act(path: string, body?: any) {
-    const { ok, data } = await api(path, { method: "POST", body });
-    if (ok) load();
-    else Alert.alert("Xatolik", (data as any)?.detail || "Amal bajarilmadi.");
+  async function act(path: string, body?: any, muvaffaqiyat = "Bajarildi") {
+    setBusy(true);
+    const { ok, status, data } = await api(path, { method: "POST", body });
+    setBusy(false);
+    if (ok) {
+      Alert.alert("✅ " + muvaffaqiyat, "");
+      load();
+    } else {
+      Alert.alert(
+        "Xatolik",
+        (data as any)?.detail ||
+          (status === 0 ? "Internet yo'q yoki server javob bermadi." : `Xato kodi: ${status}`)
+      );
+    }
   }
 
-  function reject(path: string) {
-    const doIt = (sabab: string) => act(path, { sabab });
-    if (Alert.prompt) Alert.prompt("Rad etish", "Sababini kiriting:", (s) => doIt(s?.trim() || ""));
-    else doIt("");
+  async function reject(path: string) {
+    const sabab = await prompt({
+      title: "Rad etish",
+      message: "Sababini yozing (bo'sh qoldirsangiz ham bo'ladi):",
+      placeholder: "Masalan: hujjat to'liq emas",
+      submitLabel: "Rad etish",
+      multiline: true,
+    });
+    if (sabab === null) return;
+    act(path, { sabab: sabab.trim() }, "Rad etildi");
   }
 
   function arendaColor(s: any) {
@@ -62,28 +80,54 @@ export default function MenejerHomeScreen() {
       .join(", ");
   }
 
-  function addAdmin(s: any) {
-    const send = (v: string) => {
-      const t = v.trim();
-      if (!t) return;
-      // #42 yoki 42 -> ARZON ID; email -> email; "tg:12345" -> Telegram ID.
-      let body: any;
-      if (t.includes("@")) body = { email: t };
-      else if (/^tg:\d+$/i.test(t)) body = { telegram_id: Number(t.slice(3)) };
-      else body = { arzon_id: Number(t.replace(/^#/, "")) };
-      act(`/api/menejer/stores/${s.id}/admins`, body);
-    };
-    if (Alert.prompt) {
-      Alert.prompt(
-        "Admin qo'shish",
-        `"${s.nomi}" uchun quyidagilardan birini kiriting:\n\n` +
-          "• ARZON ID — masalan #42 (tavsiya)\n" +
-          "• Email — ilovaga kirgan email\n" +
-          "• Telegram ID — tg:123456789",
-        (v) => v && send(v)
-      );
+  async function addAdmin(s: any) {
+    const v = await prompt({
+      title: "Admin qo'shish",
+      message:
+        `"${s.nomi}" uchun quyidagilardan birini kiriting:\n` +
+        "• ARZON ID — masalan #42 (tavsiya)\n" +
+        "• Email — ilovaga kirgan email\n" +
+        "• Telegram ID — tg:123456789",
+      placeholder: "#42",
+      submitLabel: "Qo'shish",
+    });
+    const t = (v || "").trim();
+    if (!t) return;
+    // #42 yoki 42 -> ARZON ID; email -> email; "tg:12345" -> Telegram ID.
+    let body: any;
+    if (t.includes("@")) body = { email: t };
+    else if (/^tg:\d+$/i.test(t)) body = { telegram_id: Number(t.slice(3)) };
+    else {
+      const n = Number(t.replace(/^#/, ""));
+      if (!n) return Alert.alert("Xatolik", "ARZON ID raqam bo'lishi kerak (masalan #42).");
+      body = { arzon_id: n };
+    }
+    act(`/api/menejer/stores/${s.id}/admins`, body, "Admin qo'shildi");
+  }
+
+  /** Do'konni BUTUNLAY o'chirish — mahsulotlari bilan. Qaytarib bo'lmaydi. */
+  async function deleteStore(s: any) {
+    const tasdiq = await prompt({
+      title: "⚠️ Do'konni butunlay o'chirish",
+      message:
+        `"${s.nomi}" do'koni va uning BARCHA mahsulotlari o'chiriladi.\n` +
+        "Bu amalni qaytarib bo'lmaydi!\n\n" +
+        `Tasdiqlash uchun do'kon nomini aynan yozing:\n${s.nomi}`,
+      placeholder: s.nomi,
+      submitLabel: "O'chirish",
+    });
+    if (tasdiq === null) return;
+    if (tasdiq.trim() !== s.nomi) {
+      return Alert.alert("Bekor qilindi", "Do'kon nomi mos kelmadi — hech narsa o'chirilmadi.");
+    }
+    setBusy(true);
+    const { ok, data } = await api(`/api/menejer/stores/${s.id}`, { method: "DELETE" });
+    setBusy(false);
+    if (ok) {
+      Alert.alert("✅ O'chirildi", `"${s.nomi}" do'koni o'chirildi.`);
+      load();
     } else {
-      Alert.alert("Admin qo'shish", "Bu qurilmada matn oynasi yo'q — Menejer botidan foydalaning.");
+      Alert.alert("Xatolik", (data as any)?.detail || "O'chirilmadi.");
     }
   }
 
@@ -129,9 +173,9 @@ export default function MenejerHomeScreen() {
                 <Field label="Arenda" value={`${money(s.summa)} som`} />
                 {s.ai_summa != null && <Text style={styles.ai}>🤖 Chekda: {money(s.ai_summa)} som</Text>}
                 <View style={styles.actions}>
-                  <Btn label="✅ Tasdiqlash" tone="store" style={{ flex: 1 }}
-                    onPress={() => act(`/api/menejer/dokon-sorovlari/${s.id}/approve`)} />
-                  <Btn label="❌ Rad" tone="sale" style={{ flex: 1 }}
+                  <Btn label="✅ Tasdiqlash" tone="store" disabled={busy} style={{ flex: 1 }}
+                    onPress={() => act(`/api/menejer/dokon-sorovlari/${s.id}/approve`, undefined, "Do'kon ochildi")} />
+                  <Btn label="❌ Rad" tone="sale" disabled={busy} style={{ flex: 1 }}
                     onPress={() => reject(`/api/menejer/dokon-sorovlari/${s.id}/reject`)} />
                 </View>
               </Card>
@@ -163,18 +207,22 @@ export default function MenejerHomeScreen() {
                   </TouchableOpacity>
                 ))}
                 <View style={styles.actions}>
-                  <Btn label="💵 Arenda uzaytirish" tone="gold" style={{ flex: 1 }}
-                    onPress={() => act(`/api/menejer/stores/${s.id}/arenda-uzaytir`)} />
+                  <Btn label="💵 Arenda uzaytirish" tone="gold" disabled={busy} style={{ flex: 1 }}
+                    onPress={() => act(`/api/menejer/stores/${s.id}/arenda-uzaytir`, undefined, "Arenda uzaytirildi")} />
                   {s.holat === "bloklangan" ? (
-                    <Btn label="🔓 Blokdan chiqar" tone="store" style={{ flex: 1 }}
-                      onPress={() => act(`/api/menejer/stores/${s.id}/unblock`)} />
+                    <Btn label="🔓 Blokdan chiqar" tone="store" disabled={busy} style={{ flex: 1 }}
+                      onPress={() => act(`/api/menejer/stores/${s.id}/unblock`, undefined, "Blokdan chiqarildi")} />
                   ) : (
-                    <Btn label="🔒 Bloklash" tone="sale" style={{ flex: 1 }}
-                      onPress={() => act(`/api/menejer/stores/${s.id}/block`)} />
+                    <Btn label="🔒 Bloklash" tone="sale" disabled={busy} style={{ flex: 1 }}
+                      onPress={() => act(`/api/menejer/stores/${s.id}/block`, undefined, "Bloklandi")} />
                   )}
                 </View>
-                <Btn label="➕ Admin qo'shish (email yoki Telegram ID)" tone="ghost"
-                  style={{ marginTop: 8 }} onPress={() => addAdmin(s)} />
+                <View style={styles.actions}>
+                  <Btn label="➕ Admin qo'shish" tone="ghost" disabled={busy}
+                    style={{ flex: 1 }} onPress={() => addAdmin(s)} />
+                  <Btn label="🗑 Do'konni o'chirish" tone="sale" disabled={busy}
+                    style={{ flex: 1 }} onPress={() => deleteStore(s)} />
+                </View>
               </Card>
             )))}
         </Screen>

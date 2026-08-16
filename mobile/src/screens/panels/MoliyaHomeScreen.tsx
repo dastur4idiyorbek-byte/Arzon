@@ -8,6 +8,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { api, money } from "../../api";
 import { colors, radius, spacing, font } from "../../theme";
 import { Screen, Segmented, Card, Btn, Loader, Empty, Field } from "./PanelUI";
+import { usePrompt } from "../../ui/Prompt";
 
 const TABS = [
   { key: "topups", label: "💳 To'ldirish" },
@@ -21,9 +22,10 @@ export default function MoliyaHomeScreen() {
   const [rows, setRows] = useState<any[]>([]);
   const [report, setReport] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const prompt = usePrompt();
 
   const load = useCallback(async () => {
-    setLoading(true);
     if (tab === "report") {
       const { ok, data } = await api("/api/moliya/report");
       setReport(ok ? data : null);
@@ -35,16 +37,32 @@ export default function MoliyaHomeScreen() {
   }, [tab]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  async function act(path: string, body?: any) {
-    const { ok, data } = await api(path, { method: "POST", body });
-    if (ok) load();
-    else Alert.alert("Xatolik", (data as any)?.detail || "Amal bajarilmadi.");
+  async function act(path: string, body?: any, muvaffaqiyat = "Bajarildi") {
+    setBusy(true);
+    const { ok, status, data } = await api(path, { method: "POST", body });
+    setBusy(false);
+    if (ok) {
+      Alert.alert("✅ " + muvaffaqiyat, "");
+      load();
+    } else {
+      Alert.alert(
+        "Xatolik",
+        (data as any)?.detail ||
+          (status === 0 ? "Internet yo'q yoki server javob bermadi." : `Xato kodi: ${status}`)
+      );
+    }
   }
 
-  function reject(path: string) {
-    const doIt = (sabab: string) => act(path, { sabab });
-    if (Alert.prompt) Alert.prompt("Rad etish", "Sababini kiriting:", (s) => doIt(s?.trim() || ""));
-    else doIt("");
+  async function reject(path: string) {
+    const sabab = await prompt({
+      title: "Rad etish",
+      message: "Sababini yozing (bo'sh qoldirsangiz ham bo'ladi):",
+      placeholder: "Masalan: chek noto'g'ri",
+      submitLabel: "Rad etish",
+      multiline: true,
+    });
+    if (sabab === null) return; // bekor qilindi
+    act(path, { sabab: sabab.trim() }, "Rad etildi");
   }
 
   return (
@@ -80,9 +98,9 @@ export default function MoliyaHomeScreen() {
                 {s.ai_summa != null && <Text style={styles.ai}>🤖 Chekda: {money(s.ai_summa)} som</Text>}
                 {!!s.ai_xulosa && <Text style={styles.muted}>{s.ai_xulosa}</Text>}
                 <View style={styles.actions}>
-                  <Btn label="✅ Tasdiqlash" tone="store" style={{ flex: 1 }}
-                    onPress={() => act(`/api/moliya/topups/${s.id}/approve`)} />
-                  <Btn label="❌ Rad" tone="sale" style={{ flex: 1 }}
+                  <Btn label="✅ Tasdiqlash" tone="store" disabled={busy} style={{ flex: 1 }}
+                    onPress={() => act(`/api/moliya/topups/${s.id}/approve`, undefined, "Balans to'ldirildi")} />
+                  <Btn label="❌ Rad" tone="sale" disabled={busy} style={{ flex: 1 }}
                     onPress={() => reject(`/api/moliya/topups/${s.id}/reject`)} />
                 </View>
               </Card>
@@ -94,8 +112,8 @@ export default function MoliyaHomeScreen() {
                 <Text style={styles.name}>🏬 {s.store_nomi}</Text>
                 <Text style={styles.summa}>{money(s.summa)} som</Text>
                 <Text style={styles.muted}>💳 {s.karta_raqami}</Text>
-                <Btn label="✅ To'landi deb belgilash" tone="gold" style={{ marginTop: 10 }}
-                  onPress={() => act(`/api/moliya/withdraws/${s.id}/paid`)} />
+                <Btn label="✅ To'landi deb belgilash" tone="gold" disabled={busy} style={{ marginTop: 10 }}
+                  onPress={() => act(`/api/moliya/withdraws/${s.id}/paid`, undefined, "To'landi deb belgilandi")} />
               </Card>
             )))}
 
@@ -106,9 +124,9 @@ export default function MoliyaHomeScreen() {
                 <Text style={styles.summa}>{money(s.summa)} som</Text>
                 <Text style={styles.muted}>💳 {s.karta_raqami}</Text>
                 <View style={styles.actions}>
-                  <Btn label="✅ Tasdiqlash" tone="store" style={{ flex: 1 }}
-                    onPress={() => act(`/api/moliya/refunds/${s.id}/approve`)} />
-                  <Btn label="❌ Rad" tone="sale" style={{ flex: 1 }}
+                  <Btn label="✅ Tasdiqlash" tone="store" disabled={busy} style={{ flex: 1 }}
+                    onPress={() => act(`/api/moliya/refunds/${s.id}/approve`, undefined, "Qaytarish tasdiqlandi")} />
+                  <Btn label="❌ Rad" tone="sale" disabled={busy} style={{ flex: 1 }}
                     onPress={() => reject(`/api/moliya/refunds/${s.id}/reject`)} />
                 </View>
               </Card>

@@ -10,6 +10,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { colors } from "./src/theme";
 import { AuthProvider, useAuth } from "./src/auth/AuthContext";
 import { CartProvider, useCart } from "./src/cart/CartContext";
+import { PromptProvider } from "./src/ui/Prompt";
 import LoginScreen from "./src/screens/LoginScreen";
 import CatalogScreen from "./src/screens/CatalogScreen";
 import ProductScreen from "./src/screens/ProductScreen";
@@ -40,8 +41,13 @@ function handleNotificationNav(data: any) {
 
 const stackScreenOptions = {
   headerTintColor: colors.brand,
-  headerTitleStyle: { color: colors.text },
+  headerTitleStyle: { color: colors.text, fontWeight: "700" as const },
   headerStyle: { backgroundColor: colors.bg },
+  headerShadowVisible: false,
+  // Silliq, kutilgan o'tish (Android'da standart "fade"dan ko'ra tabiiyroq).
+  animation: "slide_from_right" as const,
+  animationDuration: 220,
+  contentStyle: { backgroundColor: colors.bg },
 };
 
 function CatalogStack() {
@@ -61,6 +67,14 @@ function MainTabs() {
         headerShown: false,
         tabBarActiveTintColor: colors.brand,
         tabBarInactiveTintColor: colors.textMuted,
+        tabBarStyle: {
+          backgroundColor: colors.bg,
+          borderTopColor: colors.line,
+          height: 58,
+          paddingBottom: 6,
+          paddingTop: 6,
+        },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
         tabBarIcon: ({ color, size }) => {
           const map: Record<string, keyof typeof Ionicons.glyphMap> = {
             KatalogTab: "storefront-outline",
@@ -122,13 +136,15 @@ export default function App() {
   }, []);
 
   return (
-    <AuthProvider>
-      <CartProvider>
-        <NavigationContainer ref={navigationRef}>
-          <StatusBar style="dark" />
-          <RootNav />
-        </NavigationContainer>
-      </CartProvider>
-    </AuthProvider>
+    <PromptProvider>
+      <AuthProvider>
+        <CartProvider>
+          <NavigationContainer ref={navigationRef}>
+            <StatusBar style="dark" />
+            <RootNav />
+          </NavigationContainer>
+        </CartProvider>
+      </AuthProvider>
+    </PromptProvider>
   );
 }
