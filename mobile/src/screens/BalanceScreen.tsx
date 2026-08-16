@@ -52,8 +52,7 @@ export default function BalanceScreen({ navigation }: any) {
         <Text style={styles.hint}>1 ACOM = 1 som. Xaridlar shu balansdan amalga oshadi.</Text>
       </View>
 
-      <TouchableOpacity style={styles.btn}
-        onPress={() => Alert.alert("To'ldirish", "Balans to'ldirish (chek yuklash) — keyingi bosqichда.")}>
+      <TouchableOpacity style={styles.btn} onPress={() => navigation.navigate("Topup")}>
         <Text style={styles.btnText}>➕ Hisobni to'ldirish</Text>
       </TouchableOpacity>
 

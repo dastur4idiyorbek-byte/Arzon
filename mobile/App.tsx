@@ -18,6 +18,7 @@ import ProductScreen from "./src/screens/ProductScreen";
 import CartScreen from "./src/screens/CartScreen";
 import OrdersScreen from "./src/screens/OrdersScreen";
 import BalanceScreen from "./src/screens/BalanceScreen";
+import TopupScreen from "./src/screens/TopupScreen";
 // Panel ekranlari (rol asosida — 4-bosqich)
 import AdminHomeScreen from "./src/screens/panels/AdminHomeScreen";
 import AdminProductsScreen from "./src/screens/panels/AdminProductsScreen";
@@ -108,6 +109,7 @@ function RootNav() {
   return (
     <Root.Navigator screenOptions={stackScreenOptions}>
       <Root.Screen name="Main" component={MainTabs} options={{ headerShown: false }} />
+      <Root.Screen name="Topup" component={TopupScreen} options={{ title: "Hisobni to'ldirish" }} />
       {/* Admin paneli */}
       <Root.Screen name="AdminHome" component={AdminHomeScreen} options={{ title: "🛠 Admin paneli" }} />
       <Root.Screen name="AdminProducts" component={AdminProductsScreen} options={{ title: "Mahsulotlar" }} />

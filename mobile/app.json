@@ -7,9 +7,11 @@
     "scheme": "arzon",
     "userInterfaceStyle": "light",
     "primaryColor": "#E8590C",
+    "icon": "./assets/icon.png",
     "splash": {
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#FFF8F2"
+      "backgroundColor": "#FFFFFF"
     },
     "assetBundlePatterns": ["**/*"],
     "runtimeVersion": { "policy": "appVersion" },
@@ -18,15 +20,36 @@
       "checkAutomatically": "ON_LOAD",
       "fallbackToCacheTimeout": 0
     },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#E8590C"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Chek rasmini tanlash uchun galereyaga ruxsat kerak.",
+          "cameraPermission": "Chekni suratga olish uchun kameraga ruxsat kerak."
+        }
+      ]
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "kg.arzon.app"
     },
     "android": {
-      "package": "kg.arzon.app"
+      "package": "kg.arzon.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#E8590C"
+      }
     },
     "web": {
-      "bundler": "metro"
+      "bundler": "metro",
+      "favicon": "./assets/favicon.png"
     },
     "extra": {
       "apiUrl": "https://arzon-backend.onrender.com"
