@@ -1,66 +1,100 @@
 # 📱 ARZON — APK'ni TERMINALSIZ chiqarish (faqat brauzer)
 
-Bu yo'l — **hech qanday terminal, komanda yozmasдан**, hammasi brauzerда "click"
-bilan. Kompyuterга Node.js ham o'рнатиш shart emas.
+Bu yo'l — **hech qanday terminal, komanda yozmasdan**, hammasi brauzerda "click"
+bilan. Kompyuterga Node.js ham o'rnatish shart emas.
 
-Ikки usul bor. **1-usул** eng oson — undan boshlang.
+Ikki usul bor. **1-usul** eng oson — undan boshlang.
 
 ---
 
-## ✅ 1-usul — Expo saytидан to'g'ridan-to'g'ri (tavsiya)
+## ✅ 1-usul — Expo saytidan to'g'ridan-to'g'ri (tavsiya)
 
-Expo GitHub'даги kodни o'зи olib, bulutда APK yasaydi. Faqat brauzер.
+Expo GitHub'dagi kodni o'zi olib, bulutda APK yasaydi. Faqat brauzer.
 
 ### Qadamlar
-1. **[expo.dev](https://expo.dev)** → **Sign up** (bepul hisоб, email + parol).
-2. Kirгач: chapда **Projects** → **Create a project** (yoki **Import from GitHub**).
-3. **GitHub'ни ulang** — Expo GitHub hisобингизга ruxsat so'raydi → **Authorize**.
+1. **[expo.dev](https://expo.dev)** → **Sign up** (bepul hisob, email + parol).
+2. Kirgach: chapda **Projects** → **Create a project** (yoki **Import from GitHub**).
+3. **GitHub'ni ulang** — Expo GitHub hisobingizga ruxsat so'raydi → **Authorize**.
    - So'ng **`Arzon`** reposini tanlang.
-4. Loyиха sozlamаsида (Expo so'raса):
-   - **Base directory / Root**: `mobile`  ← ⚠️ muhим (ilova shu papkада).
+4. Loyiha sozlamasida (Expo so'rasa):
+   - **Base directory / Root**: `mobile`  ← ⚠️ muhim (ilova shu papkada).
    - **Build profile**: `preview`  ← bu **.apk** beradi.
-5. **Build** (yoki **Create build**) tugмасини bosing → **Android** → **preview**.
-6. 15–20 daqiqа kutиng. Tayyor bo'lганда o'sha sahifада **Download** tugмаси
-   (`.apk`) chiqады.
-7. APK'ni yuklab olиб, **Telegram**га tashlасангиз — odamlar o'рнатади.
+5. **Build** (yoki **Create build**) tugmasini bosing → **Android** → **preview**.
+6. 15–20 daqiqa kuting. Tayyor bo'lganda o'sha sahifada **Download** tugmasi
+   (`.apk`) chiqadi.
+7. APK'ni yuklab olib, **Telegram**ga tashlasangiz — odamlar o'rnatadi.
 
-> Expo `projectId`ни o'зи qo'shади — **push-bildirishnoma** ham shu bilan ishlаб ketади.
+> Expo `projectId`ni o'zi qo'shadi — **push-bildirishnoma** ham shu bilan ishlab ketadi.
 
 ---
 
-## ✅ 2-usul — GitHub "Actions" tugмаси (zaxira)
+## ✅ 2-usul — GitHub "Actions" tugmasi (juda sodda)
 
-Repoда tayyor sozlама bor (`.github/workflows/android-apk.yml`). Faqat 4 ta click:
+Bu usul **2 qismdan** iborat:
+**A)** bir marta tayyorgarlik (5 daqiqa), **B)** tugmani bosish.
+Bir marta tayyorlab qo'ysangiz, keyin har safar faqat **bitta tugma**.
 
-1. **[expo.dev](https://expo.dev)** → **Sign up** (agar hali yo'q bo'lsa).
-2. expo.dev → (o'ng yuqori) **Account settings** → **Access tokens** →
-   **Create token** → tokenни **nusxa oling**.
-3. GitHub'да: **Arzon** repo → **Settings** → **Secrets and variables** →
-   **Actions** → **New repository secret**:
-   - **Name**: `EXPO_TOKEN`
-   - **Secret**: (2-qadамдаги token)
-   - **Add secret**.
-4. GitHub'да: yuqоридаги **Actions** → chapдан **"ARZON Android APK"** →
-   o'ngда **Run workflow** → yashил **Run workflow**.
-5. 15–20 daqiqада APK tayyor: **expo.dev → loyиха → Builds → Download**.
+---
 
-> Agar birinchi build "owner" xatosи bersa: GitHub'да `mobile/app.json` faylини
-> oching → **qalам (✏️)** belgиси → `"expo": {` дан keyin bitta qatор qo'shing:
+### A qismi — bir marta tayyorgarlik
+
+**1️⃣ Expo hisobi**
+[expo.dev](https://expo.dev) oching → **Sign up** → email va parol → tayyor.
+
+**2️⃣ Maxfiy kalit (token) olish**
+Expo saytida o'ng yuqoridagi rasmingizni bosing →
+**Account settings** → chapdan **Access tokens** → **Create token** →
+chiqqan uzun yozuvni **nusxa oling** (Copy).
+⚠️ Bu yozuvni hech kimga bermang.
+
+**3️⃣ Kalitni GitHub'ga qo'yish**
+GitHub'da `Arzon` reposini oching va ketma-ket bosing:
+> **Settings** → **Secrets and variables** → **Actions** → **New repository secret**
+
+Ochilgan oynada:
+- **Name** katakcha: `EXPO_TOKEN`  (aynan shunday yozing)
+- **Secret** katakcha: 2️⃣ da nusxa olgan kalitni joylashtiring (Paste)
+- **Add secret** ni bosing.
+
+✅ Tayyorgarlik tugadi. Buni **bir marta** qilasiz, xolos.
+
+---
+
+### B qismi — APK yasash (har safar shu)
+
+**4️⃣** GitHub'da `Arzon` reposida yuqoridagi **Actions** yozuvini bosing.
+**5️⃣** Chapdagi ro'yxatdan **"ARZON Android APK"** ni bosing.
+**6️⃣** O'ng tomonda **"Run workflow"** → chiqqan oynada yana yashil
+**"Run workflow"** tugmasini bosing.
+
+Tamom! 15–20 daqiqa kuting. So'ng APK'ni oling:
+> [expo.dev](https://expo.dev) → **Projects** → loyiha → **Builds** →
+> so'nggi qator → **Download** → `.apk` fayl.
+
+O'sha faylni **Telegram**ga tashlasangiz — odamlar o'rnatadi. 🎉
+
+Keyin yangi APK kerak bo'lsa — faqat **4️⃣–6️⃣ ni** qayta bosing
+(A qismi endi shart emas).
+
+> 🛠 Agar 6️⃣ dan keyin qizil ✗ chiqib, "owner" haqida xato bo'lsa:
+> GitHub'da `mobile/app.json` faylini oching → **qalam (✏️)** belgisi →
+> `"expo": {` yozuvidan keyin yangi qator qo'shing:
 > ```json
-> "owner": "SIZNING_EXPO_LOGININGIZ",
+>     "owner": "EXPO_LOGININGIZ",
 > ```
-> **Commit changes** → 4-qадамни qайta bosing. (Bu ham terminalсиз.)
+> (EXPO_LOGININGIZ — expo.dev'dagi foydalanuvchi nomingiz) → pastdan
+> **Commit changes** → so'ng 4️⃣–6️⃣ ni qayta bosing. Bu ham terminalsiz.
 
 ---
 
-## Qайси birини tanlаsam?
-- **1-usул** — eng sodda, Expo saytида hammаси ko'rinиб turadi. **Shundан boshlang.**
-- **2-usул** — GitHub yoqадиган bo'lса yoki 1-usул ishlaмаса.
+## Qaysi birini tanlasam?
+- **1-usul** — eng sodda, Expo saytida hammasi ko'rinib turadi. **Shundan boshlang.**
+- **2-usul** — GitHub yoqadigan bo'lsa yoki 1-usul ishlamasa.
 
-## Yangилаш (kod o'zгарса)
-Yangi APK kerак bo'lса — o'sha tugмани (Build / Run workflow) **qайта bosing**.
-Yangi havolани odamларга tashlаysiz.
+## Yangilash (kod o'zgarsa)
+Yangi APK kerak bo'lsa — o'sha tugmani (Build / Run workflow) **qayta bosing**.
+Yangi havolani odamlarga tashlaysiz.
 
 ## iPhone?
-Bu usullar **Android** uchun. iPhone (`.ipa`) — Apple $99/yил + TestFlight kerак,
-u **keyinги ish**.
+Bu usullar **Android** uchun. iPhone (`.ipa`) — Apple $99/yil + TestFlight kerak,
+u **keyingi ish**.
