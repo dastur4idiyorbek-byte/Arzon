@@ -9,11 +9,13 @@ import { api, money } from "../../api";
 import { colors, radius, spacing, font } from "../../theme";
 import { Screen, Segmented, Card, Btn, Loader, Empty, Field } from "./PanelUI";
 import { usePrompt } from "../../ui/Prompt";
+import TolovUsullariScreen from "./TolovUsullariScreen";
 
 const TABS = [
   { key: "topups", label: "💳 To'ldirish" },
   { key: "withdraws", label: "🏧 Yechish" },
   { key: "refunds", label: "↩️ Qaytarish" },
+  { key: "usullar", label: "💳 To'lov usullari" },
   { key: "report", label: "📊 Hisobot" },
 ];
 
@@ -26,6 +28,7 @@ export default function MoliyaHomeScreen() {
   const prompt = usePrompt();
 
   const load = useCallback(async () => {
+    if (tab === "usullar") { setLoading(false); return; }
     if (tab === "report") {
       const { ok, data } = await api("/api/moliya/report");
       setReport(ok ? data : null);
@@ -68,7 +71,9 @@ export default function MoliyaHomeScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <Segmented items={TABS} value={tab} onChange={setTab} />
-      {loading ? (
+      {tab === "usullar" ? (
+        <TolovUsullariScreen />
+      ) : loading ? (
         <Loader />
       ) : (
         <Screen>
