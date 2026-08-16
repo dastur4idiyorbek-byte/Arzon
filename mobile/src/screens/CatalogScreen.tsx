@@ -10,6 +10,13 @@ import { Loader } from "./panels/PanelUI";
 import { Product, effPrice, rasmUrl } from "../types";
 import { useCart } from "../cart/CartContext";
 
+/** Ro'yxat elementlari sonini juft qiladi (2 ustunli to'r uchun).
+ *  Toq bo'lsa oxiriga bo'sh o'rin (null) qo'shiladi — aks holda oxirgi
+ *  kartochka butun kenglikka cho'zilib ketadi. */
+function juftla(list: Product[]): (Product | null)[] {
+  return list.length % 2 === 1 ? [...list, null] : list;
+}
+
 export default function CatalogScreen({ navigation }: any) {
   const { add, count } = useCart();
   const [all, setAll] = useState<Product[]>([]);
@@ -133,12 +140,16 @@ export default function CatalogScreen({ navigation }: any) {
         <Loader />
       ) : (
         <FlatList
-          data={list}
-          keyExtractor={(p) => String(p.id)}
+          data={juftla(list)}
+          keyExtractor={(p, i) => (p ? String(p.id) : `bosh-${i}`)}
           numColumns={2}
           columnWrapperStyle={styles.qator}
           contentContainerStyle={styles.royxat}
-          renderItem={({ item }) => <Card p={item} />}
+          // Bo'sh o'rin (null) — oxirgi qatorda yolg'iz qolgan kartochka butun
+          // kenglikka cho'zilib ketmasligi uchun.
+          renderItem={({ item }) =>
+            item ? <Card p={item} /> : <View style={{ flex: 1 }} />
+          }
           refreshControl={
             <RefreshControl refreshing={false} onRefresh={load} tintColor={colors.brand} />
           }
