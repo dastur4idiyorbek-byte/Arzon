@@ -23,6 +23,7 @@ const TOOLS: {
   { key: "o", label: "Buyurtmalar", icon: "receipt-outline", screen: "AdminOrders" },
   { key: "s", label: "Statistika", icon: "stats-chart-outline", screen: "AdminStats" },
   { key: "w", label: "Pul yechish", icon: "wallet-outline", screen: "AdminWithdraw" },
+  { key: "pr", label: "Promo kod", icon: "pricetag-outline", screen: "AdminPromo" },
 ];
 
 export default function AdminHomeScreen({ navigation }: any) {

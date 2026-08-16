@@ -21,7 +21,14 @@ export default function AdminProductEditScreen({ route, navigation }: any) {
   const [olcham, setOlcham] = useState(product?.olcham || "");
   const [rang, setRang] = useState(product?.rang || "");
   const [tavsif, setTavsif] = useState(product?.tavsif || "");
-  const [rasm, setRasm] = useState(product?.rasm_url || "");
+  // Ko'p rasm: birinchisi asosiy (kartochkada ko'rinadi), qolganlari karuselda.
+  const [suratlar, setSuratlar] = useState<string[]>(() => {
+    const b = product?.rasm_url ? [product.rasm_url] : [];
+    const q = (product?.rasm_urls || []).filter((u: string) => u !== product?.rasm_url);
+    return [...b, ...q];
+  });
+  const [nisbat, setNisbat] = useState<string>(product?.rasm_nisbati || "1:1");
+  const [muddat, setMuddat] = useState<string | null>(product?.skidka_muddati || null);
   const [miqdor, setMiqdor] = useState(product?.miqdor != null ? String(product.miqdor) : "");
   const [mahfiy, setMahfiy] = useState(product?.korinish === "mahfiy");
   const [busy, setBusy] = useState(false);
@@ -61,7 +68,7 @@ export default function AdminProductEditScreen({ route, navigation }: any) {
         method: "POST", headers: { ...authHeader() }, body: fd,
       });
       const data = await res.json().catch(() => null);
-      if (res.ok && (data as any)?.url) setRasm((data as any).url);
+      if (res.ok && (data as any)?.url) setSuratlar((r) => [...r, (data as any).url]);
       else Alert.alert("Xatolik", (data as any)?.detail || "Rasm yuklanmadi.");
     } catch {
       Alert.alert("Xatolik", "Internet yo'q yoki server javob bermadi.");
@@ -81,7 +88,10 @@ export default function AdminProductEditScreen({ route, navigation }: any) {
       olcham: olcham.trim() || null,
       rang: rang.trim() || null,
       tavsif: tavsif.trim() || null,
-      rasm_url: rasm.trim() || null,
+      rasm_url: suratlar[0] || null,
+      rasm_urls: suratlar.length ? suratlar : null,
+      rasm_nisbati: nisbat,
+      skidka_muddati: muddat,
       korinish: mahfiy ? "mahfiy" : "ommaviy",
       miqdor: miqdor.trim() === "" ? null : Math.max(0, Number(miqdor) || 0),
     };
@@ -125,15 +135,27 @@ export default function AdminProductEditScreen({ route, navigation }: any) {
       <Label t="Miqdor (bo'sh = cheksiz)" />
       <TextInput style={styles.in} value={miqdor} onChangeText={setMiqdor} keyboardType="numeric" placeholder="cheksiz" />
 
-      <Label t="Mahsulot rasmi" />
-      {rasm ? (
-        <View>
-          <Image source={{ uri: rasmKorinish(rasm) }} style={styles.rasm} resizeMode="cover" />
-          <TouchableOpacity style={styles.rasmOchir} onPress={() => setRasm("")}>
-            <Text style={styles.rasmOchirText}>✕ Boshqa rasm tanlash</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
+      <Label t={`Mahsulot rasmlari (${suratlar.length}/10)`} />
+      {suratlar.length > 0 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}
+          style={{ marginBottom: 10 }} contentContainerStyle={{ gap: 10 }}>
+          {suratlar.map((u, i) => (
+            <View key={u + i}>
+              <Image source={{ uri: rasmKorinish(u) }} style={styles.kichikRasm} resizeMode="cover" />
+              {i === 0 && (
+                <View style={styles.asosiy}><Text style={styles.asosiyText}>Asosiy</Text></View>
+              )}
+              <TouchableOpacity
+                style={styles.rasmX}
+                onPress={() => setSuratlar((r) => r.filter((_, j) => j !== i))}
+              >
+                <Ionicons name="close" size={13} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          ))}
+        </ScrollView>
+      )}
+      {suratlar.length < 10 && (
         <View style={styles.rasmTugma}>
           <TouchableOpacity style={styles.rasmBtn} onPress={() => rasmTanla(true)} disabled={yuklanmoqda}>
             <Ionicons name="camera-outline" size={24} color={colors.brand} />
@@ -146,6 +168,47 @@ export default function AdminProductEditScreen({ route, navigation }: any) {
         </View>
       )}
       {yuklanmoqda && <Text style={styles.yuklanmoqda}>Rasm yuklanmoqda...</Text>}
+
+      <Label t="Rasm formati" />
+      <View style={styles.nisbatlar}>
+        {[["1:1", "Kvadrat"], ["4:3", "Gorizontal"], ["3:4", "Vertikal"],
+          ["16:9", "Keng"], ["9:16", "Baland"]].map(([k, nom]) => (
+          <TouchableOpacity key={k} onPress={() => setNisbat(k)}
+            style={[styles.nisbat, nisbat === k && styles.nisbatOn]}>
+            <Text style={[styles.nisbatText, nisbat === k && styles.nisbatTextOn]}>{nom}</Text>
+            <Text style={[styles.nisbatKod, nisbat === k && { color: "#fff" }]}>{k}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {Number(skidka) > 0 && (
+        <>
+          <Label t="Chegirma qachon tugaydi" />
+          <View style={styles.muddatlar}>
+            {[["1 kun", 1], ["3 kun", 3], ["1 hafta", 7], ["1 oy", 30]].map(([nom, kun]) => {
+              const iso = new Date(Date.now() + (kun as number) * 86400000).toISOString();
+              const tanlangan = !!muddat &&
+                Math.abs(new Date(muddat).getTime() - new Date(iso).getTime()) < 3600000;
+              return (
+                <TouchableOpacity key={nom as string} onPress={() => setMuddat(iso)}
+                  style={[styles.muddatBtn, tanlangan && styles.muddatOn]}>
+                  <Text style={[styles.muddatText, tanlangan && { color: "#fff" }]}>{nom}</Text>
+                </TouchableOpacity>
+              );
+            })}
+            {!!muddat && (
+              <TouchableOpacity onPress={() => setMuddat(null)} style={styles.muddatBekor}>
+                <Text style={styles.muddatBekorText}>Muddatsiz</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          <Text style={styles.muddatIzoh}>
+            {muddat
+              ? `Mijozga taymer ko'rinadi: ${new Date(muddat).toLocaleString("en-GB")} gacha`
+              : "Muddat qo'yilsa, mijozda sanovchi taymer chiqadi va xarid tezlashadi."}
+          </Text>
+        </>
+      )}
 
       <Label t="Tavsif" />
       <TextInput style={[styles.in, { height: 90, textAlignVertical: "top" }]} value={tavsif}
@@ -175,7 +238,38 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm, padding: 12, color: colors.text,
   },
   two: { flexDirection: "row", gap: 12 },
-  rasm: { width: "100%", height: 220, borderRadius: radius.md, backgroundColor: colors.secondaryBg },
+  kichikRasm: { width: 96, height: 96, borderRadius: radius.sm, backgroundColor: colors.secondaryBg },
+  asosiy: {
+    position: "absolute", left: 4, bottom: 4, backgroundColor: colors.store,
+    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6,
+  },
+  asosiyText: { color: "#fff", fontSize: 9, fontWeight: "800" },
+  rasmX: {
+    position: "absolute", right: -5, top: -5, width: 22, height: 22, borderRadius: 11,
+    backgroundColor: colors.sale, alignItems: "center", justifyContent: "center",
+  },
+  nisbatlar: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  nisbat: {
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.sm,
+    backgroundColor: colors.secondaryBg, alignItems: "center",
+  },
+  nisbatOn: { backgroundColor: colors.text },
+  nisbatText: { fontWeight: "700", color: colors.text, fontSize: 12 },
+  nisbatTextOn: { color: "#fff" },
+  nisbatKod: { fontSize: 10, color: colors.textMuted },
+  muddatlar: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  muddatBtn: {
+    paddingHorizontal: 14, paddingVertical: 10, borderRadius: radius.sm,
+    backgroundColor: colors.secondaryBg,
+  },
+  muddatOn: { backgroundColor: colors.sale },
+  muddatText: { fontWeight: "700", color: colors.text, fontSize: 12 },
+  muddatBekor: {
+    paddingHorizontal: 14, paddingVertical: 10, borderRadius: radius.sm,
+    borderWidth: 1.5, borderColor: colors.line,
+  },
+  muddatBekorText: { fontWeight: "700", color: colors.textMuted, fontSize: 12 },
+  muddatIzoh: { color: colors.textMuted, fontSize: 12, marginTop: 8, lineHeight: 17 },
   rasmOchir: { alignSelf: "center", marginTop: 8, padding: 8 },
   rasmOchirText: { color: colors.sale, fontWeight: "700" },
   rasmTugma: { flexDirection: "row", gap: 10 },

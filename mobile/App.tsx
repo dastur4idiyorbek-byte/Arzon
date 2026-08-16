@@ -25,6 +25,7 @@ import AdminProductsScreen from "./src/screens/panels/AdminProductsScreen";
 import AdminProductEditScreen from "./src/screens/panels/AdminProductEditScreen";
 import AdminOrdersScreen from "./src/screens/panels/AdminOrdersScreen";
 import AdminStatsScreen from "./src/screens/panels/AdminStatsScreen";
+import AdminPromoScreen from "./src/screens/panels/AdminPromoScreen";
 import AdminWithdrawScreen from "./src/screens/panels/AdminWithdrawScreen";
 import MoliyaHomeScreen from "./src/screens/panels/MoliyaHomeScreen";
 import MenejerHomeScreen from "./src/screens/panels/MenejerHomeScreen";
@@ -120,6 +121,7 @@ function RootNav() {
       <Root.Screen name="AdminProductEdit" component={AdminProductEditScreen} options={{ title: "Mahsulot" }} />
       <Root.Screen name="AdminOrders" component={AdminOrdersScreen} options={{ title: "Buyurtmalar" }} />
       <Root.Screen name="AdminStats" component={AdminStatsScreen} options={{ title: "Statistika" }} />
+      <Root.Screen name="AdminPromo" component={AdminPromoScreen} options={{ title: "Promo kod" }} />
       <Root.Screen name="AdminWithdraw" component={AdminWithdrawScreen} options={{ title: "Pul yechish" }} />
       {/* Moliya paneli */}
       <Root.Screen name="MoliyaHome" component={MoliyaHomeScreen} options={{ title: "💰 Moliya paneli" }} />
