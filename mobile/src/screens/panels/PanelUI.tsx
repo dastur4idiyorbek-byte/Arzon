@@ -12,7 +12,8 @@ import {
   ScrollViewProps,
   ScrollView,
 } from "react-native";
-import { colors, radius, spacing, font } from "../../theme";
+import { colors, radius, spacing, font, shadow } from "../../theme";
+import { SkeletonList } from "../../ui/Skeleton";
 
 export function Segmented({
   items,
@@ -100,20 +101,15 @@ export function Empty({ text }: { text: string }) {
   return <Text style={styles.empty}>{text}</Text>;
 }
 
-/** Yuklanish belgisi — DARHOL emas, ~250ms kutib chiqadi.
+/** Yuklanish holati — SKELETON (spinner emas).
  *
- * Tez javoblar (odatdagi holat) da spinner umuman ko'rinmaydi, shuning uchun
- * ekran "uzilib-uzilib" turmaydi. Faqat sekin tarmoqda ko'rinadi. */
+ * 2026 me'yori: aylanuvchi belgi "qotib qoldi" hissini beradi. Skeleton esa
+ * kontent shaklini oldindan ko'rsatadi — kutish qisqaroq tuyuladi va
+ * ma'lumot kelganda joylashuv sakramaydi. */
 export function Loader() {
-  const [korinsin, setKorinsin] = React.useState(false);
-  React.useEffect(() => {
-    const t = setTimeout(() => setKorinsin(true), 250);
-    return () => clearTimeout(t);
-  }, []);
-  if (!korinsin) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: 40 }}>
-      <ActivityIndicator color={colors.brand} size="large" />
+    <View style={{ flex: 1, backgroundColor: colors.bgSoft }}>
+      <SkeletonList soni={4} />
     </View>
   );
 }
@@ -152,16 +148,16 @@ const styles = StyleSheet.create({
   segText: { color: colors.textMuted, fontWeight: "700", fontSize: 13 },
   segTextActive: { color: "#fff" },
   card: {
-    backgroundColor: colors.cardTop,
-    borderWidth: 1,
-    borderColor: colors.line,
+    backgroundColor: colors.bg,
     borderRadius: radius.lg,
     padding: 16,
     marginBottom: 12,
+    ...shadow.sm,
   },
   btn: {
-    borderRadius: radius.md,
-    paddingVertical: 12,
+    borderRadius: radius.sm,
+    height: 46,
+    justifyContent: "center",
     paddingHorizontal: 16,
     alignItems: "center",
   },

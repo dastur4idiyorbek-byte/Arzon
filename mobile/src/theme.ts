@@ -1,41 +1,60 @@
 /**
- * ARZON dizayn tizimi.
+ * ARZON dizayn tizimi — 2026 mobil savdo me'yorlari asosida.
  *
- * Rol-rang tizimi (butun loyihada bir xil — Mini App bilan ham):
- *   🟠 brand  — xarid/savat/asosiy amal
- *   🟢 store  — do'kon, tasdiq, "sotib olish"
- *   🟡 gold   — balans/pul
- *   🔴 sale   — chegirma foizi, xavfli amal
+ * Tahlil (Uzum/Wildberries/Ozon kabi marketplace'lar + 2026 yo'nalishlari):
+ *   • Yirik radius (16–28) va yumshoq, KO'P QATLAMLI soya — "qog'oz" emas,
+ *     ko'tarilgan yuza hissi.
+ *   • Kulrang-oq fon + oppoq kartochka: kontent ajralib turadi.
+ *   • Qalin, zich sarlavhalar (letterSpacing manfiy) — zamonaviy tipografika.
+ *   • Rang kam, lekin aniq: brend faqat asosiy amalda; qolgani neytral.
+ *   • Barmoq uchun katta nishon (min 44px) va pastda doimiy asosiy tugma.
+ *
+ * Rol-rang tizimi (butun loyihada bir xil):
+ *   🟠 brand — xarid/savat/asosiy amal   🟢 store — do'kon, tasdiq
+ *   🟡 gold  — balans/pul                🔴 sale  — chegirma, xavfli amal
  */
 export const colors = {
-  brand: "#E8590C",
+  brand: "#F2610C",
   brandDark: "#C84605",
-  brandSoft: "#FFF1E8", // brend fonli yumshoq maydon
-  store: "#0F6B4C",
-  storeSoft: "#E8F3EF",
-  gold: "#C9971A",
-  goldSoft: "#FDF6E3",
-  sale: "#E01E1E",
-  saleSoft: "#FDECEC",
-  warn: "#B33A00",
+  brandSoft: "#FFF0E6",
+  store: "#0E7A55",
+  storeSoft: "#E7F5EF",
+  gold: "#B8860B",
+  goldSoft: "#FBF3E0",
+  sale: "#E11D48",
+  saleSoft: "#FFF0F3",
+  warn: "#B45309",
   info: "#1D6FB8",
+  infoSoft: "#E8F1FA",
 
   bg: "#FFFFFF",
-  bgSoft: "#F7F7F8", // ekran foni (kartochkalar ajralib tursin)
+  /** Ekran foni — oppoq kartochkalar shu fonda "suzadi". */
+  bgSoft: "#F5F5F7",
   cardTop: "#FFF8F2",
-  text: "#141414",
-  textMuted: "#6B6B6B",
-  textFaint: "#9A9A9A",
-  line: "#EAEAEA",
-  lineSoft: "#F1F1F2",
-  secondaryBg: "#F4F4F5",
+  text: "#0F1115",
+  textMuted: "#6A6F7A",
+  textFaint: "#9AA0AB",
+  line: "#E8E9EC",
+  lineSoft: "#F1F2F4",
+  secondaryBg: "#F2F3F5",
+  /** Skeleton (yuklanish) uchun. */
+  skeleton: "#E9EAED",
+  skeletonHi: "#F4F5F7",
 };
 
-export const radius = { xs: 8, sm: 12, md: 14, lg: 18, xl: 24, pill: 999 };
+export const radius = {
+  xs: 10,
+  sm: 14,
+  md: 18,
+  lg: 22,
+  xl: 28,
+  pill: 999,
+};
 
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 };
 
 export const font = {
+  hero: 30,
   h1: 24,
   h2: 18,
   h3: 15,
@@ -44,31 +63,49 @@ export const font = {
   tiny: 11,
 };
 
+/** Sarlavhalar uchun zich harf oralig'i (zamonaviy ko'rinish). */
+export const tracking = {
+  hero: -0.8,
+  h1: -0.5,
+  h2: -0.3,
+  normal: 0,
+  wide: 0.4,
+};
+
 /**
- * Soyalar — kartochkalarga "qog'ozga chizilgan" emas, ko'tarilgan ko'rinish
- * beradi. iOS soyani shadow* bilan, Android esa elevation bilan chizadi,
- * shuning uchun ikkalasi ham beriladi.
+ * Soyalar — yumshoq va keng tarqalgan (qattiq chegara o'rniga).
+ * iOS shadow*, Android elevation — ikkalasi ham beriladi.
  */
 export const shadow = {
+  xs: {
+    shadowColor: "#0F1115",
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+  },
   sm: {
-    shadowColor: "#000",
+    shadowColor: "#0F1115",
     shadowOpacity: 0.06,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
     elevation: 2,
   },
   md: {
-    shadowColor: "#000",
-    shadowOpacity: 0.09,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    shadowColor: "#0F1115",
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 5,
   },
   lg: {
-    shadowColor: "#000",
-    shadowOpacity: 0.12,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
+    shadowColor: "#0F1115",
+    shadowOpacity: 0.14,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 10,
   },
 } as const;
+
+/** Animatsiya davomiyligi (ms) — qisqa va bir xil bo'lsin. */
+export const motion = { fast: 140, normal: 220, slow: 320 };

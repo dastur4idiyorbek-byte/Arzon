@@ -56,7 +56,7 @@ function CatalogStack() {
   return (
     <Stack.Navigator screenOptions={stackScreenOptions}>
       <Stack.Screen name="Katalog" component={CatalogScreen} options={{ headerShown: false }} />
-      <Stack.Screen name="Product" component={ProductScreen} options={{ title: "Mahsulot" }} />
+      <Stack.Screen name="Product" component={ProductScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 }
@@ -71,20 +71,24 @@ function MainTabs() {
         tabBarInactiveTintColor: colors.textMuted,
         tabBarStyle: {
           backgroundColor: colors.bg,
-          borderTopColor: colors.line,
-          height: 58,
-          paddingBottom: 6,
-          paddingTop: 6,
+          borderTopColor: colors.lineSoft,
+          borderTopWidth: 1,
+          height: 62,
+          paddingBottom: 8,
+          paddingTop: 8,
         },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
-        tabBarIcon: ({ color, size }) => {
-          const map: Record<string, keyof typeof Ionicons.glyphMap> = {
-            KatalogTab: "storefront-outline",
-            Savat: "cart-outline",
-            Buyurtmalar: "cube-outline",
-            Balans: "wallet-outline",
+        tabBarLabelStyle: { fontSize: 11, fontWeight: "700" },
+        tabBarIcon: ({ color, size, focused }) => {
+          // Faol bo'lganda to'ldirilgan ikonka — joriy bo'lim aniq ko'rinsin.
+          const map: Record<string, [keyof typeof Ionicons.glyphMap, keyof typeof Ionicons.glyphMap]> = {
+            KatalogTab: ["storefront", "storefront-outline"],
+            Savat: ["bag", "bag-outline"],
+            Buyurtmalar: ["cube", "cube-outline"],
+            Balans: ["person-circle", "person-circle-outline"],
           };
-          return <Ionicons name={map[route.name] ?? "ellipse"} size={size} color={color} />;
+          const juft = map[route.name];
+          const nomi = juft ? (focused ? juft[0] : juft[1]) : "ellipse";
+          return <Ionicons name={nomi} size={size} color={color} />;
         },
       })}
     >
