@@ -28,7 +28,13 @@ ilova undan REST API orqali foydalanadi.
 | 3 | Mijoz ekranlari: katalog, mahsulot, savat/checkout, buyurtma, balans | ✅ (asosiy oqim) |
 | 4 | Admin / Moliya / Menejer ekranlari | ✅ |
 | 5 | Push-bildirishnoma | ✅ |
-| 6 | Build fayllari (.aab/.ipa/.exe/.dmg/.AppImage) | |
+| 6 | Build fayllari — **Android APK tayyor** (`.aab`/`.ipa`/desktop keyin) | 🚧 |
+
+**6-bosqich (build):**
+- ✅ **Android APK** — Telegram bilan tarqatиш uchun to'liq sozlangan. Qadamма-qadам: **[APK_YOLLANMA.md](./APK_YOLLANMA.md)**.
+  - `eas.json` → `preview` profili `.apk` chiqаради (internal distribution).
+  - Play Store kerак emas, bepul Expo hisоби yetadi.
+- ⏳ `.aab` (Play Store), `.ipa` (App Store — Apple $99/yil), desktop `.exe`/`.dmg`/`.AppImage` (Electron) — keyinги ish.
 
 **4-bosqich (rol asosidagi panellar):**
 - ✅ Backend: `require_admin` / `require_manager` / `require_super` endi native JWT'ni ham qabul qiladi (rol `roles()` orqali aniqlanadi) — bir xil endpointlar bot va ilova uchun.
