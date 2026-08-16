@@ -53,6 +53,35 @@ export default function MenejerHomeScreen() {
     return colors.textMuted;
   }
 
+  // Manfiy ID = ilova (email) hisobi, musbat = Telegram.
+  function adminlar(s: any) {
+    const ids: number[] = s.admin_ids || [];
+    if (!ids.length) return "yo'q";
+    const tg = ids.filter((i) => i > 0).length;
+    const app_ = ids.filter((i) => i < 0).length;
+    return [tg ? `${tg} Telegram` : "", app_ ? `${app_} ilova` : ""]
+      .filter(Boolean).join(" + ");
+  }
+
+  function addAdmin(s: any) {
+    const send = (v: string) => {
+      const t = v.trim();
+      if (!t) return;
+      const body = /^\d+$/.test(t) ? { telegram_id: Number(t) } : { email: t };
+      act(`/api/menejer/stores/${s.id}/admins`, body);
+    };
+    if (Alert.prompt) {
+      Alert.prompt(
+        "Admin qo'shish",
+        `"${s.nomi}" uchun email yoki Telegram ID kiriting.\n` +
+          "Email egasi avval ilovaga shu email bilan kirgan bo'lishi kerak.",
+        (v) => v && send(v)
+      );
+    } else {
+      Alert.alert("Admin qo'shish", "Bu qurilmada matn kiritish oynasi yo'q — Menejer botidan foydalaning.");
+    }
+  }
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <Segmented items={TABS} value={tab} onChange={setTab} />
@@ -97,6 +126,7 @@ export default function MenejerHomeScreen() {
                 </View>
                 <Field label="Mahsulotlar" value={`${s.mahsulot_soni} / ${s.mahsulot_limiti}`} />
                 {s.arenda_summasi != null && <Field label="Oylik arenda" value={`${money(s.arenda_summasi)} som`} />}
+                <Field label="Adminlar" value={adminlar(s)} />
                 <View style={styles.actions}>
                   <Btn label="💵 Arenda uzaytirish" tone="gold" style={{ flex: 1 }}
                     onPress={() => act(`/api/menejer/stores/${s.id}/arenda-uzaytir`)} />
@@ -108,6 +138,8 @@ export default function MenejerHomeScreen() {
                       onPress={() => act(`/api/menejer/stores/${s.id}/block`)} />
                   )}
                 </View>
+                <Btn label="➕ Admin qo'shish (email yoki Telegram ID)" tone="ghost"
+                  style={{ marginTop: 8 }} onPress={() => addAdmin(s)} />
               </Card>
             )))}
         </Screen>

@@ -29,11 +29,21 @@ def _submit(coro) -> None:
     fut.add_done_callback(_log_err)
 
 
+def is_telegram_id(chat_id: int | None) -> bool:
+    """Telegram orqali xabar yuborsa bo'ladimi?
+
+    Native (email/Google/Apple) hisoblar `admin_ids` ичида MANFIY ID bilan
+    turadi (models.admin_identity) — ularга Telegram yozib bo'lmaydi, xabar
+    push orqali boradi. Shu tekshiruv barcha yuborish nuqtalarida qo'llanadi.
+    """
+    return bool(chat_id) and chat_id > 0
+
+
 async def _send_admin(
     chat_id: int, text: str, order_id: int, maps_link: str | None = None
 ) -> None:
     app = registry.get("boshqaruv")
-    if app is None:
+    if app is None or not is_telegram_id(chat_id):
         return
     rows = [
         [
@@ -364,14 +374,14 @@ def notify_moliya_refund(
 
 def notify_customer(telegram_id: int | None, text: str, parse_mode=None) -> None:
     """Mijozga Savdo Boti orqali xabar (sync yoki async koddан)."""
-    if not telegram_id:
+    if not is_telegram_id(telegram_id):
         return
     _submit(_send_customer(telegram_id, text, parse_mode))
 
 
 async def send_customer(telegram_id: int | None, text: str) -> None:
     """Async kontekstдан to'g'ridan-to'g'ri yuborish (bot handlerlari uchun)."""
-    if not telegram_id:
+    if not is_telegram_id(telegram_id):
         return
     try:
         await _send_customer(telegram_id, text)
@@ -388,6 +398,6 @@ async def _send_boshqaruv(chat_id: int, text: str) -> None:
 
 def notify_admin_plain(telegram_id: int | None, text: str) -> None:
     """Adminга Boshqaruv Boti orqali oddiy xabar (e'lon uchun)."""
-    if not telegram_id:
+    if not is_telegram_id(telegram_id):
         return
     _submit(_send_boshqaruv(telegram_id, text))

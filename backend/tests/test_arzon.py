@@ -1883,6 +1883,64 @@ def _set_telegram_id(email: str, telegram_id: int) -> None:
         db.close()
 
 
+def test_email_account_can_be_store_admin():
+    """Gmail/email bilan kirgan hisob ham do'kon admini bo'la oladi (manfiy ID)."""
+    store_a, _ = setup_two_stores()
+    sid = store_a["store_id"]
+
+    # Email bilan ro'yxatdan o'tган oddiy hisob — hozircha admin emas.
+    token = _register_native("dokonchi-mail@mail.com")
+    h = {"Authorization": f"Bearer {token}"}
+    assert client.get("/api/admin/my-stores", headers=h).status_code == 403
+
+    # Menejer uni EMAIL bo'yicha admin qilib qo'shadi.
+    add = client.post(
+        f"/api/menejer/stores/{sid}/admins",
+        headers=admin_headers(MANAGER),
+        json={"email": "dokonchi-mail@mail.com"},
+    )
+    assert add.status_code == 200, add.text
+    ids = add.json()["admin_ids"]
+    # Native hisob MANFIY ID bilan qo'shiladi (Telegram ID'lar bilan to'qnashmaydi).
+    yangi = [i for i in ids if i < 0]
+    assert len(yangi) == 1, ids
+
+    # Endi o'sha hisob admin panelига kira oladi va faqat SHU do'konni ko'radi.
+    me = client.get("/api/auth/me", headers=h)
+    assert "admin" in me.json()["roles"], me.text
+    mine = client.get("/api/admin/my-stores", headers=h)
+    assert mine.status_code == 200, mine.text
+    assert [s["id"] for s in mine.json()] == [sid]
+
+    # Mahsulot qo'sha oladi (rule 7 — o'z do'koniga).
+    pr = client.post(
+        f"/api/admin/stores/{sid}/products",
+        headers=h,
+        json={"nomi": "Email admin mahsuloti", "narxi": 1000, "korinish": "ommaviy"},
+    )
+    assert pr.status_code == 200, pr.text
+
+    # Ro'yxatdan chiqarilса — huquq yo'qoladi.
+    rm = client.delete(
+        f"/api/menejer/stores/{sid}/admins/{yangi[0]}",
+        headers=admin_headers(MANAGER),
+    )
+    assert rm.status_code == 200, rm.text
+    assert client.get("/api/admin/my-stores", headers=h).status_code == 403
+
+
+def test_add_admin_by_unknown_email_fails():
+    """Ro'yxatdan o'tmagan email bilan admin qo'shib bo'lmaydi (tushunarli xato)."""
+    store_a, _ = setup_two_stores()
+    r = client.post(
+        f"/api/menejer/stores/{store_a['store_id']}/admins",
+        headers=admin_headers(MANAGER),
+        json={"email": "yoq@mail.com"},
+    )
+    assert r.status_code == 404, r.text
+    assert "topilmadi" in r.json()["detail"]
+
+
 def test_push_register_and_unregister():
     """Native foydalanuvchi Expo push tokenини saqlaydi va o'chiradi (Phase 5)."""
     from app.models import User

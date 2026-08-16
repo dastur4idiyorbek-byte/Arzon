@@ -111,6 +111,14 @@ def checkout(
                 yetkazish_txt=yetk,
                 maps_link=maps_link,
             )
+            # Native (email) adminlarга push — ularga Telegram yozib bo'lmaydi.
+            from ..services import push as push_service
+
+            push_service.push_store_admins(
+                db, store, "🆕 Yangi buyurtma",
+                f"Kod {o.kod} — {float(o.jami_narx):,.0f} som",
+                {"type": "admin_order", "order_id": o.id},
+            )
     except ImportError:
         pass
 

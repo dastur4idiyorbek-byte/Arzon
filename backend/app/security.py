@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import get_db
-from .models import Store, User
+from .models import Store, User, admin_identity
 
 
 # ---------------------------------------------------------------------------
@@ -237,9 +237,9 @@ def require_admin(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Sizda do'kon administratori huquqi yo'q.",
             )
-        # "admin" roli faqat telegram_id biror do'konning admin_ids'ida
-        # bo'lganda beriladi — demak bu yerda telegram_id doim mavjud.
-        return int(user.telegram_id)
+        # Telegram ID (musbat) yoki native hisob ID'si (manfiy) — ikkalasi ham
+        # admin_ids ичида tura oladi (models.admin_identity).
+        return admin_identity(user)
     return _verify_internal_admin(x_admin_id, x_internal_token)
 
 

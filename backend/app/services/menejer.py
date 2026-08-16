@@ -12,7 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import vector_store
-from ..models import Order, Product, Store, User, _as_aware, _now
+from ..models import Order, Product, Store, User, _as_aware, _now, admin_identity
 from ..models import PickupPoint as _Pickup
 from ..models import PromoCode as _Promo
 from ..models import UnlockedStore as _Unlocked
@@ -53,23 +53,54 @@ def delete_product_moderation(db: Session, product_id: int) -> str:
 # ---------------------------------------------------------------------------
 # Adminlarni boshqarish
 # ---------------------------------------------------------------------------
-def add_admin(db: Session, store_id: int, telegram_id: int) -> list:
+def resolve_admin_id(db: Session, telegram_id: int | None, email: str | None) -> int:
+    """Admin identifikatorini aniqlaydi — Telegram ID yoki email bo'yicha.
+
+    Email berilsa, o'sha email bilan ro'yxatdan o'tgan hisob topiladi va unga
+    manfiy ID beriladi (models.admin_identity). Ya'ni Gmail bilan kirgan odam
+    ham do'kon admini bo'la oladi.
+    """
+    if telegram_id:
+        return int(telegram_id)
+    if not email or not email.strip():
+        raise HTTPException(
+            status_code=400, detail="telegram_id yoki email kiriting."
+        )
+    user = db.scalar(select(User).where(User.email == email.strip().lower()))
+    if user is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"'{email.strip()}' bilan ro'yxatdan o'tgan hisob topilmadi. "
+                "Avval o'sha odam ilovaga shu email bilan kirsin."
+            ),
+        )
+    return admin_identity(user)
+
+
+def add_admin(
+    db: Session,
+    store_id: int,
+    telegram_id: int | None = None,
+    email: str | None = None,
+) -> list:
     store = db.get(Store, store_id)
     if store is None:
         raise HTTPException(status_code=404, detail="Do'kon topilmadi.")
+    admin_id = resolve_admin_id(db, telegram_id, email)
     ids = list(store.admin_ids or [])
-    if telegram_id not in ids:
-        ids.append(telegram_id)
+    if admin_id not in ids:
+        ids.append(admin_id)
         store.admin_ids = ids
         db.commit()
     return list(store.admin_ids or [])
 
 
-def remove_admin(db: Session, store_id: int, telegram_id: int) -> list:
+def remove_admin(db: Session, store_id: int, admin_id: int) -> list:
     store = db.get(Store, store_id)
     if store is None:
         raise HTTPException(status_code=404, detail="Do'kon topilmadi.")
-    ids = [a for a in (store.admin_ids or []) if a != telegram_id]
+    ids = [a for a in (store.admin_ids or []) if a != admin_id]
     store.admin_ids = ids
     db.commit()
     return ids

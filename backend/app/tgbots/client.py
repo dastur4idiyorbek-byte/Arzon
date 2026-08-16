@@ -559,10 +559,15 @@ class BotApi:
         r = await self._request("GET", "/api/menejer/adminlar", headers=self._admin(mid))
         return r.json() if r.status_code == 200 else []
 
-    async def menejer_add_admin(self, mid: int, store_id: int, tid: int) -> httpx.Response:
+    async def menejer_add_admin(
+        self, mid: int, store_id: int,
+        tid: int | None = None, email: str | None = None,
+    ) -> httpx.Response:
+        """Admin qo'shish — Telegram ID yoki email (ilovaga kirgan hisob) bo'yicha."""
         return await self._request(
             "POST", f"/api/menejer/stores/{store_id}/admins",
-            headers=self._admin(mid), json={"telegram_id": tid},
+            headers=self._admin(mid),
+            json={"telegram_id": tid, "email": email},
         )
 
     async def menejer_remove_admin(self, mid: int, store_id: int, tid: int) -> httpx.Response:

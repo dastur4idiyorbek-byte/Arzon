@@ -287,18 +287,31 @@ async def admin_add_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await query.answer()
     context.user_data["add_store"] = int(query.data.replace("madd_", ""))
     await query.message.reply_text(
-        "Yangi adminning Telegram ID'sini kiriting:", reply_markup=cancel_kb()
+        "Yangi adminni qo'shish. Ikkitasidan birini yuboring:\n\n"
+        "• <b>Telegram ID</b> (raqam) — botlar orqali ishlaydigan admin uchun\n"
+        "• <b>Email</b> — ilovaga (ARZON app) shu email bilan kirган admin uchun\n\n"
+        "Eslatma: email egasi avval ilovaga kirган bo'lishi kerak.",
+        parse_mode="HTML", reply_markup=cancel_kb(),
     )
     return ADD_TID
 
 
 async def admin_add_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     matn = update.message.text.strip()
-    if not matn.isdigit():
-        await update.effective_message.reply_text("Telegram ID raqam bo'lishi kerak:")
+    store_id = context.user_data.get("add_store")
+    if matn.isdigit():
+        tid, email = int(matn), None
+    elif "@" in matn and "." in matn.split("@")[-1]:
+        tid, email = None, matn
+    else:
+        await update.effective_message.reply_text(
+            "Telegram ID (raqam) yoki email kiriting:"
+        )
         return ADD_TID
-    store_id = context.user_data.pop("add_store", None)
-    r = await api.menejer_add_admin(update.effective_user.id, store_id, int(matn))
+    context.user_data.pop("add_store", None)
+    r = await api.menejer_add_admin(
+        update.effective_user.id, store_id, tid=tid, email=email
+    )
     msg = f"✅ Admin {matn} qo'shildi." if r.status_code == 200 else f"❌ {r.text[:150]}"
     await update.effective_message.reply_text(msg, reply_markup=menu_markup())
     return ConversationHandler.END

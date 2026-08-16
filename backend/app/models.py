@@ -44,6 +44,24 @@ def _as_aware(dt: datetime | None) -> datetime | None:
     return dt
 
 
+def admin_identity(user) -> int:
+    """Do'kon adminini bildiruvchi yagona raqam (stores.admin_ids ichida turadi).
+
+    * Telegram foydalanuvchisi -> `telegram_id` (doim MUSBAT).
+    * Native (email/Google/Apple) hisob -> `-user.id` (MANFIY).
+
+    Telegram ID'lar hech qachon manfiy bo'lmagani uchun ikki turdagi hisob
+    to'qnashmaydi. Shu tufayli email bilan kirgan hisob ham do'kon admini
+    bo'la oladi (botlar mantig'i o'zgarmaydi).
+
+    DIQQAT: manfiy ID'ga Telegram orqali xabar yuborib bo'lmaydi — bunday
+    adminlarga bildirishnoma push orqali boradi (services/push.py).
+    """
+    if user.telegram_id:
+        return int(user.telegram_id)
+    return -int(user.id)
+
+
 class Store(Base):
     __tablename__ = "stores"
 

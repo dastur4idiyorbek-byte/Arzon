@@ -87,3 +87,41 @@ def push_user_id(
     if user_id is None:
         return False
     return push_user(db, db.get(User, user_id), title, body, data)
+
+
+def push_admin_ids(
+    db: Session,
+    admin_ids,
+    title: str,
+    body: str,
+    data: dict | None = None,
+) -> int:
+    """`stores.admin_ids` ro'yxatidagi adminlarga push yuboradi.
+
+    Ro'yxatда Telegram ID (musbat) ham, native hisob ID'si (manfiy) ham bo'lishi
+    mumkin — ikkalasi ham foydalanuvchiga aylantiriladi (auth.user_by_admin_id).
+    Push tokeni bo'lmaganlar jimgina o'tkazib yuboriladi.
+
+    Qaytaradi: yuborilganlar soni.
+    """
+    from . import auth as auth_service
+
+    yuborildi = 0
+    for aid in admin_ids or []:
+        u = auth_service.user_by_admin_id(db, aid)
+        if u is not None and push_user(db, u, title, body, data):
+            yuborildi += 1
+    return yuborildi
+
+
+def push_store_admins(
+    db: Session,
+    store,
+    title: str,
+    body: str,
+    data: dict | None = None,
+) -> int:
+    """Do'kon adminlariga push (Store obyekti bo'yicha)."""
+    if store is None:
+        return 0
+    return push_admin_ids(db, store.admin_ids, title, body, data)

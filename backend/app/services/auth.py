@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import settings
-from ..models import Store, User, _now
+from ..models import Store, User, _now, admin_identity
 
 
 # ---------------------------------------------------------------------------
@@ -70,11 +70,21 @@ def roles(db: Session, user: User) -> list[str]:
         email and email in settings.menejer_email_list
     ):
         r.append("menejer")
-    if tid:
-        stores = db.scalars(select(Store).where(Store.admin_ids.isnot(None))).all()
-        if any(tid in (s.admin_ids or []) for s in stores):
-            r.append("admin")
+    # Do'kon admini: Telegram ID yoki native hisob ID'si (manfiy) admin_ids ичида.
+    ident = admin_identity(user)
+    stores = db.scalars(select(Store).where(Store.admin_ids.isnot(None))).all()
+    if any(ident in (s.admin_ids or []) for s in stores):
+        r.append("admin")
     return r
+
+
+def user_by_admin_id(db: Session, admin_id: int | None) -> User | None:
+    """admin_identity() qaytargan raqamdan foydalanuvchini topadi (teskari amal)."""
+    if not admin_id:
+        return None
+    if admin_id < 0:
+        return db.get(User, -admin_id)
+    return db.scalar(select(User).where(User.telegram_id == admin_id))
 
 
 # ---------------------------------------------------------------------------

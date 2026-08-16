@@ -131,7 +131,10 @@ def adminlar(
 
 
 class AdminBody(BaseModel):
-    telegram_id: int
+    """Admin qo'shish — Telegram ID YOKI email (ilovaga kirgan hisob) bo'yicha."""
+
+    telegram_id: int | None = None
+    email: str | None = None
 
 
 @router.post("/stores/{store_id}/admins")
@@ -141,17 +144,22 @@ def add_admin(
     _: int = Depends(require_manager),
     db: Session = Depends(get_db),
 ):
-    return {"admin_ids": menejer_service.add_admin(db, store_id, payload.telegram_id)}
+    return {
+        "admin_ids": menejer_service.add_admin(
+            db, store_id, payload.telegram_id, payload.email
+        )
+    }
 
 
-@router.delete("/stores/{store_id}/admins/{telegram_id}")
+@router.delete("/stores/{store_id}/admins/{admin_id}")
 def remove_admin(
     store_id: int,
-    telegram_id: int,
+    admin_id: int,
     _: int = Depends(require_manager),
     db: Session = Depends(get_db),
 ):
-    return {"admin_ids": menejer_service.remove_admin(db, store_id, telegram_id)}
+    """admin_id — Telegram ID (musbat) yoki native hisob ID'si (manfiy)."""
+    return {"admin_ids": menejer_service.remove_admin(db, store_id, admin_id)}
 
 
 # ---------------------------------------------------------------------------
