@@ -28,8 +28,7 @@
       "package": "kg.arzon.app",
       "adaptiveIcon": {
         "backgroundColor": "#E8590C"
-      },
-      "useNextNotificationsApi": true
+      }
     },
     "web": {
       "bundler": "metro"
