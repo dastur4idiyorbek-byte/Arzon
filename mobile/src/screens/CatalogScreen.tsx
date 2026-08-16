@@ -94,9 +94,12 @@ export default function CatalogScreen({ navigation }: any) {
     <View style={styles.container}>
       {/* Sarlavha — logotip va savat */}
       <View style={styles.header}>
-        <View>
-          <Text style={styles.logo}>ARZON</Text>
-          <Text style={styles.shior}>Onlayn savdo</Text>
+        <View style={styles.brend}>
+          <Image source={require("../../assets/icon.png")} style={styles.brendLogo} />
+          <View>
+            <Text style={styles.logo}>ARZON</Text>
+            <Text style={styles.shior}>Onlayn savdo</Text>
+          </View>
         </View>
         <TouchableOpacity style={styles.cartBtn} onPress={() => navigation.navigate("Savat")}>
           <Ionicons name="cart-outline" size={24} color={colors.brand} />
@@ -186,6 +189,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.sm,
     backgroundColor: colors.bg,
   },
+  brend: { flexDirection: "row", alignItems: "center", gap: 10 },
+  brendLogo: { width: 38, height: 38, borderRadius: radius.sm },
   logo: { fontSize: font.h1, fontWeight: "900", color: colors.brand, letterSpacing: 1.5 },
   shior: { fontSize: font.tiny, color: colors.textFaint, letterSpacing: 0.5, marginTop: -2 },
   cartBtn: {

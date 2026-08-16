@@ -162,14 +162,75 @@ def bildirishnoma(size: int = 96) -> Image.Image:
 MANBA = os.path.join(ASSETS, "logo-source.png")
 
 
-def _kvadrat(img: Image.Image, fon=OQ) -> Image.Image:
-    """Rasmni kvadratga keltiradi (chetlarini kesmasdan, fon bilan to'ldirib)."""
+def _kvadrat(img: Image.Image, fon=OQ, chekka: float = 0.0) -> Image.Image:
+    """Rasmni kvadratga keltiradi (kesmasdan, fon bilan to'ldirib).
+
+    `chekka` — atrofda qoldiriladigan bo'sh joy (tomonning ulushi).
+    """
     w, h = img.size
-    tomon = max(w, h)
+    tomon = int(max(w, h) * (1 + chekka * 2))
     yangi = Image.new("RGB", (tomon, tomon), fon)
     yangi.paste(img, ((tomon - w) // 2, (tomon - h) // 2),
                 img if img.mode == "RGBA" else None)
     return yangi
+
+
+def _kes(img: Image.Image) -> Image.Image:
+    """Atrofdagi bo'sh (shaffof) joyni kesib tashlaydi."""
+    quti = img.getbbox()
+    return img.crop(quti) if quti else img
+
+
+def belgini_ajrat(src: Image.Image) -> Image.Image:
+    """Logotipdan FAQAT belgi (yuqoridagi rasm) qismini ajratadi.
+
+    Logotip odatda ikki qavat: yuqorida belgi, pastida nom yozuvi. Ular orasida
+    bo'sh gorizontal yo'lak bo'ladi. Shu yo'lakni topib, yuqori qismni qaytaramiz.
+
+    Nega kerak: telefondagi ikonka juda kichik — undagi yozuv o'qilmaydi va
+    faqat rasmni ifloslantiradi. Belgi esa aniq ko'rinadi.
+
+    Yo'lak topilmasa — butun logotip qaytariladi (xavfsiz zaxira).
+    """
+    img = _kes(src.convert("RGBA"))
+    w, h = img.size
+    alpha = img.getchannel("A")
+    px = alpha.load()
+
+    # Har bir qatorda nechta ko'rinadigan piksel bor?
+    qatorlar = []
+    for y in range(h):
+        soni = 0
+        for x in range(0, w, 4):  # har 4-piksel — tezlik uchun yetarli
+            if px[x, y] > 40:
+                soni += 1
+        qatorlar.append(soni)
+
+    eng_kop = max(qatorlar) or 1
+    bosh = [q < eng_kop * 0.02 for q in qatorlar]  # deyarli bo'sh qator
+
+    # Rasmning o'rta qismidan (35%..75%) eng uzun bo'sh yo'lakni qidiramiz —
+    # belgi bilan yozuv orasidagi ajratgich shu yerda bo'ladi.
+    eng_uzun, eng_boshi = 0, None
+    i = int(h * 0.35)
+    chek = int(h * 0.78)
+    while i < chek:
+        if bosh[i]:
+            j = i
+            while j < chek and bosh[j]:
+                j += 1
+            if j - i > eng_uzun:
+                eng_uzun, eng_boshi = j - i, i
+            i = j
+        else:
+            i += 1
+
+    # Yo'lak juda ingichka bo'lsa — ishonchsiz, butun logotipni qaytaramiz.
+    if eng_boshi is None or eng_uzun < h * 0.015:
+        print("   ⚠️  belgi/yozuv ajratgichi topilmadi — butun logotip ishlatiladi.")
+        return img
+    print(f"   ✂️  belgi ajratildi (0..{eng_boshi}px, {eng_boshi * 100 // h}%)")
+    return _kes(img.crop((0, 0, w, eng_boshi)))
 
 
 def logodan() -> bool:
@@ -183,30 +244,51 @@ def logodan() -> bool:
     print(f"✅ Logotip topildi: {os.path.relpath(MANBA)}")
     src = Image.open(MANBA).convert("RGBA")
 
-    # 1) Ilova ikonkasi — kvadrat, 1024x1024.
-    kv = _kvadrat(src)
-    kv.resize((1024, 1024), Image.LANCZOS).save(os.path.join(ASSETS, "icon.png"))
+    # IKONKA uchun — faqat BELGI qismi (yozuvsiz). Kichik ekranda yozuv
+    # o'qilmaydi, belgi esa aniq ko'rinadi.
+    belgi = belgini_ajrat(src)
+    belgi_kv = _kvadrat(belgi, chekka=0.08)
 
-    # 2) Android adaptiv — chetlari kesiladi, shuning uchun ichkariga kichraytiramiz.
+    # 1) Ilova ikonkasi — 1024x1024.
+    belgi_kv.resize((1024, 1024), Image.LANCZOS).save(
+        os.path.join(ASSETS, "icon.png")
+    )
+
+    # 2) Android adaptiv — tizim chetlarini kesadi (yumaloq/kvadrat niqob),
+    #    shuning uchun belgi xavfsiz zonaga (~66%) kichraytiriladi.
     ichki = int(1024 * 0.66)
-    kichik = kv.resize((ichki, ichki), Image.LANCZOS)
+    kichik = _kvadrat(belgi, fon=OQ).resize((ichki, ichki), Image.LANCZOS)
     adap = Image.new("RGBA", (1024, 1024), (0, 0, 0, 0))
     adap.paste(kichik, ((1024 - ichki) // 2, (1024 - ichki) // 2))
     adap.save(os.path.join(ASSETS, "adaptive-icon.png"))
 
-    # 3) Ochilish ekrani — logotip markazda, brend foni bilan.
+    # 3) Ochilish ekrani — TO'LIQ logotip (yozuvi bilan), joyi keng.
     w, h = 1284, 2778
     sp = Image.new("RGB", (w, h), OQ)
-    lo = int(w * 0.62)
-    sp.paste(kv.resize((lo, lo), Image.LANCZOS), ((w - lo) // 2, (h - lo) // 2))
+    toliq = _kes(src)
+    lo_w = int(w * 0.74)
+    lo_h = int(toliq.size[1] * lo_w / toliq.size[0])
+    sp.paste(
+        toliq.resize((lo_w, lo_h), Image.LANCZOS),
+        ((w - lo_w) // 2, (h - lo_h) // 2),
+        toliq.resize((lo_w, lo_h), Image.LANCZOS),
+    )
     sp.save(os.path.join(ASSETS, "splash.png"))
 
-    # 4) Bildirishnoma ikonkasi — Android faqat OQ siluetni ko'rsatadi, shuning
-    #    uchun uni logotipdan emas, chizilgan shakldan olamiz (aniqroq chiqadi).
-    bildirishnoma(96).save(os.path.join(ASSETS, "notification-icon.png"))
+    # 4) Bildirishnoma ikonkasi — Android uni faqat OQ SILUET qilib ko'rsatadi
+    #    (ranglarni tashlaydi). Shuning uchun belgi shaklidan siluet yasaymiz.
+    sil = belgi.resize((96, 96), Image.LANCZOS)
+    oq = Image.new("RGBA", (96, 96), (0, 0, 0, 0))
+    sp_a, sp_b = sil.getchannel("A"), oq.load()
+    a_px = sp_a.load()
+    for y in range(96):
+        for x in range(96):
+            if a_px[x, y] > 60:
+                sp_b[x, y] = (255, 255, 255, 255)
+    oq.save(os.path.join(ASSETS, "notification-icon.png"))
 
     # 5) Web favicon.
-    kv.resize((48, 48), Image.LANCZOS).convert("RGB").save(
+    belgi_kv.resize((48, 48), Image.LANCZOS).convert("RGB").save(
         os.path.join(ASSETS, "favicon.png")
     )
     return True
