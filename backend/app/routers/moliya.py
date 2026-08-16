@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -21,14 +21,29 @@ from ..models import (
     Store,
     User,
 )
-from ..security import is_super_admin, require_admin
+from ..security import _verify_internal_admin, is_super_admin, native_user_or_none
+from ..services import auth as auth_service
 from ..services import coin as coin_service
 
 router = APIRouter(prefix="/api/moliya", tags=["moliya"])
 
 
-def require_super(admin_id: int = Depends(require_admin)) -> int:
-    """Faqat super-admin (loyiha egasi) — Moliya Boti."""
+def require_super(
+    authorization: str = Header(default=""),
+    x_admin_id: str = Header(default="", alias="X-Admin-Id"),
+    x_internal_token: str = Header(default="", alias="X-Internal-Token"),
+    db: Session = Depends(get_db),
+) -> int:
+    """Faqat super-admin (loyiha egasi) — Native ilova (JWT) yoki Moliya Boti."""
+    user = native_user_or_none(authorization, db)
+    if user is not None:
+        if "moliya" not in auth_service.roles(db, user):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Faqat super-admin uchun.",
+            )
+        return int(user.telegram_id or 0)
+    admin_id = _verify_internal_admin(x_admin_id, x_internal_token)
     if not is_super_admin(admin_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

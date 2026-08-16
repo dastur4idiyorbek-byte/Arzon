@@ -26,9 +26,16 @@ ilova undan REST API orqali foydalanadi.
 | 1 | Loyiha asosi | ✅ |
 | 2 | Kirish + rol | ✅ |
 | 3 | Mijoz ekranlari: katalog, mahsulot, savat/checkout, buyurtma, balans | ✅ (asosiy oqim) |
-| 4 | Admin / Moliya / Menejer ekranlari | |
+| 4 | Admin / Moliya / Menejer ekranlari | ✅ |
 | 5 | Push-bildirishnoma | |
 | 6 | Build fayllari (.aab/.ipa/.exe/.dmg/.AppImage) | |
+
+**4-bosqich (rol asosidagi panellar):**
+- ✅ Backend: `require_admin` / `require_manager` / `require_super` endi native JWT'ni ham qabul qiladi (rol `roles()` orqali aniqlanadi) — bir xil endpointlar bot va ilova uchun.
+- ✅ Ilova: Profil ekranida rolga qarab panel tugmalari chiqadi:
+  - 🛠 **Admin paneli** — do'kon tanlash, mahsulot CRUD, buyurtmalar (holat/qabul/bekor), statistika + eng ko'p sotilgan + mahfiy kod, pul yechish.
+  - 💰 **Moliya paneli** — to'ldirish / pul yechish / balans qaytarish so'rovlarini tasdiqlash-rad etish + umumiy hisobot.
+  - 👔 **Menejer paneli** — do'kon so'rovlari (tasdiq/rad), do'konlar + arenda (blok/blokdan chiqarish/uzaytirish), hisobot.
 
 ---
 

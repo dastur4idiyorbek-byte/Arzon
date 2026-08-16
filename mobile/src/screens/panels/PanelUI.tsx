@@ -1,0 +1,157 @@
+/**
+ * Panel ekranlari uchun umumiy UI bo'laklari (admin/moliya/menejer).
+ * Rol-rang tizimiga mos, takrorlanishни kamaytiradi.
+ */
+import React from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ActivityIndicator,
+  ScrollViewProps,
+  ScrollView,
+} from "react-native";
+import { colors, radius, spacing, font } from "../../theme";
+
+export function Segmented({
+  items,
+  value,
+  onChange,
+}: {
+  items: { key: string; label: string }[];
+  value: string;
+  onChange: (k: string) => void;
+}) {
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.segWrap}
+    >
+      {items.map((it) => {
+        const active = it.key === value;
+        return (
+          <TouchableOpacity
+            key={it.key}
+            onPress={() => onChange(it.key)}
+            style={[styles.seg, active && styles.segActive]}
+          >
+            <Text style={[styles.segText, active && styles.segTextActive]}>
+              {it.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
+export function Card({ children, style }: any) {
+  return <View style={[styles.card, style]}>{children}</View>;
+}
+
+export function Btn({
+  label,
+  onPress,
+  tone = "brand",
+  disabled,
+  style,
+}: {
+  label: string;
+  onPress: () => void;
+  tone?: "brand" | "store" | "sale" | "gold" | "ghost";
+  disabled?: boolean;
+  style?: any;
+}) {
+  const bg =
+    tone === "store"
+      ? colors.store
+      : tone === "sale"
+      ? colors.sale
+      : tone === "gold"
+      ? colors.gold
+      : tone === "ghost"
+      ? "transparent"
+      : colors.brand;
+  const fg = tone === "ghost" ? colors.brand : "#fff";
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={disabled}
+      style={[
+        styles.btn,
+        { backgroundColor: bg, opacity: disabled ? 0.5 : 1 },
+        tone === "ghost" && { borderWidth: 1.5, borderColor: colors.brand },
+        style,
+      ]}
+    >
+      <Text style={[styles.btnText, { color: fg }]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+export function Empty({ text }: { text: string }) {
+  return <Text style={styles.empty}>{text}</Text>;
+}
+
+export function Loader() {
+  return (
+    <ActivityIndicator color={colors.brand} style={{ marginTop: 40 }} size="large" />
+  );
+}
+
+export function Screen(props: ScrollViewProps) {
+  return (
+    <ScrollView
+      style={{ backgroundColor: colors.bg }}
+      contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40 }}
+      {...props}
+    />
+  );
+}
+
+export function Field({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.fieldRow}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <Text style={styles.fieldValue}>{value}</Text>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  segWrap: { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, gap: 8 },
+  seg: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: colors.secondaryBg,
+  },
+  segActive: { backgroundColor: colors.brand },
+  segText: { color: colors.textMuted, fontWeight: "700", fontSize: 13 },
+  segTextActive: { color: "#fff" },
+  card: {
+    backgroundColor: colors.cardTop,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radius.lg,
+    padding: 16,
+    marginBottom: 12,
+  },
+  btn: {
+    borderRadius: radius.md,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: "center",
+  },
+  btnText: { fontWeight: "800", fontSize: 14 },
+  empty: { textAlign: "center", color: colors.textMuted, marginTop: 40 },
+  fieldRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: 4,
+  },
+  fieldLabel: { color: colors.textMuted },
+  fieldValue: { color: colors.text, fontWeight: "700" },
+});

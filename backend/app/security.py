@@ -173,19 +173,8 @@ def check_store_access(admin_id: int, store_id: int, db: Session) -> Store:
     return store
 
 
-def require_admin(
-    x_admin_id: str = Header(default="", alias="X-Admin-Id"),
-    x_internal_token: str = Header(default="", alias="X-Internal-Token"),
-) -> int:
-    """Admin endpointlari uchun dependency.
-
-    Ikki qatlam:
-      1. Ichki token — faqat ishonchli Boshqaruv Boti chaqira oladi.
-      2. admin_id — kim so'rov qilayotgani (keyin check_store_access tekshiradi).
-
-    Bu YAGONA ruxsat emas — har endpoint alohida check_store_access chaqiradi
-    (rule 7). Bu qatlam faqat "kim" ekanini aniqlaydi va tashqi kirishni to'sadi.
-    """
+def _verify_internal_admin(x_admin_id: str, x_internal_token: str) -> int:
+    """Ichki token + X-Admin-Id ni tekshiradi (botlar uchun umumiy qatlam)."""
     if not settings.internal_api_token:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -204,34 +193,88 @@ def require_admin(
     return int(x_admin_id)
 
 
+def native_user_or_none(authorization: str, db: Session) -> User | None:
+    """`Authorization: Bearer <JWT>` bo'lsa foydalanuvchi, aks holda None.
+
+    Native ilova (React Native) admin/moliya/menejerlari JWT bilan kiradi;
+    botlar esa ichki token bilan. Token bor-u yaroqsiz bo'lsa — 401.
+    """
+    if not authorization.lower().startswith("bearer "):
+        return None
+    from .services import auth as auth_service
+
+    uid = auth_service.decode_token(authorization[7:].strip())
+    user = db.get(User, uid) if uid is not None else None
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Sessiya yaroqsiz — qaytadan kiring.",
+        )
+    return user
+
+
+def require_admin(
+    authorization: str = Header(default=""),
+    x_admin_id: str = Header(default="", alias="X-Admin-Id"),
+    x_internal_token: str = Header(default="", alias="X-Internal-Token"),
+    db: Session = Depends(get_db),
+) -> int:
+    """Admin endpointlari uchun dependency.
+
+    Ikki kirish usuli:
+      * Native ilova — `Authorization: Bearer <JWT>` (do'kon admini roli talab).
+      * Boshqaruv Boti — ichki token + X-Admin-Id (telegram_id).
+
+    Qaytadagan qiymat — admin telegram_id (keyin check_store_access tekshiradi,
+    rule 7). Bu qatlam faqat "kim" ekanini aniqlaydi va tashqi kirishni to'sadi.
+    """
+    user = native_user_or_none(authorization, db)
+    if user is not None:
+        from .services import auth as auth_service
+
+        if "admin" not in auth_service.roles(db, user):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Sizda do'kon administratori huquqi yo'q.",
+            )
+        # "admin" roli faqat telegram_id biror do'konning admin_ids'ida
+        # bo'lganda beriladi — demak bu yerda telegram_id doim mavjud.
+        return int(user.telegram_id)
+    return _verify_internal_admin(x_admin_id, x_internal_token)
+
+
 def is_manager(telegram_id: int) -> bool:
     return telegram_id in settings.menejer_id_list
 
 
 def require_manager(
+    authorization: str = Header(default=""),
     x_admin_id: str = Header(default="", alias="X-Admin-Id"),
     x_internal_token: str = Header(default="", alias="X-Internal-Token"),
+    db: Session = Depends(get_db),
 ) -> int:
-    """Menejer endpointlari uchun dependency — faqat MENEJER_ID ro'yxatidagilar.
+    """Menejer endpointlari uchun dependency — faqat menejer roli.
 
-    Boshqaruv Bot bilan hech qanday umumiy kod ulashilmaydi (rule 2) — bu
-    alohida ruxsat qatlami, faqat umumiy ma'lumotlar bazasi.
+    Native ilova (JWT, menejer roli) yoki Menejer Boti (ichki token) qabul
+    qilinadi. Boshqaruv Bot bilan hech qanday umumiy kod ulashilmaydi (rule 2).
     """
-    if not settings.internal_api_token:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Ichki API tokeni sozlanmagan.",
-        )
-    if not hmac.compare_digest(x_internal_token, settings.internal_api_token):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Ichki token noto'g'ri."
-        )
-    if not x_admin_id.isdigit() or not is_manager(int(x_admin_id)):
+    user = native_user_or_none(authorization, db)
+    if user is not None:
+        from .services import auth as auth_service
+
+        if "menejer" not in auth_service.roles(db, user):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Sizda bu botdan foydalanish huquqi yo'q.",
+            )
+        return int(user.telegram_id or 0)
+    admin_id = _verify_internal_admin(x_admin_id, x_internal_token)
+    if not is_manager(admin_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Sizda bu botdan foydalanish huquqi yo'q.",
         )
-    return int(x_admin_id)
+    return admin_id
 
 
 def get_admin_store_ids(admin_id: int, db: Session) -> list[int]:

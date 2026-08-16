@@ -1855,3 +1855,69 @@ def test_native_jwt_accesses_customer_endpoints():
     assert p.status_code == 200
     # Yaroqsiz token -> 401.
     assert client.get("/api/balance", headers={"Authorization": "Bearer xxx"}).status_code == 401
+
+
+def _register_native(email: str, parol: str = "parol123") -> str:
+    """Native foydalanuvchi (bor bo'lsa login) — JWT tokenini qaytaradi.
+
+    Testlar umumiy DBда ishlaydi, shuning uchun email allaqachon mavjud
+    bo'lsa (409) login qilib token olamiz.
+    """
+    r = client.post("/api/auth/register", json={"email": email, "parol": parol})
+    if r.status_code == 409:
+        r = client.post("/api/auth/login", json={"email": email, "parol": parol})
+    assert r.status_code == 200, r.text
+    return r.json()["token"]
+
+
+def _set_telegram_id(email: str, telegram_id: int) -> None:
+    """Native foydalanuvchiga telegram_id bog'laydi (do'kon admini bo'lishi uchun)."""
+    from app.models import User
+
+    db = SessionLocal()
+    try:
+        u = db.query(User).filter(User.email == email.lower()).first()
+        u.telegram_id = telegram_id
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_native_jwt_moliya_access():
+    """super_admin_emails ro'yxatidagi native foydalanuvchi moliya endpointlariga kiradi."""
+    token = _register_native("boss@arzon.kg", "boss1234")
+    h = {"Authorization": f"Bearer {token}"}
+    r = client.get("/api/moliya/topups", headers=h)
+    assert r.status_code == 200, r.text
+    # Oddiy mijoz -> 403.
+    other = _register_native("oddiy@mail.com")
+    r2 = client.get("/api/moliya/topups", headers={"Authorization": f"Bearer {other}"})
+    assert r2.status_code == 403, r2.text
+
+
+def test_native_jwt_menejer_access():
+    """menejer_emails ro'yxatidagi native foydalanuvchi menejer endpointlariga kiradi."""
+    token = _register_native("menejer@arzon.kg", "mng12345")
+    h = {"Authorization": f"Bearer {token}"}
+    r = client.get("/api/menejer/stores", headers=h)
+    assert r.status_code == 200, r.text
+    other = _register_native("oddiy2@mail.com")
+    r2 = client.get("/api/menejer/stores", headers={"Authorization": f"Bearer {other}"})
+    assert r2.status_code == 403, r2.text
+
+
+def test_native_jwt_admin_access():
+    """telegram_id do'kon admin_ids'ida bo'lgan native foydalanuvchi admin endpointiga kiradi."""
+    setup_two_stores()  # ADMIN_A / ADMIN_B do'konlari
+    token = _register_native("dokonchi@mail.com")
+    _set_telegram_id("dokonchi@mail.com", ADMIN_A)
+    h = {"Authorization": f"Bearer {token}"}
+    # my-stores — o'z do'konini ko'radi (umumiy DBда ADMIN_A bir nechта
+    # do'konга ega bo'lishi mumkin; muhими — kamida bittasi va hammasi o'ziniki).
+    r = client.get("/api/admin/my-stores", headers=h)
+    assert r.status_code == 200, r.text
+    assert len(r.json()) >= 1
+    # Do'konsiz (admin roli yo'q) native foydalanuvchi -> 403.
+    other = _register_native("oddiy3@mail.com")
+    r2 = client.get("/api/admin/my-stores", headers={"Authorization": f"Bearer {other}"})
+    assert r2.status_code == 403, r2.text
