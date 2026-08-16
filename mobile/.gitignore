@@ -4,6 +4,9 @@ dist/
 web-build/
 *.log
 .DS_Store
+# prebuild natijasi (EAS bulutda o'zi qayta yaratadi)
+android/
+ios/
 # EAS / build artefaktlari
 *.aab
 *.ipa
