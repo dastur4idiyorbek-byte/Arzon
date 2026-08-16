@@ -12,23 +12,12 @@
       "backgroundColor": "#FFF8F2"
     },
     "assetBundlePatterns": ["**/*"],
-    "plugins": [
-      [
-        "expo-notifications",
-        {
-          "color": "#E8590C"
-        }
-      ]
-    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "kg.arzon.app"
     },
     "android": {
-      "package": "kg.arzon.app",
-      "adaptiveIcon": {
-        "backgroundColor": "#E8590C"
-      }
+      "package": "kg.arzon.app"
     },
     "web": {
       "bundler": "metro"
