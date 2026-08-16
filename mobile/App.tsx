@@ -11,6 +11,7 @@ import { colors } from "./src/theme";
 import { AuthProvider, useAuth } from "./src/auth/AuthContext";
 import { CartProvider, useCart } from "./src/cart/CartContext";
 import { PromptProvider } from "./src/ui/Prompt";
+import { useOtaUpdate } from "./src/useOtaUpdate";
 import LoginScreen from "./src/screens/LoginScreen";
 import CatalogScreen from "./src/screens/CatalogScreen";
 import ProductScreen from "./src/screens/ProductScreen";
@@ -123,6 +124,9 @@ function RootNav() {
 }
 
 export default function App() {
+  // Ilova ochilganda yangilanishni tekshiradi va o'zi qo'llaydi (OTA).
+  useOtaUpdate();
+
   useEffect(() => {
     // Foydalanuvchi push'ни bosганда tegishli ekranга o'tamiz.
     const sub = Notifications.addNotificationResponseReceivedListener((resp) => {

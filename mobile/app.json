@@ -12,6 +12,12 @@
       "backgroundColor": "#FFF8F2"
     },
     "assetBundlePatterns": ["**/*"],
+    "runtimeVersion": { "policy": "appVersion" },
+    "updates": {
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "kg.arzon.app"

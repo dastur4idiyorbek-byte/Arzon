@@ -1,0 +1,73 @@
+# ARZON — ilovani YANGILASH (APK qayta yuklamasdan).
+#
+# Bu "havo orqali yangilanish" (OTA). Kod o'zgarganda ilovaning ichidagi
+# ekranlar/tugmalar/dizayn yangilanadi — foydalanuvchi hech narsa qilmaydi,
+# ilovani ochsa yangi versiya o'zi tushadi.
+#
+# QACHON ISHLAYDI: `mobile/` papkasidagi kod o'zgarib push qilinganda —
+# AVTOMATIK. Qo'lda ham ishga tushirsa bo'ladi (Run workflow).
+#
+# QACHON YETMAYDI: yangi native kutubxona qo'shilsa (masalan kamera).
+# Unda yangi APK kerak — "ARZON Android APK" workflow'ini ishlating.
+
+name: ARZON ilovani yangilash (OTA)
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "mobile/**"
+      - ".github/workflows/update.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: arzon-ota-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish-update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kodni olish
+        uses: actions/checkout@v4
+
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: EAS'ni sozlash
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Token bormi?
+        run: |
+          if [ -z "${{ secrets.EXPO_TOKEN }}" ]; then
+            echo "❌ EXPO_TOKEN yo'q — Settings > Secrets > Actions'ga qo'shing."
+            exit 1
+          fi
+
+      - name: Kutubxonalar
+        working-directory: mobile
+        run: npm ci || npm install
+
+      - name: Yangilanishni chiqarish
+        working-directory: mobile
+        run: |
+          set -o pipefail
+          eas update --branch preview --non-interactive \
+            --message "${{ github.event.head_commit.message || 'qo''lda yangilash' }}" 2>&1 | tee ota.log
+          echo "OTA_URL=$(grep -oE 'https://expo\.dev/[^ ]*updates?/[a-z0-9-]+' ota.log | head -1)" >> "$GITHUB_ENV"
+
+      - name: Natija
+        if: always()
+        run: |
+          {
+            echo "## 📲 ARZON — ilova yangilandi"
+            echo ""
+            echo "Foydalanuvchilar ilovani **yopib-ochsa** yangi versiya o'zi tushadi."
+            echo "APK'ni qayta yuklash **shart emas**."
+            [ -n "$OTA_URL" ] && echo "" && echo "Tafsilot: $OTA_URL"
+          } >> "$GITHUB_STEP_SUMMARY"

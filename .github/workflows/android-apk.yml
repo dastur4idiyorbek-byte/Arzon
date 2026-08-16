@@ -60,6 +60,12 @@ jobs:
         working-directory: mobile
         run: eas init --force --non-interactive
 
+      # Havo orqali yangilanish (OTA) manzilini app.json'ga yozadi. Busiz
+      # tayyor APK yangilanishni qayerdan olishni bilmaydi.
+      - name: Yangilanish (OTA) sozlamasi
+        working-directory: mobile
+        run: eas update:configure --non-interactive
+
       # Build buyurtmasi Expo'ga jo'natiladi. Chiqqan havola ushlab olinadi va
       # pastda GitHub sahifasining o'ziga yoziladi (Expo'ni qidirib yurmaslik uchun).
       - name: APK build (Expo bulutida)
