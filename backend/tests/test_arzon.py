@@ -1883,6 +1883,36 @@ def _set_telegram_id(email: str, telegram_id: int) -> None:
         db.close()
 
 
+def test_push_register_and_unregister():
+    """Native foydalanuvchi Expo push tokenини saqlaydi va o'chiradi (Phase 5)."""
+    from app.models import User
+
+    token = _register_native("pushuser@mail.com")
+    h = {"Authorization": f"Bearer {token}"}
+    tok = "ExponentPushToken[abc123]"
+    r = client.post("/api/push/register", headers=h, json={"token": tok})
+    assert r.status_code == 200 and r.json()["ok"], r.text
+
+    db = SessionLocal()
+    try:
+        u = db.query(User).filter(User.email == "pushuser@mail.com").first()
+        assert u.expo_push_token == tok
+    finally:
+        db.close()
+
+    # O'chirish.
+    d = client.delete("/api/push/register", headers=h)
+    assert d.status_code == 200
+    db = SessionLocal()
+    try:
+        u = db.query(User).filter(User.email == "pushuser@mail.com").first()
+        assert u.expo_push_token is None
+    finally:
+        db.close()
+    # Tokensiz (auth yo'q) -> 401.
+    assert client.post("/api/push/register", json={"token": tok}).status_code == 401
+
+
 def test_native_jwt_moliya_access():
     """super_admin_emails ro'yxatidagi native foydalanuvchi moliya endpointlariga kiradi."""
     token = _register_native("boss@arzon.kg", "boss1234")

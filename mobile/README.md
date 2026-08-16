@@ -27,7 +27,7 @@ ilova undan REST API orqali foydalanadi.
 | 2 | Kirish + rol | ✅ |
 | 3 | Mijoz ekranlari: katalog, mahsulot, savat/checkout, buyurtma, balans | ✅ (asosiy oqim) |
 | 4 | Admin / Moliya / Menejer ekranlari | ✅ |
-| 5 | Push-bildirishnoma | |
+| 5 | Push-bildirishnoma | ✅ |
 | 6 | Build fayllari (.aab/.ipa/.exe/.dmg/.AppImage) | |
 
 **4-bosqich (rol asosidagi panellar):**
@@ -36,6 +36,12 @@ ilova undan REST API orqali foydalanadi.
   - 🛠 **Admin paneli** — do'kon tanlash, mahsulot CRUD, buyurtmalar (holat/qabul/bekor), statistika + eng ko'p sotilgan + mahfiy kod, pul yechish.
   - 💰 **Moliya paneli** — to'ldirish / pul yechish / balans qaytarish so'rovlarini tasdiqlash-rad etish + umumiy hisobot.
   - 👔 **Menejer paneli** — do'kon so'rovlari (tasdiq/rad), do'konlar + arenda (blok/blokdan chiqarish/uzaytirish), hisobot.
+
+**5-bosqich (push-bildirishnoma):**
+- ✅ Backend: `users.expo_push_token` ustuni + `POST/DELETE /api/push/register` + Expo Push API orqali yuborish (`services/push.py`).
+- ✅ Hodisalar: buyurtma holati (tayyorlanmoqda/yo'lda/topshirildi), balans (to'ldirish/qaytarish tasdiq/rad), arenda eslatmasi. Har bir xabar Telegram bot **va** push orqali (kim qayerда bo'lsa) yetadi.
+- ✅ Ilova: `expo-notifications` — kirгач ruxsat so'raydi, tokenни backendга yuboradi; push bosilганда tegishli ekranга o'tadi.
+- ⏳ Push haqiqiy build (EAS)да to'liq ishlaydi — Expo `projectId` build vaqtида qo'shiladi. Expo Go'да cheklangan.
 
 ---
 

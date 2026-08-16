@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { View, ActivityIndicator } from "react-native";
 import { StatusBar } from "expo-status-bar";
-import { NavigationContainer } from "@react-navigation/native";
+import * as Notifications from "expo-notifications";
+import { NavigationContainer, createNavigationContainerRef } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
@@ -28,6 +29,14 @@ import MenejerHomeScreen from "./src/screens/panels/MenejerHomeScreen";
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 const Root = createNativeStackNavigator();
+export const navigationRef = createNavigationContainerRef();
+
+// Push bosilganда tegishli ekranga o'tish (Phase 5).
+function handleNotificationNav(data: any) {
+  if (!data || !navigationRef.isReady()) return;
+  if (data.type === "order") navigationRef.navigate("Main" as never, { screen: "Buyurtmalar" } as never);
+  else if (data.type === "balance") navigationRef.navigate("Main" as never, { screen: "Balans" } as never);
+}
 
 const stackScreenOptions = {
   headerTintColor: colors.brand,
@@ -100,10 +109,22 @@ function RootNav() {
 }
 
 export default function App() {
+  useEffect(() => {
+    // Foydalanuvchi push'ни bosганда tegishli ekranга o'tamiz.
+    const sub = Notifications.addNotificationResponseReceivedListener((resp) => {
+      handleNotificationNav(resp.notification.request.content.data);
+    });
+    // Ilova push orqali ochilган bo'lsa.
+    Notifications.getLastNotificationResponseAsync().then((resp) => {
+      if (resp) handleNotificationNav(resp.notification.request.content.data);
+    });
+    return () => sub.remove();
+  }, []);
+
   return (
     <AuthProvider>
       <CartProvider>
-        <NavigationContainer>
+        <NavigationContainer ref={navigationRef}>
           <StatusBar style="dark" />
           <RootNav />
         </NavigationContainer>

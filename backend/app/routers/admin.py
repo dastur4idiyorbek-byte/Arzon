@@ -249,11 +249,13 @@ def change_status(
     # Mijozга holat o'zgargani haqida xabar (chiroyli, qator-qator — task_4).
     xabar = _HOLAT_XABAR.get(order.holat)
     if xabar:
+        from ..models import User as _User
+
+        u = db.get(_User, order.user_id)
+        # Telegram bot foydalanuvchisi — bot orqali xabar.
         try:
-            from ..models import User as _User
             from ..tgbots import notify
 
-            u = db.get(_User, order.user_id)
             if u:
                 kuryer_qator = (
                     f"\n🚚 Kuryer: <b>{order.kuryer_tel}</b>"
@@ -267,7 +269,36 @@ def change_status(
                 )
         except ImportError:
             pass
+        # Native ilova foydalanuvchisi — push-bildirishnoma (Phase 5).
+        _push_status(db, u, order)
     return OrderOut.model_validate(order)
+
+
+# Push (native ilova) — buyurtma holati bo'yicha qisqa matn.
+_PUSH_STATUS = {
+    "tayyorlanmoqda": ("👨‍🍳 Buyurtma qabul qilindi", "Kod {kod} — tayyorlanmoqda."),
+    "yolda": ("🚚 Buyurtmangiz yo'lda", "Kod {kod}{kuryer}"),
+    "topshirildi": ("✅ Buyurtma topshirildi", "Kod {kod} — rahmat!"),
+}
+
+
+def _push_status(db: Session, u, order) -> None:
+    from ..services import push as push_service
+
+    tb = _PUSH_STATUS.get(order.holat)
+    if not tb or u is None:
+        return
+    kuryer = (
+        f" · Kuryer: {order.kuryer_tel}"
+        if order.holat == "yolda" and order.kuryer_tel
+        else ""
+    )
+    push_service.push_user(
+        db, u,
+        tb[0],
+        tb[1].format(kod=order.kod, kuryer=kuryer),
+        {"type": "order", "order_id": order.id, "holat": order.holat},
+    )
 
 
 class OrderActionOut(BaseModel):

@@ -106,6 +106,11 @@ def approve_topup(
         f"✅ Hisobingiz to'ldi: {float(sorov.som_summasi):,.0f} ACOM "
         f"({float(sorov.som_summasi):,.0f} som)!",
     )
+    _push(
+        db, user, "✅ Hisobingiz to'ldi",
+        f"{float(sorov.som_summasi):,.0f} ACOM qo'shildi.",
+        {"type": "balance"},
+    )
     return {"holat": sorov.holat, "yangi_balans": float(coin_service.balance(user))}
 
 
@@ -126,6 +131,12 @@ def reject_topup(
         u.telegram_id if u else None,
         f"❌ To'ldirish so'rovingiz ({float(sorov.som_summasi):,.0f} som) "
         f"rad etildi.{sabab_txt}",
+    )
+    _push(
+        db, u, "❌ To'ldirish rad etildi",
+        f"{float(sorov.som_summasi):,.0f} som so'rovi rad etildi."
+        + (f" Sabab: {payload.sabab}" if payload.sabab else ""),
+        {"type": "balance"},
     )
     return {"holat": sorov.holat}
 
@@ -226,6 +237,11 @@ def approve_refund(
         f"✅ Balans qaytarish so'rovingiz ({float(sorov.sorolgan_summa):,.0f} som) "
         "tasdiqlandi. Tez orada kartangizga o'tkaziladi.",
     )
+    _push(
+        db, u, "✅ Qaytarish tasdiqlandi",
+        f"{float(sorov.sorolgan_summa):,.0f} som kartangizga o'tkaziladi.",
+        {"type": "balance"},
+    )
     return {"holat": sorov.holat}
 
 
@@ -245,6 +261,12 @@ def reject_refund(
         u.telegram_id if u else None,
         f"❌ Balans qaytarish so'rovingiz ({float(sorov.sorolgan_summa):,.0f} som) "
         "rad etildi.",
+    )
+    _push(
+        db, u, "❌ Qaytarish rad etildi",
+        f"{float(sorov.sorolgan_summa):,.0f} som so'rovi rad etildi."
+        + (f" Sabab: {payload.sabab}" if payload.sabab else ""),
+        {"type": "balance"},
     )
     return {"holat": sorov.holat}
 
@@ -297,6 +319,13 @@ def _notify(telegram_id: int | None, text: str) -> None:
         notify.notify_customer(telegram_id, text)
     except ImportError:
         pass
+
+
+def _push(db: Session, user, title: str, body: str, data: dict | None = None) -> None:
+    """Native ilova foydalanuvchisiga push (Phase 5)."""
+    from ..services import push as push_service
+
+    push_service.push_user(db, user, title, body, data)
 
 
 # ---------------------------------------------------------------------------

@@ -5,6 +5,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import * as SecureStore from "expo-secure-store";
 import { api, setAuthToken } from "../api";
+import { registerPush, unregisterPush } from "../push";
 
 const TOKEN_KEY = "arzon_token";
 
@@ -39,6 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (ok && data) {
       setUser(data.user);
       setRoles(data.roles);
+      registerPush(); // push tokenини backendга yozamiz (Phase 5)
     } else {
       await signOut();
     }
@@ -57,9 +59,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAuthToken(token);
     setUser(u);
     setRoles(r);
+    registerPush(); // push tokenини backendга yozamiz (Phase 5)
   }
 
   async function signOut() {
+    await unregisterPush(); // token hali borда o'chiramiz
     await SecureStore.deleteItemAsync(TOKEN_KEY);
     setAuthToken(null);
     setUser(null);

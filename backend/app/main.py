@@ -28,6 +28,7 @@ from .routers import (
     moliya,
     orders,
     products,
+    push,
 )
 
 # Telegram webhook botlari — python-telegram-bot o'rnatilgan bo'lsagina.
@@ -98,6 +99,7 @@ def health():
 
 # Native ilova autentifikatsiyasi (Email/Google/Apple + JWT + rol)
 app.include_router(auth.router)
+app.include_router(push.router)
 # Mijoz endpointlari (Mini App — initData bilan)
 app.include_router(products.router)
 app.include_router(orders.router)

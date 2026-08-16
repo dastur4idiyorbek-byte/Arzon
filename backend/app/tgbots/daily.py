@@ -26,6 +26,24 @@ logger = logging.getLogger("arzon.daily")
 LOCAL_TZ = os.getenv("LOCAL_TZ", "Asia/Bishkek")
 
 
+def _strip_html(msgs: list[str]) -> str:
+    """HTML teglarни olib tashlab, xabarларни push uchun bitta matnга qo'shadi."""
+    import re
+
+    matn = " ".join(msgs)
+    return re.sub(r"<[^>]+>", "", matn).strip()
+
+
+def _push_admin(db, telegram_id: int, title: str, body: str) -> None:
+    """telegram_id bo'yicha native ilova adminига push (token bo'lsa)."""
+    from ..models import User as _User
+    from ..services import push as push_service
+
+    u = db.scalar(select(_User).where(_User.telegram_id == telegram_id))
+    if u is not None:
+        push_service.push_user(db, u, title, body, {"type": "arenda"})
+
+
 def report_time() -> time:
     """Hisobot vaqti — mahalliy 21:00."""
     return time(hour=21, minute=0, tzinfo=ZoneInfo(LOCAL_TZ))
@@ -173,6 +191,8 @@ async def daily_tick(bot) -> None:
                         )
                     except Exception as e:  # noqa: BLE001
                         logger.warning("Arenda xabari ketmadi: %s", e)
+                # Native ilova admini — push (HTML teglarsiz, Phase 5).
+                _push_admin(db, admin_id, "🏬 Arenda eslatmasi", _strip_html(msgs))
         except Exception as e:  # noqa: BLE001
             logger.warning("Arenda tekshiruvида xato: %s", e)
 

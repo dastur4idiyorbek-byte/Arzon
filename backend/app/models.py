@@ -157,6 +157,11 @@ class User(Base):
     chegirma_vaucher: Mapped[int | None] = mapped_column(
         Integer, nullable=True, default=0
     )
+    # Native ilova push-bildirishnoma tokeni (Expo push token, Phase 5). NULL —
+    # push yo'q (mas. faqat Telegram bot foydalanuvchisi).
+    expo_push_token: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
     yaratilgan_vaqt: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now
     )
