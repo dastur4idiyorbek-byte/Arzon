@@ -60,12 +60,20 @@ jobs:
           eas init --force --non-interactive
           eas update:configure --non-interactive
 
+      # DIQQAT: commit xabari shell buyrug'iga TO'G'RIDAN-TO'G'RI qo'yilmaydi.
+      # Avval ${{ ... }} bilan qo'yilgandi va xabar ichidagi qo'shtirnoq (")
+      # buyruqni buzib yuborardi ("Unexpected argument"). Endi u muhit
+      # o'zgaruvchisi orqali beriladi — shell uni MA'LUMOT deb qabul qiladi.
       - name: Yangilanishni chiqarish
         working-directory: mobile
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
           set -o pipefail
-          eas update --branch preview --non-interactive \
-            --message "${{ github.event.head_commit.message || 'qo''lda yangilash' }}" 2>&1 | tee ota.log
+          # Faqat birinchi qator va cheklangan uzunlik (eas --message qisqa bo'lsin).
+          XABAR=$(printf '%s' "$COMMIT_MSG" | head -n 1 | cut -c1-160)
+          [ -z "$XABAR" ] && XABAR="qo'lda yangilash"
+          eas update --branch preview --non-interactive --message "$XABAR" 2>&1 | tee ota.log
           echo "OTA_URL=$(grep -oE 'https://expo\.dev/[^ ]*updates?/[a-z0-9-]+' ota.log | head -1)" >> "$GITHUB_ENV"
 
       - name: Natija
@@ -76,5 +84,10 @@ jobs:
             echo ""
             echo "Foydalanuvchilar ilovani **yopib-ochsa** yangi versiya o'zi tushadi."
             echo "APK'ni qayta yuklash **shart emas**."
-            [ -n "$OTA_URL" ] && echo "" && echo "Tafsilot: $OTA_URL"
+            # `[ -n ... ] && ...` bo'sh bo'lsa 1 qaytaradi va `bash -e` da qadam
+            # yiqiladi — shuning uchun to'liq if bilan yozamiz.
+            if [ -n "$OTA_URL" ]; then
+              echo ""
+              echo "Tafsilot: $OTA_URL"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
