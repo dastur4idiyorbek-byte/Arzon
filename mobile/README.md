@@ -31,9 +31,10 @@ ilova undan REST API orqali foydalanadi.
 | 6 | Build fayllari — **Android APK tayyor** (`.aab`/`.ipa`/desktop keyin) | 🚧 |
 
 **6-bosqich (build):**
-- ✅ **Android APK** — Telegram bilan tarqatиш uchun to'liq sozlangan. Qadamма-qadам: **[APK_YOLLANMA.md](./APK_YOLLANMA.md)**.
-  - `eas.json` → `preview` profili `.apk` chiqаради (internal distribution).
-  - Play Store kerак emas, bepul Expo hisоби yetadi.
+- ✅ **Android APK** — Telegram bilan tarqатиш uchun to'liq sozlangan. Play Store kerак emas, bepul Expo hisоби yetadi. Ikки yo'lланма:
+  - 🖱 **Terminalсиз** (faqat brauzер, tavsiya): **[APK_TERMINALSIZ.md](./APK_TERMINALSIZ.md)** — Expo sayti yoki GitHub "Actions" tugмаси.
+  - ⌨️ Terminal bilan: **[APK_YOLLANMA.md](./APK_YOLLANMA.md)** — `eas build -p android --profile preview`.
+  - `.github/workflows/android-apk.yml` — bir tugма bilan bulutда APK.
 - ⏳ `.aab` (Play Store), `.ipa` (App Store — Apple $99/yil), desktop `.exe`/`.dmg`/`.AppImage` (Electron) — keyinги ish.
 
 **4-bosqich (rol asosidagi panellar):**

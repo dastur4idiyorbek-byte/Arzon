@@ -1,0 +1,48 @@
+# ARZON — Android APK'ni brauzerdan (terminalsiz) chiqarish.
+#
+# Ishlatish (hammasi brauzerda):
+#   1. expo.dev'da bepul hisob oching.
+#   2. expo.dev -> (o'ng yuqori) Account settings -> Access tokens -> "Create token"
+#      -> tokenni nusxa oling.
+#   3. GitHub'da: bu repo -> Settings -> Secrets and variables -> Actions ->
+#      "New repository secret" -> Name: EXPO_TOKEN -> tokenni qo'ying -> Save.
+#   4. GitHub'da: yuqoridagi "Actions" bo'limi -> chapdan "ARZON Android APK" ->
+#      "Run workflow" tugmasi -> yashil "Run workflow".
+#   5. 15-20 daqiqada tayyor. APK havolasi: expo.dev -> loyihangiz -> "Builds".
+#
+# Eslatma: birinchi marta ishga tushganda Expo loyihani avtomatik yaratadi
+# (app.json'dagi "owner" + "slug" bo'yicha). "owner" hali qo'yilmagan bo'lsa,
+# app.json'ni GitHub'ning o'zida (qalam belgisi bilan) tahrirlab, "expo" ichiga
+#   "owner": "SIZNING_EXPO_LOGININGIZ"
+# qatorini qo'shing (terminalsiz).
+
+name: ARZON Android APK
+
+on:
+  workflow_dispatch: # brauzerdan "Run workflow" tugmasi bilan qo'lda ishga tushadi
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kodni olish
+        uses: actions/checkout@v4
+
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: EAS'ni sozlash (Expo token bilan)
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Kutubxonalarni o'rnatish
+        working-directory: mobile
+        run: npm install
+
+      - name: APK build (Expo bulutida)
+        working-directory: mobile
+        run: eas build --platform android --profile preview --non-interactive --no-wait
