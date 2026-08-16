@@ -60,13 +60,32 @@ jobs:
         working-directory: mobile
         run: eas init --force --non-interactive
 
+      # Build buyurtmasi Expo'ga jo'natiladi. Chiqqan havola ushlab olinadi va
+      # pastda GitHub sahifasining o'ziga yoziladi (Expo'ni qidirib yurmaslik uchun).
       - name: APK build (Expo bulutida)
         working-directory: mobile
-        run: eas build --platform android --profile preview --non-interactive --no-wait
-
-      - name: Qayerdan olish
-        if: success()
         run: |
-          echo "🎉 Buyurtma Expo'ga topshirildi."
-          echo "APK 15-20 daqiqada tayyor bo'ladi:"
-          echo "  expo.dev -> Projects -> arzon -> Builds -> Download (.apk)"
+          set -o pipefail
+          eas build --platform android --profile preview \
+            --non-interactive --no-wait 2>&1 | tee build.log
+          echo "BUILD_URL=$(grep -oE 'https://expo\.dev/[^ ]*builds/[a-z0-9-]+' build.log | head -1)" >> "$GITHUB_ENV"
+
+      - name: Build havolasi (shu yerda)
+        if: always()
+        run: |
+          {
+            echo "## 📱 ARZON — Android APK"
+            echo ""
+            if [ -n "$BUILD_URL" ]; then
+              echo "✅ Build Expo'ga jo'natildi. Holatini shu havolada ko'ring:"
+              echo ""
+              echo "### 👉 [$BUILD_URL]($BUILD_URL)"
+              echo ""
+              echo "15–20 daqiqadan so'ng o'sha sahifada **Download** tugmasi chiqadi (.apk)."
+              echo "Faylni Telegram'ga tashlasangiz — odamlar o'rnatadi."
+            else
+              echo "⚠️ Build havolasi topilmadi — yuqoridagi \"APK build\" qadamini ochib,"
+              echo "qizil yozuvni ko'ring."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Build havolasi: ${BUILD_URL:-topilmadi}"
