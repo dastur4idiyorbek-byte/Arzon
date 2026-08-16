@@ -9,7 +9,7 @@ DIQQAT (rule 0): barcha summalar Qirg'iziston somida (KGS). O'zbekiston so'mi
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional
 
@@ -168,12 +168,27 @@ def set_platforma_hisob(db: Session, karta: str, egasi: str) -> PlatformaHisob:
 # Balansni to'ldirish so'rovlari (task_1, task_2)
 # ---------------------------------------------------------------------------
 def _today_start() -> datetime:
-    from ..tgbots.daily import LOCAL_TZ
+    """Mahalliy kun boshining UTC ekvivalenti (naive — bazadagi kabi).
+
+    DIQQAT (tuzatilgan xato): avval bu funksiya mahalliy vaqtni TZ bilan
+    qaytarardi. Bazada esa vaqtlar UTC bo'yicha saqlanadi. Bishkek UTC+6
+    bo'lgani uchun har kuni soat 18:00 UTC dan keyin mahalliy sana UTC
+    sanasidan oshib ketardi va taqqoslash NOTO'G'RI ishlardi — natijada
+    kunlik to'ldirish chegarasi tekshirilmay qolardi (xavfsizlik teshigi) va
+    kunlik hisobot nol ko'rsatardi.
+
+    Naive qaytariladi, chunki SQLite tzsiz saqlaydi; Postgres'da ham UTC
+    qiymat to'g'ri taqqoslanadi.
+    """
     from zoneinfo import ZoneInfo
 
+    from ..tgbots.daily import LOCAL_TZ
+
     tz = ZoneInfo(LOCAL_TZ)
-    now_local = datetime.now(tz)
-    return now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+    boshi_local = datetime.now(tz).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    return boshi_local.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 def check_topup_limits(db: Session, user: User, summa) -> Optional[str]:
