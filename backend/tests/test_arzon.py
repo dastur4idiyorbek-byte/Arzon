@@ -1981,6 +1981,49 @@ def test_add_admin_by_unknown_email_fails():
     assert "topilmadi" in r.json()["detail"]
 
 
+def test_media_upload_va_korish():
+    """Admin ilovadan rasm yuklaydi -> /media/db/<id> orqali ochiladi."""
+    setup_two_stores()
+    # Eng kichik haqiqiy PNG (1x1).
+    png = bytes.fromhex(
+        "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4"
+        "890000000a49444154789c6300010000050001od0a2db40000000049454e44ae426082"
+        .replace("od", "0d")
+    )
+    r = client.post(
+        "/api/media/upload",
+        headers=admin_headers(ADMIN_A),
+        files={"rasm": ("test.png", png, "image/png")},
+    )
+    assert r.status_code == 200, r.text
+    url = r.json()["url"]
+    assert url.startswith("/media/db/"), url
+
+    # Rasmni o'qish — hamma ko'ra oladi (katalogda ko'rsatiladi).
+    g = client.get(url)
+    assert g.status_code == 200, g.text
+    assert g.headers["content-type"].startswith("image/")
+    assert g.content == png
+
+    # Mahsulotga biriktirish ishlaydi.
+    store_a, _ = setup_two_stores()
+    pr = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/products",
+        headers=admin_headers(ADMIN_A),
+        json={"nomi": "Rasmli mahsulot", "narxi": 500, "korinish": "ommaviy",
+              "rasm_url": url},
+    )
+    assert pr.status_code == 200 and pr.json()["rasm_url"] == url
+
+    # Ruxsatsiz yuklab bo'lmaydi.
+    assert client.post("/api/media/upload",
+                       files={"rasm": ("x.png", png, "image/png")}).status_code == 401
+    # Rasm bo'lmagan fayl -> 400.
+    bad = client.post("/api/media/upload", headers=admin_headers(ADMIN_A),
+                      files={"rasm": ("x.txt", b"salom", "text/plain")})
+    assert bad.status_code == 400, bad.text
+
+
 def test_push_register_and_unregister():
     """Native foydalanuvchi Expo push tokenини saqlaydi va o'chiradi (Phase 5)."""
     from app.models import User

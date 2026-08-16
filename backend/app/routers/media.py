@@ -11,13 +11,69 @@ chaqiriladi; javob esa brauzerда 1 kun keshlanadi.
 from __future__ import annotations
 
 import httpx
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
+from sqlalchemy.orm import Session
 
 from ..config import settings
+from ..database import get_db
+from ..models import Media
+from ..security import require_admin
 
 router = APIRouter(tags=["media"])
 
 _TG_API = "https://api.telegram.org"
+
+# Ilovadan yuklanadigan rasm uchun chegara (siqilgan rasm bundan ancha kichik).
+MAX_RASM_BAYT = 8 * 1024 * 1024
+
+
+# ---------------------------------------------------------------------------
+# Ilovadan rasm yuklash (kamera/galereya) — bazada saqlanadi
+# ---------------------------------------------------------------------------
+# DIQQAT: bu yo'l `/media/{file_id}` dan OLDIN turishi shart — aks holda
+# "db" so'zi file_id deb qabul qilinadi (FastAPI yo'llarni tartib bo'yicha
+# tekshiradi).
+@router.get("/media/db/{media_id}")
+def media_db(media_id: int, db: Session = Depends(get_db)):
+    """Bazada saqlangan rasmni beradi."""
+    m = db.get(Media, media_id)
+    if m is None:
+        raise HTTPException(status_code=404, detail="Rasm topilmadi.")
+    return Response(
+        content=m.data,
+        media_type=m.mime or "image/jpeg",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
+@router.post("/api/media/upload")
+async def media_upload(
+    rasm: UploadFile = File(...),
+    admin_id: int = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Ilovadan rasm yuklash (mahsulot rasmi uchun).
+
+    Faqat do'kon admini yuklay oladi. Qaytaradi: {"url": "/media/db/<id>"} —
+    shu qiymat mahsulotning `rasm_url` maydoniga yoziladi.
+    """
+    raw = await rasm.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Rasm bo'sh.")
+    if len(raw) > MAX_RASM_BAYT:
+        raise HTTPException(
+            status_code=413,
+            detail="Rasm juda katta (8 MB dan oshmasin).",
+        )
+    mime = (rasm.content_type or "image/jpeg").lower()
+    if not mime.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Faqat rasm yuklash mumkin.")
+
+    m = Media(mime=mime, data=raw, yuklagan_admin=admin_id)
+    db.add(m)
+    db.commit()
+    db.refresh(m)
+    return {"url": f"/media/db/{m.id}", "id": m.id}
 
 
 @router.get("/media/{file_id}")

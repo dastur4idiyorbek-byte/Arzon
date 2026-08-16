@@ -7,20 +7,30 @@ import { View, Text, StyleSheet, Alert } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { api, money } from "../../api";
 import { colors, radius, spacing, font } from "../../theme";
-import { Screen, Segmented, Card, Btn, Loader, Empty, Field } from "./PanelUI";
+import { Screen, Card, Btn, Loader, Empty, Field } from "./PanelUI";
+import { PanelHome, BolimSarlavha, PanelBolim } from "./PanelHome";
 import { usePrompt } from "../../ui/Prompt";
 import TolovUsullariScreen from "./TolovUsullariScreen";
 
-const TABS = [
-  { key: "topups", label: "💳 To'ldirish" },
-  { key: "withdraws", label: "🏧 Yechish" },
-  { key: "refunds", label: "↩️ Qaytarish" },
-  { key: "usullar", label: "💳 To'lov usullari" },
-  { key: "report", label: "📊 Hisobot" },
+const BOLIMLAR: PanelBolim[] = [
+  { key: "topups", label: "Balans to'ldirish", izoh: "Mijoz cheklarini tasdiqlash",
+    icon: "card-outline", rang: colors.brand },
+  { key: "withdraws", label: "Pul yechish", izoh: "Do'kon adminlarining so'rovlari",
+    icon: "cash-outline", rang: colors.gold },
+  { key: "refunds", label: "Balans qaytarish", izoh: "Mijozga pul qaytarish so'rovlari",
+    icon: "return-down-back-outline", rang: colors.info },
+  { key: "usullar", label: "To'lov usullari", izoh: "Kartalar va platforma hisobi",
+    icon: "wallet-outline", rang: colors.store },
+  { key: "report", label: "Hisobot", izoh: "Umumiy holat va bugungi harakatlar",
+    icon: "stats-chart-outline", rang: colors.sale },
 ];
 
+const NOM: Record<string, string> = Object.fromEntries(
+  BOLIMLAR.map((b) => [b.key, b.label])
+);
+
 export default function MoliyaHomeScreen() {
-  const [tab, setTab] = useState("topups");
+  const [tab, setTab] = useState<string | null>(null);
   const [rows, setRows] = useState<any[]>([]);
   const [report, setReport] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -28,7 +38,8 @@ export default function MoliyaHomeScreen() {
   const prompt = usePrompt();
 
   const load = useCallback(async () => {
-    if (tab === "usullar") { setLoading(false); return; }
+    if (tab === null || tab === "usullar") { setLoading(false); return; }
+    setLoading(true);
     if (tab === "report") {
       const { ok, data } = await api("/api/moliya/report");
       setReport(ok ? data : null);
@@ -68,9 +79,21 @@ export default function MoliyaHomeScreen() {
     act(path, { sabab: sabab.trim() }, "Rad etildi");
   }
 
+  // Bosh sahifa — kartochkali menyu (Admin paneli kabi).
+  if (tab === null) {
+    return (
+      <PanelHome
+        sarlavha="Moliya paneli"
+        izoh="Pul harakatlari va to'lov sozlamalari"
+        bolimlar={BOLIMLAR}
+        onSelect={(k) => { setTab(k); setLoading(true); }}
+      />
+    );
+  }
+
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <Segmented items={TABS} value={tab} onChange={setTab} />
+    <View style={{ flex: 1, backgroundColor: colors.bgSoft }}>
+      <BolimSarlavha matn={NOM[tab]} onBack={() => setTab(null)} />
       {tab === "usullar" ? (
         <TolovUsullariScreen />
       ) : loading ? (

@@ -19,6 +19,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    LargeBinary,
     Numeric,
     String,
     Text,
@@ -60,6 +61,29 @@ def admin_identity(user) -> int:
     if user.telegram_id:
         return int(user.telegram_id)
     return -int(user.id)
+
+
+class Media(Base):
+    """Ilovadan yuklangan rasmlar (mahsulot rasmi va h.k.).
+
+    NEGA BAZADA: Render diski har deploy'da tozalanadi, shuning uchun faylni
+    diskka saqlab bo'lmaydi. Tashqi xizmat (S3) esa ortiqcha murakkablik —
+    rasmlar kichik (siqilgan ~200 KB), baza bemalol ko'taradi.
+
+    Telegram bot orqali yuklangan rasmlar esa avvalgidek file_id bilan
+    saqlanadi va /media/{file_id} orqali beriladi (ikkalasi yonma-yon ishlaydi).
+    """
+
+    __tablename__ = "media"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    mime: Mapped[str] = mapped_column(String(64), default="image/jpeg")
+    data: Mapped[bytes] = mapped_column(LargeBinary)
+    # Kim yuklagani (tozalash/tekshiruv uchun).
+    yuklagan_admin: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    yaratilgan_vaqt: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now
+    )
 
 
 class Store(Base):

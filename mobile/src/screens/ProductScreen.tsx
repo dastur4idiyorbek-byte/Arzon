@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, Alert, Animated } from "react-native";
 import { money } from "../api";
 import { colors, radius, spacing, font } from "../theme";
-import { Product, effPrice } from "../types";
+import { Product, effPrice, rasmUrl } from "../types";
 import { useCart } from "../cart/CartContext";
 
 const parse = (s?: string | null) => (s || "").split(",").map((x) => x.trim()).filter(Boolean);
@@ -15,7 +15,7 @@ export default function ProductScreen({ route, navigation }: any) {
   const [olcham, setOlcham] = useState<string | null>(olchamlar.length === 1 ? olchamlar[0] : null);
   const [rang, setRang] = useState<string | null>(ranglar.length === 1 ? ranglar[0] : null);
   const [toast, setToast] = useState<string | null>(null);
-  const img = p.rasm_url || (p.rasm_urls && p.rasm_urls[0]);
+  const img = rasmUrl(p);
   const sotuv = effPrice(p);
 
   /** Tanlovlar to'g'rimi? (o'lcham/rang majburiy bo'lsa) */

@@ -23,27 +23,32 @@ export function Segmented({
   value: string;
   onChange: (k: string) => void;
 }) {
+  // DIQQAT: gorizontal ScrollView'ni balandligi cheklangan View ichiga olamiz.
+  // Aks holda u ota-konteynerdagi bo'sh joyni to'ldirib, tugmalar uzun ovalga
+  // cho'zilib ketadi (RN'da gorizontal ScrollView shunday xatoga olib keladi).
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.segWrap}
-    >
-      {items.map((it) => {
-        const active = it.key === value;
-        return (
-          <TouchableOpacity
-            key={it.key}
-            onPress={() => onChange(it.key)}
-            style={[styles.seg, active && styles.segActive]}
-          >
-            <Text style={[styles.segText, active && styles.segTextActive]}>
-              {it.label}
-            </Text>
-          </TouchableOpacity>
-        );
-      })}
-    </ScrollView>
+    <View style={styles.segHost}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.segWrap}
+      >
+        {items.map((it) => {
+          const active = it.key === value;
+          return (
+            <TouchableOpacity
+              key={it.key}
+              onPress={() => onChange(it.key)}
+              style={[styles.seg, active && styles.segActive]}
+            >
+              <Text style={[styles.segText, active && styles.segTextActive]}>
+                {it.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -133,10 +138,13 @@ export function Field({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
-  segWrap: { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, gap: 8 },
+  // Balandligi qat'iy — tugmalar cho'zilib ketmasligi uchun.
+  segHost: { height: 56, flexGrow: 0, flexShrink: 0, backgroundColor: colors.bg },
+  segWrap: { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, gap: 8, alignItems: "center" },
   seg: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
+    height: 38,
+    justifyContent: "center",
+    paddingHorizontal: 16,
     borderRadius: 999,
     backgroundColor: colors.secondaryBg,
   },

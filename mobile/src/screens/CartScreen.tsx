@@ -5,7 +5,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { api, money } from "../api";
 import { colors, radius, spacing, font, shadow } from "../theme";
-import { effPrice } from "../types";
+import { effPrice, rasmUrl } from "../types";
 import { useCart } from "../cart/CartContext";
 import { usePrompt } from "../ui/Prompt";
 
@@ -81,7 +81,7 @@ export default function CartScreen({ navigation }: any) {
         {/* Mahsulotlar */}
         <View style={styles.card}>
           {lines.map((l, i) => {
-            const img = l.product.rasm_url || (l.product.rasm_urls && l.product.rasm_urls[0]);
+            const img = rasmUrl(l.product);
             return (
               <View key={keyOf(l)} style={[styles.row, i > 0 && styles.rowLine]}>
                 <View style={styles.thumb}>

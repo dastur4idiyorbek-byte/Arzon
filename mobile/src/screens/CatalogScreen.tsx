@@ -7,7 +7,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { api, money } from "../api";
 import { colors, radius, spacing, font, shadow } from "../theme";
 import { Loader } from "./panels/PanelUI";
-import { Product, effPrice } from "../types";
+import { Product, effPrice, rasmUrl } from "../types";
 import { useCart } from "../cart/CartContext";
 
 export default function CatalogScreen({ navigation }: any) {
@@ -33,7 +33,7 @@ export default function CatalogScreen({ navigation }: any) {
   }
 
   function Card({ p }: { p: Product }) {
-    const img = p.rasm_url || (p.rasm_urls && p.rasm_urls[0]);
+    const img = rasmUrl(p);
     const sotuv = effPrice(p);
     const chegirma = !!p.skidka_foizi && p.skidka_foizi > 0;
     return (

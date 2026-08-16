@@ -4,9 +4,11 @@
  */
 import React, { useState } from "react";
 import {
-  View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, Alert,
+  View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, Alert, Image,
 } from "react-native";
-import { api } from "../../api";
+import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
+import { api, API_URL, authHeader } from "../../api";
 import { colors, radius, spacing, font } from "../../theme";
 import { Btn } from "./PanelUI";
 
@@ -23,6 +25,50 @@ export default function AdminProductEditScreen({ route, navigation }: any) {
   const [miqdor, setMiqdor] = useState(product?.miqdor != null ? String(product.miqdor) : "");
   const [mahfiy, setMahfiy] = useState(product?.korinish === "mahfiy");
   const [busy, setBusy] = useState(false);
+  const [yuklanmoqda, setYuklanmoqda] = useState(false);
+
+  /** Nisbiy manzilni (/media/db/1) to'liq URL'ga aylantiradi. */
+  function rasmKorinish(u: string) {
+    return u.startsWith("http") ? u : API_URL + u;
+  }
+
+  /** Kamera yoki galereyadan rasm tanlab, serverga yuklaydi. */
+  async function rasmTanla(kameradan: boolean) {
+    const ruxsat = kameradan
+      ? await ImagePicker.requestCameraPermissionsAsync()
+      : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!ruxsat.granted) {
+      return Alert.alert("Ruxsat kerak",
+        kameradan ? "Kameraga ruxsat bering." : "Galereyaga ruxsat bering.");
+    }
+    const natija = kameradan
+      ? await ImagePicker.launchCameraAsync({ quality: 0.7 })
+      : await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7,
+        });
+    if (natija.canceled || !natija.assets?.[0]) return;
+    const asset = natija.assets[0];
+
+    setYuklanmoqda(true);
+    try {
+      const fd = new FormData();
+      fd.append("rasm", {
+        uri: asset.uri,
+        name: asset.fileName || "rasm.jpg",
+        type: asset.mimeType || "image/jpeg",
+      } as any);
+      const res = await fetch(`${API_URL}/api/media/upload`, {
+        method: "POST", headers: { ...authHeader() }, body: fd,
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && (data as any)?.url) setRasm((data as any).url);
+      else Alert.alert("Xatolik", (data as any)?.detail || "Rasm yuklanmadi.");
+    } catch {
+      Alert.alert("Xatolik", "Internet yo'q yoki server javob bermadi.");
+    } finally {
+      setYuklanmoqda(false);
+    }
+  }
 
   async function save() {
     if (!nomi.trim()) return Alert.alert("Nomi", "Mahsulot nomini kiriting.");
@@ -79,8 +125,27 @@ export default function AdminProductEditScreen({ route, navigation }: any) {
       <Label t="Miqdor (bo'sh = cheksiz)" />
       <TextInput style={styles.in} value={miqdor} onChangeText={setMiqdor} keyboardType="numeric" placeholder="cheksiz" />
 
-      <Label t="Rasm URL" />
-      <TextInput style={styles.in} value={rasm} onChangeText={setRasm} placeholder="https://..." autoCapitalize="none" />
+      <Label t="Mahsulot rasmi" />
+      {rasm ? (
+        <View>
+          <Image source={{ uri: rasmKorinish(rasm) }} style={styles.rasm} resizeMode="cover" />
+          <TouchableOpacity style={styles.rasmOchir} onPress={() => setRasm("")}>
+            <Text style={styles.rasmOchirText}>✕ Boshqa rasm tanlash</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={styles.rasmTugma}>
+          <TouchableOpacity style={styles.rasmBtn} onPress={() => rasmTanla(true)} disabled={yuklanmoqda}>
+            <Ionicons name="camera-outline" size={24} color={colors.brand} />
+            <Text style={styles.rasmText}>Suratga olish</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.rasmBtn} onPress={() => rasmTanla(false)} disabled={yuklanmoqda}>
+            <Ionicons name="images-outline" size={24} color={colors.brand} />
+            <Text style={styles.rasmText}>Galereyadan</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+      {yuklanmoqda && <Text style={styles.yuklanmoqda}>Rasm yuklanmoqda...</Text>}
 
       <Label t="Tavsif" />
       <TextInput style={[styles.in, { height: 90, textAlignVertical: "top" }]} value={tavsif}
@@ -110,6 +175,17 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm, padding: 12, color: colors.text,
   },
   two: { flexDirection: "row", gap: 12 },
+  rasm: { width: "100%", height: 220, borderRadius: radius.md, backgroundColor: colors.secondaryBg },
+  rasmOchir: { alignSelf: "center", marginTop: 8, padding: 8 },
+  rasmOchirText: { color: colors.sale, fontWeight: "700" },
+  rasmTugma: { flexDirection: "row", gap: 10 },
+  rasmBtn: {
+    flex: 1, alignItems: "center", gap: 6, paddingVertical: 22,
+    borderWidth: 1.5, borderColor: colors.brand, borderStyle: "dashed",
+    borderRadius: radius.md,
+  },
+  rasmText: { color: colors.brand, fontWeight: "700" },
+  yuklanmoqda: { color: colors.textMuted, textAlign: "center", marginTop: 8 },
   check: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: spacing.lg },
   box: {
     width: 26, height: 26, borderRadius: 7, borderWidth: 1.5, borderColor: colors.brand,

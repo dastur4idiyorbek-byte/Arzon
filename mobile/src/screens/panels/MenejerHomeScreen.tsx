@@ -7,17 +7,25 @@ import { View, Text, StyleSheet, Alert, TouchableOpacity } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { api, money } from "../../api";
 import { colors, radius, spacing, font } from "../../theme";
-import { Screen, Segmented, Card, Btn, Loader, Empty, Field } from "./PanelUI";
+import { Screen, Card, Btn, Loader, Empty, Field } from "./PanelUI";
+import { PanelHome, BolimSarlavha, PanelBolim } from "./PanelHome";
 import { usePrompt } from "../../ui/Prompt";
 
-const TABS = [
-  { key: "sorovlar", label: "🏪 Do'kon so'rovlari" },
-  { key: "dokonlar", label: "📦 Do'konlar / Arenda" },
-  { key: "report", label: "📊 Hisobot" },
+const BOLIMLAR: PanelBolim[] = [
+  { key: "sorovlar", label: "Do'kon so'rovlari", izoh: "Yangi do'kon ochish arizalari",
+    icon: "storefront-outline", rang: colors.brand },
+  { key: "dokonlar", label: "Do'konlar va arenda", izoh: "Adminlar, bloklash, arendani uzaytirish",
+    icon: "business-outline", rang: colors.store },
+  { key: "report", label: "Hisobot", izoh: "Platforma umumiy holati",
+    icon: "stats-chart-outline", rang: colors.gold },
 ];
 
+const NOM: Record<string, string> = Object.fromEntries(
+  BOLIMLAR.map((b) => [b.key, b.label])
+);
+
 export default function MenejerHomeScreen() {
-  const [tab, setTab] = useState("sorovlar");
+  const [tab, setTab] = useState<string | null>(null);
   const [rows, setRows] = useState<any[]>([]);
   const [report, setReport] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -25,6 +33,8 @@ export default function MenejerHomeScreen() {
   const prompt = usePrompt();
 
   const load = useCallback(async () => {
+    if (tab === null) { setLoading(false); return; }
+    setLoading(true);
     if (tab === "report") {
       const { ok, data } = await api("/api/menejer/report");
       setReport(ok ? data : null);
@@ -146,9 +156,21 @@ export default function MenejerHomeScreen() {
     ]);
   }
 
+  // Bosh sahifa — kartochkali menyu (Admin paneli kabi).
+  if (tab === null) {
+    return (
+      <PanelHome
+        sarlavha="Menejer paneli"
+        izoh="Do'konlar, adminlar va arenda boshqaruvi"
+        bolimlar={BOLIMLAR}
+        onSelect={(k) => { setTab(k); setLoading(true); }}
+      />
+    );
+  }
+
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <Segmented items={TABS} value={tab} onChange={setTab} />
+    <View style={{ flex: 1, backgroundColor: colors.bgSoft }}>
+      <BolimSarlavha matn={NOM[tab]} onBack={() => setTab(null)} />
       {loading ? (
         <Loader />
       ) : (

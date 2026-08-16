@@ -1,3 +1,4 @@
+import { API_URL } from "./api";
 export type Product = {
   id: number;
   nomi: string;
@@ -34,4 +35,12 @@ export type Order = {
 
 export function effPrice(p: Product): number {
   return p.sotuv_narxi != null ? p.sotuv_narxi : p.narxi;
+}
+
+/** Mahsulot rasmi manzili — nisbiy bo'lsa (/media/...) to'liq URL qilinadi.
+ *  Backend rasmni "/media/db/1" yoki "/media/<file_id>" ko'rinishida beradi. */
+export function rasmUrl(p: Product): string | null {
+  const u = p.rasm_url || (p.rasm_urls && p.rasm_urls[0]) || null;
+  if (!u) return null;
+  return u.startsWith("http") ? u : API_URL + u;
 }
