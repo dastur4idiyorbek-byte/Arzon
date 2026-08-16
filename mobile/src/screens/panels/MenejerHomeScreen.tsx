@@ -3,7 +3,7 @@
  * Faqat menejer roli.
  */
 import React, { useCallback, useState } from "react";
-import { View, Text, StyleSheet, Alert } from "react-native";
+import { View, Text, StyleSheet, Alert, TouchableOpacity } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { api, money } from "../../api";
 import { colors, radius, spacing, font } from "../../theme";
@@ -53,33 +53,53 @@ export default function MenejerHomeScreen() {
     return colors.textMuted;
   }
 
-  // Manfiy ID = ilova (email) hisobi, musbat = Telegram.
+  /** Adminlar ro'yxati: ARZON ID + kirish usuli (backend "adminlar"da beradi). */
   function adminlar(s: any) {
-    const ids: number[] = s.admin_ids || [];
-    if (!ids.length) return "yo'q";
-    const tg = ids.filter((i) => i > 0).length;
-    const app_ = ids.filter((i) => i < 0).length;
-    return [tg ? `${tg} Telegram` : "", app_ ? `${app_} ilova` : ""]
-      .filter(Boolean).join(" + ");
+    const list: any[] = s.adminlar || [];
+    if (!list.length) return "yo'q";
+    return list
+      .map((a) => (a.arzon_id ? `#${a.arzon_id}` : `tg:${a.admin_id}`))
+      .join(", ");
   }
 
   function addAdmin(s: any) {
     const send = (v: string) => {
       const t = v.trim();
       if (!t) return;
-      const body = /^\d+$/.test(t) ? { telegram_id: Number(t) } : { email: t };
+      // #42 yoki 42 -> ARZON ID; email -> email; "tg:12345" -> Telegram ID.
+      let body: any;
+      if (t.includes("@")) body = { email: t };
+      else if (/^tg:\d+$/i.test(t)) body = { telegram_id: Number(t.slice(3)) };
+      else body = { arzon_id: Number(t.replace(/^#/, "")) };
       act(`/api/menejer/stores/${s.id}/admins`, body);
     };
     if (Alert.prompt) {
       Alert.prompt(
         "Admin qo'shish",
-        `"${s.nomi}" uchun email yoki Telegram ID kiriting.\n` +
-          "Email egasi avval ilovaga shu email bilan kirgan bo'lishi kerak.",
+        `"${s.nomi}" uchun quyidagilardan birini kiriting:\n\n` +
+          "• ARZON ID — masalan #42 (tavsiya)\n" +
+          "• Email — ilovaga kirgan email\n" +
+          "• Telegram ID — tg:123456789",
         (v) => v && send(v)
       );
     } else {
-      Alert.alert("Admin qo'shish", "Bu qurilmada matn kiritish oynasi yo'q — Menejer botidan foydalaning.");
+      Alert.alert("Admin qo'shish", "Bu qurilmada matn oynasi yo'q — Menejer botidan foydalaning.");
     }
+  }
+
+  function removeAdmin(s: any, a: any) {
+    Alert.alert("Adminni olib tashlash", `#${a.arzon_id ?? a.admin_id} — ishonchingiz komilmi?`, [
+      { text: "Yo'q" },
+      {
+        text: "Ha",
+        style: "destructive",
+        onPress: async () => {
+          const { ok } = await api(`/api/menejer/stores/${s.id}/admins/${a.admin_id}`, { method: "DELETE" });
+          if (ok) load();
+          else Alert.alert("Xatolik", "Olib tashlanmadi.");
+        },
+      },
+    ]);
   }
 
   return (
@@ -127,6 +147,21 @@ export default function MenejerHomeScreen() {
                 <Field label="Mahsulotlar" value={`${s.mahsulot_soni} / ${s.mahsulot_limiti}`} />
                 {s.arenda_summasi != null && <Field label="Oylik arenda" value={`${money(s.arenda_summasi)} som`} />}
                 <Field label="Adminlar" value={adminlar(s)} />
+                {(s.adminlar || []).map((a: any) => (
+                  <TouchableOpacity key={a.admin_id} style={styles.adminRow}
+                    onPress={() => removeAdmin(s, a)}>
+                    <Text style={styles.adminId}>
+                      {a.arzon_id ? `#${a.arzon_id}` : `tg:${a.admin_id}`}
+                    </Text>
+                    <Text style={styles.adminName} numberOfLines={1}>
+                      {a.ism || a.email || "—"}
+                    </Text>
+                    <Text style={styles.adminUsul}>
+                      {a.usul === "ilova" ? "📱 ilova" : "✈️ Telegram"}
+                    </Text>
+                    <Text style={styles.adminDel}>✕</Text>
+                  </TouchableOpacity>
+                ))}
                 <View style={styles.actions}>
                   <Btn label="💵 Arenda uzaytirish" tone="gold" style={{ flex: 1 }}
                     onPress={() => act(`/api/menejer/stores/${s.id}/arenda-uzaytir`)} />
@@ -157,4 +192,12 @@ const styles = StyleSheet.create({
   muted: { color: colors.textMuted, fontSize: 13, marginTop: 2 },
   ai: { color: colors.store, fontWeight: "600", marginTop: 4 },
   actions: { flexDirection: "row", gap: 8, marginTop: 12 },
+  adminRow: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    paddingVertical: 6, borderTopWidth: 1, borderTopColor: colors.line,
+  },
+  adminId: { fontWeight: "800", color: colors.brand, minWidth: 44 },
+  adminName: { flex: 1, color: colors.text, fontSize: 13 },
+  adminUsul: { color: colors.textMuted, fontSize: 11 },
+  adminDel: { color: colors.sale, fontWeight: "800", paddingHorizontal: 6 },
 });

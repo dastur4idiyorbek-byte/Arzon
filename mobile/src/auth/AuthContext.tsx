@@ -11,9 +11,12 @@ const TOKEN_KEY = "arzon_token";
 
 export type AuthUser = {
   id: number;
+  /** ARZON ID — foydalanuvchining yagona raqami (kirish usulidan qat'i nazar). */
+  arzon_id: number;
   ism: string | null;
   email: string | null;
   tel: string | null;
+  telegram_id: number | null;
   coin_balans: number;
 };
 

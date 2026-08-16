@@ -35,9 +35,13 @@ def _auth_response(db: Session, user: User) -> dict:
         "token": auth_service.make_token(user.id),
         "user": {
             "id": user.id,
+            # ARZON ID — foydalanuvchining yagona raqami. Kirish usuli
+            # (Telegram/Gmail/Apple) ahamiyatsiz; ruxsatlar shu ID bilan beriladi.
+            "arzon_id": user.id,
             "ism": user.ism,
             "email": user.email,
             "tel": user.tel,
+            "telegram_id": user.telegram_id,
             "coin_balans": float(user.coin_balans or 0),
         },
         "roles": auth_service.roles(db, user),

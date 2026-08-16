@@ -53,29 +53,73 @@ def delete_product_moderation(db: Session, product_id: int) -> str:
 # ---------------------------------------------------------------------------
 # Adminlarni boshqarish
 # ---------------------------------------------------------------------------
-def resolve_admin_id(db: Session, telegram_id: int | None, email: str | None) -> int:
-    """Admin identifikatorini aniqlaydi — Telegram ID yoki email bo'yicha.
+def resolve_admin_id(
+    db: Session,
+    telegram_id: int | None = None,
+    email: str | None = None,
+    arzon_id: int | None = None,
+) -> int:
+    """Admin identifikatorini aniqlaydi — uchta usuldan biri bilan.
 
-    Email berilsa, o'sha email bilan ro'yxatdan o'tgan hisob topiladi va unga
-    manfiy ID beriladi (models.admin_identity). Ya'ni Gmail bilan kirgan odam
-    ham do'kon admini bo'la oladi.
+    * `arzon_id` — ARZON foydalanuvchi ID'si (#42). ASOSIY va tavsiya etilgan
+      usul: kirish usuli (Telegram/Gmail/Apple) ahamiyatsiz, ID bitta.
+    * `email`   — ilovaga shu email bilan kirgan hisob.
+    * `telegram_id` — eski usul (botlar bilan mos kelishi uchun saqlanган).
+
+    Qaytadigan qiymat — `stores.admin_ids` ичида saqlanadigan raqam
+    (models.admin_identity): Telegram hisobi uchun musbat, native hisob uchun
+    manfiy. Foydalanuvchi buni bilishi shart emas — u faqat ARZON ID'ni ko'radi.
     """
+    if arzon_id:
+        user = db.get(User, int(arzon_id))
+        if user is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"ARZON ID #{arzon_id} topilmadi. ID'ni tekshiring.",
+            )
+        return admin_identity(user)
+
+    if email and email.strip():
+        user = db.scalar(select(User).where(User.email == email.strip().lower()))
+        if user is None:
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    f"'{email.strip()}' bilan ro'yxatdan o'tgan hisob topilmadi. "
+                    "Avval o'sha odam ilovaga shu email bilan kirsin."
+                ),
+            )
+        return admin_identity(user)
+
     if telegram_id:
         return int(telegram_id)
-    if not email or not email.strip():
-        raise HTTPException(
-            status_code=400, detail="telegram_id yoki email kiriting."
+
+    raise HTTPException(
+        status_code=400, detail="ARZON ID, email yoki Telegram ID kiriting."
+    )
+
+
+def _admin_info(db: Session, admin_ids) -> list[dict]:
+    """Do'kon adminlari haqida o'qiladigan ma'lumot (ARZON ID, ism, kirish usuli).
+
+    `admin_ids` ичидаги raqam ichki narsa; menejer esa ARZON ID va ismni ko'radi.
+    """
+    natija = []
+    for aid in admin_ids or []:
+        if aid < 0:
+            u = db.get(User, -aid)
+        else:
+            u = db.scalar(select(User).where(User.telegram_id == aid))
+        natija.append(
+            {
+                "admin_id": aid,  # o'chirish uchun kerak
+                "arzon_id": u.id if u else None,
+                "ism": (u.ism if u else None),
+                "email": (u.email if u else None),
+                "usul": "telegram" if aid > 0 else "ilova",
+            }
         )
-    user = db.scalar(select(User).where(User.email == email.strip().lower()))
-    if user is None:
-        raise HTTPException(
-            status_code=404,
-            detail=(
-                f"'{email.strip()}' bilan ro'yxatdan o'tgan hisob topilmadi. "
-                "Avval o'sha odam ilovaga shu email bilan kirsin."
-            ),
-        )
-    return admin_identity(user)
+    return natija
 
 
 def add_admin(
@@ -83,11 +127,12 @@ def add_admin(
     store_id: int,
     telegram_id: int | None = None,
     email: str | None = None,
+    arzon_id: int | None = None,
 ) -> list:
     store = db.get(Store, store_id)
     if store is None:
         raise HTTPException(status_code=404, detail="Do'kon topilmadi.")
-    admin_id = resolve_admin_id(db, telegram_id, email)
+    admin_id = resolve_admin_id(db, telegram_id, email, arzon_id)
     ids = list(store.admin_ids or [])
     if admin_id not in ids:
         ids.append(admin_id)
@@ -119,6 +164,7 @@ def list_stores_info(db: Session) -> list[dict]:
                 "nomi": s.nomi,
                 "holat": s.holat,
                 "admin_ids": list(s.admin_ids or []),
+                "adminlar": _admin_info(db, s.admin_ids),
                 "mahsulot_soni": int(cnt),
                 "mahsulot_limiti": s.mahsulot_limiti,
                 "arenda_summasi": float(s.arenda_summasi)

@@ -131,10 +131,11 @@ def adminlar(
 
 
 class AdminBody(BaseModel):
-    """Admin qo'shish — Telegram ID YOKI email (ilovaga kirgan hisob) bo'yicha."""
+    """Admin qo'shish. Uchtadan biri yetarli (arzon_id — tavsiya etiladi)."""
 
-    telegram_id: int | None = None
-    email: str | None = None
+    arzon_id: int | None = None  # ARZON foydalanuvchi ID (#42) — asosiy usul
+    email: str | None = None  # ilovaga shu email bilan kirgan hisob
+    telegram_id: int | None = None  # eski usul (botlar bilan moslik uchun)
 
 
 @router.post("/stores/{store_id}/admins")
@@ -146,7 +147,7 @@ def add_admin(
 ):
     return {
         "admin_ids": menejer_service.add_admin(
-            db, store_id, payload.telegram_id, payload.email
+            db, store_id, payload.telegram_id, payload.email, payload.arzon_id
         )
     }
 

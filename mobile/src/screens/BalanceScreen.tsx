@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, Share } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { api, money } from "../api";
@@ -30,6 +30,19 @@ export default function BalanceScreen({ navigation }: any) {
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const myPanels = PANELS.filter((p) => roles.includes(p.role));
+  const arzonId = user?.arzon_id ?? user?.id;
+
+  async function shareId() {
+    try {
+      await Share.share({
+        message:
+          `Mening ARZON ID: #${arzonId}\n` +
+          `(${user?.ism || user?.email || ""})`.trim(),
+      });
+    } catch {
+      Alert.alert("ARZON ID", `#${arzonId}`);
+    }
+  }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40 }}>
@@ -59,6 +72,20 @@ export default function BalanceScreen({ navigation }: any) {
       )}
 
       <View style={{ height: spacing.xl }} />
+
+      {/* ARZON ID — foydalanuvchining yagona raqami. Admin qilish uchun shu
+          ID ulashiladi (Telegram/Gmail bilan kirganidan qat'i nazar). */}
+      <TouchableOpacity style={styles.idCard} onPress={shareId} activeOpacity={0.7}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.idLabel}>Sizning ARZON ID</Text>
+          <Text style={styles.idValue}>#{arzonId}</Text>
+          <Text style={styles.idHint}>
+            Admin qilinishingiz uchun shu ID'ni menejerga yuboring — bosing
+          </Text>
+        </View>
+        <Ionicons name="share-social-outline" size={20} color={colors.brand} />
+      </TouchableOpacity>
+
       <Text style={styles.profile}>{user?.ism || user?.email}</Text>
       <Text style={styles.roles}>Rollar: {roles.join(", ")}</Text>
       <TouchableOpacity style={[styles.btn, styles.out]} onPress={signOut}>
@@ -85,6 +112,14 @@ const styles = StyleSheet.create({
     borderRadius: radius.md, padding: 16,
   },
   panelText: { flex: 1, fontWeight: "700", color: colors.text },
+  idCard: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    backgroundColor: colors.secondaryBg, borderWidth: 1, borderColor: colors.line,
+    borderRadius: radius.md, padding: 16, marginBottom: spacing.lg,
+  },
+  idLabel: { color: colors.textMuted, fontSize: 12 },
+  idValue: { fontSize: 24, fontWeight: "800", color: colors.brand, letterSpacing: 1 },
+  idHint: { color: colors.textMuted, fontSize: 11, marginTop: 2 },
   profile: { textAlign: "center", fontWeight: "700", color: colors.text },
   roles: { textAlign: "center", color: colors.textMuted, marginBottom: 8 },
 });

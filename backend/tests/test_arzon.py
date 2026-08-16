@@ -1929,6 +1929,46 @@ def test_email_account_can_be_store_admin():
     assert client.get("/api/admin/my-stores", headers=h).status_code == 403
 
 
+def test_admin_by_arzon_id_any_login_method():
+    """ARZON ID orqali admin qilish — kirish usuli (email/Telegram) ahamiyatsiz."""
+    store_a, _ = setup_two_stores()
+    sid = store_a["store_id"]
+
+    # 1) Email bilan kirgan hisob — ARZON ID'sini /me dan olamiz.
+    token = _register_native("arzonid@mail.com")
+    h = {"Authorization": f"Bearer {token}"}
+    me = client.get("/api/auth/me", headers=h)
+    assert me.status_code == 200, me.text
+    arzon_id = me.json()["user"]["arzon_id"]
+    assert arzon_id == me.json()["user"]["id"]
+
+    # 2) Menejer faqat ARZON ID bilan admin qiladi (email/telegram kerak emas).
+    add = client.post(
+        f"/api/menejer/stores/{sid}/admins",
+        headers=admin_headers(MANAGER),
+        json={"arzon_id": arzon_id},
+    )
+    assert add.status_code == 200, add.text
+
+    # 3) Huquq ochildi.
+    assert "admin" in client.get("/api/auth/me", headers=h).json()["roles"]
+    assert client.get("/api/admin/my-stores", headers=h).status_code == 200
+
+    # 4) Menejer ro'yxatда ARZON ID va kirish usuli ko'rinadi.
+    stores = client.get("/api/menejer/stores", headers=admin_headers(MANAGER)).json()
+    bu = next(s for s in stores if s["id"] == sid)
+    mine = [a for a in bu["adminlar"] if a["arzon_id"] == arzon_id]
+    assert len(mine) == 1 and mine[0]["usul"] == "ilova", bu["adminlar"]
+
+    # 5) Mavjud bo'lmagan ARZON ID -> tushunarli 404.
+    bad = client.post(
+        f"/api/menejer/stores/{sid}/admins",
+        headers=admin_headers(MANAGER),
+        json={"arzon_id": 999999},
+    )
+    assert bad.status_code == 404 and "#999999" in bad.json()["detail"]
+
+
 def test_add_admin_by_unknown_email_fails():
     """Ro'yxatdan o'tmagan email bilan admin qo'shib bo'lmaydi (tushunarli xato)."""
     store_a, _ = setup_two_stores()
