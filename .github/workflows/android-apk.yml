@@ -50,6 +50,19 @@ jobs:
           echo "✅ EXPO_TOKEN bor. Expo hisobi:"
           eas whoami
 
+      # Agar mobile/assets/logo-source.png yuklangan bo'lsa — ilova ikonkasi,
+      # ochilish ekrani va bildirishnoma ikonkasi AYNAN o'sha logotipdan
+      # qayta yasaladi. Fayl bo'lmasa, repodagi tayyor ikonkalar ishlatiladi.
+      - name: Logotipdan ikonkalar yasash
+        run: |
+          if [ -f mobile/assets/logo-source.png ]; then
+            echo "✅ logo-source.png topildi — ikonkalar shundan yasaladi."
+            python3 -m pip install --quiet Pillow
+            python3 mobile/scripts/make_icons.py
+          else
+            echo "ℹ️  logo-source.png yo'q — repodagi tayyor ikonkalar ishlatiladi."
+          fi
+
       - name: Kutubxonalarni o'rnatish
         working-directory: mobile
         run: npm install
