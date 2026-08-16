@@ -53,6 +53,13 @@ jobs:
         working-directory: mobile
         run: npm ci || npm install
 
+      # Loyihani va yangilanish manzilini sozlaydi (agar hali sozlanmagan bo'lsa).
+      - name: Sozlash
+        working-directory: mobile
+        run: |
+          eas init --force --non-interactive
+          eas update:configure --non-interactive
+
       - name: Yangilanishni chiqarish
         working-directory: mobile
         run: |
