@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, Platform,
+  View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, Platform, Image,
 } from "react-native";
-import { api } from "../api";
+import { api, xatoMatni } from "../api";
 import { colors, radius, spacing, font, shadow } from "../theme";
 import { useAuth, AuthUser } from "../auth/AuthContext";
 
@@ -26,12 +26,12 @@ export default function LoginScreen() {
     const body = mode === "register"
       ? { email: email.trim(), parol, ism: ism.trim() || undefined }
       : { email: email.trim(), parol };
-    const { ok, data } = await api<AuthResp>(path, { method: "POST", body });
+    const { ok, status, data } = await api<AuthResp>(path, { method: "POST", body });
     setBusy(false);
     if (ok && data) {
       await signInWithToken(data.token, data.user, data.roles);
     } else {
-      Alert.alert("Xatolik", (data as any)?.detail || "Kirib bo'lmadi.");
+      Alert.alert("Kirib bo'lmadi", xatoMatni(status, data));
     }
   }
 

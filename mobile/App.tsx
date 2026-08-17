@@ -11,6 +11,7 @@ import { colors } from "./src/theme";
 import { AuthProvider, useAuth } from "./src/auth/AuthContext";
 import { CartProvider, useCart } from "./src/cart/CartContext";
 import { PromptProvider } from "./src/ui/Prompt";
+import ErrorBoundary from "./src/ui/ErrorBoundary";
 import { useOtaUpdate } from "./src/useOtaUpdate";
 import LoginScreen from "./src/screens/LoginScreen";
 import CatalogScreen from "./src/screens/CatalogScreen";
@@ -38,8 +39,10 @@ export const navigationRef = createNavigationContainerRef();
 // Push bosilganда tegishli ekranga o'tish (Phase 5).
 function handleNotificationNav(data: any) {
   if (!data || !navigationRef.isReady()) return;
-  if (data.type === "order") navigationRef.navigate("Main" as never, { screen: "Buyurtmalar" } as never);
-  else if (data.type === "balance") navigationRef.navigate("Main" as never, { screen: "Profil" } as never);
+  // Marshrutlar tiplanmagan — shuning uchun bitta joyda `any` bilan chaqiramiz.
+  const nav = navigationRef as any;
+  if (data.type === "order") nav.navigate("Main", { screen: "Buyurtmalar" });
+  else if (data.type === "balance") nav.navigate("Main", { screen: "Profil" });
 }
 
 const stackScreenOptions = {
@@ -148,15 +151,18 @@ export default function App() {
   }, []);
 
   return (
-    <PromptProvider>
-      <AuthProvider>
-        <CartProvider>
-          <NavigationContainer ref={navigationRef}>
-            <StatusBar style="dark" />
-            <RootNav />
-          </NavigationContainer>
-        </CartProvider>
-      </AuthProvider>
-    </PromptProvider>
+    // Xato bo'lsa oq ekran emas, tushunarli xabar ko'rsatiladi.
+    <ErrorBoundary>
+      <PromptProvider>
+        <AuthProvider>
+          <CartProvider>
+            <NavigationContainer ref={navigationRef}>
+              <StatusBar style="dark" />
+              <RootNav />
+            </NavigationContainer>
+          </CartProvider>
+        </AuthProvider>
+      </PromptProvider>
+    </ErrorBoundary>
   );
 }

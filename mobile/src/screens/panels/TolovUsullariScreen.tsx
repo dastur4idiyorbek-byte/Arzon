@@ -186,10 +186,10 @@ export default function TolovUsullariScreen() {
                 <Switch
                   value={!!u.faol}
                   disabled={busy}
-                  onValueChange={() =>
+                  onValueChange={() => {
                     soraw(`/api/moliya/tolov-usullari/${u.id}/toggle`, "POST", undefined,
-                      u.faol ? "O'chirildi" : "Yoqildi")
-                  }
+                      u.faol ? "O'chirildi" : "Yoqildi");
+                  }}
                   trackColor={{ true: colors.store, false: colors.line }}
                   thumbColor="#fff"
                 />
