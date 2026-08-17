@@ -29,12 +29,12 @@ export const colors = {
 
   bg: "#FFFFFF",
   /** Ekran foni — oppoq kartochkalar shu fonda "suzadi". */
-  bgSoft: "#F5F5F7",
+  bgSoft: "#FAFAFB",
   cardTop: "#FFF8F2",
   text: "#0F1115",
   textMuted: "#6A6F7A",
   textFaint: "#9AA0AB",
-  line: "#E8E9EC",
+  line: "#E4E5E9",
   lineSoft: "#F1F2F4",
   secondaryBg: "#F2F3F5",
   /** Skeleton (yuklanish) uchun. */
@@ -43,11 +43,11 @@ export const colors = {
 };
 
 export const radius = {
-  xs: 10,
-  sm: 14,
-  md: 18,
-  lg: 22,
-  xl: 28,
+  xs: 8,
+  sm: 10,
+  md: 12,
+  lg: 14,
+  xl: 20,
   pill: 999,
 };
 
@@ -73,7 +73,23 @@ export const tracking = {
 };
 
 /**
- * Soyalar — yumshoq va keng tarqalgan (qattiq chegara o'rniga).
+ * CHEGARA (ramka) — asosiy ajratuvchi vosita.
+ *
+ * Wildberries/Ozon kabi zich savdo ilovalarida kartochkalar og'ir soya bilan
+ * emas, INGICHKA CHIZIQ bilan ajratiladi: ekran tinch, ma'lumot zich joylashadi
+ * va tugmalar aniq chegaralangan bo'ladi.
+ */
+export const border = {
+  /** Ingichka chiziq — kartochka, tugma, maydon atrofi. */
+  hair: { borderWidth: 1, borderColor: colors.line } as const,
+  /** Ta'kidlangan chiziq — tanlangan holat. */
+  strong: { borderWidth: 1.5, borderColor: colors.text } as const,
+  /** Brend chizig'i — ikkilamchi tugma. */
+  brand: { borderWidth: 1.5, borderColor: colors.brand } as const,
+};
+
+/**
+ * Soyalar — juda yengil (chegara asosiy vosita bo'lgani uchun).
  * iOS shadow*, Android elevation — ikkalasi ham beriladi.
  */
 export const shadow = {
@@ -86,17 +102,17 @@ export const shadow = {
   },
   sm: {
     shadowColor: "#0F1115",
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
+    shadowOpacity: 0.03,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
   md: {
     shadowColor: "#0F1115",
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 5,
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
   },
   lg: {
     shadowColor: "#0F1115",

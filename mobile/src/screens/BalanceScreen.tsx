@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, Share } fr
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { api, money } from "../api";
-import { colors, radius, spacing, font, shadow } from "../theme";
+import { colors, radius, spacing, font, shadow , border } from "../theme";
 import { useAuth } from "../auth/AuthContext";
 
 // Rol -> panel ekrani (App.tsx RootNav'да ro'yxatdan o'tган).
@@ -107,13 +107,13 @@ const styles = StyleSheet.create({
   panelsTitle: { fontWeight: "800", color: colors.text, fontSize: font.h2, marginBottom: 4 },
   panelBtn: {
     flexDirection: "row", alignItems: "center", gap: 12,
-    backgroundColor: colors.bg, borderRadius: radius.md, padding: 16, ...shadow.sm,
+    backgroundColor: colors.bg, borderRadius: radius.md, padding: 16, ...border.hair,
   },
   panelText: { flex: 1, fontWeight: "700", color: colors.text },
   idCard: {
     flexDirection: "row", alignItems: "center", gap: 12,
     backgroundColor: colors.bg, borderRadius: radius.md, padding: 16,
-    marginBottom: spacing.lg, ...shadow.sm,
+    marginBottom: spacing.lg, ...border.hair,
   },
   idLabel: { color: colors.textMuted, fontSize: 12 },
   idValue: { fontSize: 24, fontWeight: "800", color: colors.brand, letterSpacing: 1 },

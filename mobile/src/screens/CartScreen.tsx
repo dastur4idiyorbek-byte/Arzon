@@ -4,7 +4,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { api, money } from "../api";
-import { colors, radius, spacing, font, shadow } from "../theme";
+import { colors, radius, spacing, font, shadow , border } from "../theme";
 import { effPrice, rasmUrl } from "../types";
 import { useCart } from "../cart/CartContext";
 import { usePrompt } from "../ui/Prompt";
@@ -264,7 +264,7 @@ const styles = StyleSheet.create({
   },
   primaryText: { color: "#fff", fontWeight: "800" },
 
-  card: { backgroundColor: colors.bg, borderRadius: radius.lg, padding: spacing.md, ...shadow.sm },
+  card: { backgroundColor: colors.bg, borderRadius: radius.lg, padding: spacing.md, ...border.hair },
   row: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12 },
   rowLine: { borderTopWidth: 1, borderTopColor: colors.lineSoft },
   thumb: {
@@ -285,14 +285,14 @@ const styles = StyleSheet.create({
   label: { marginTop: spacing.xl, marginBottom: 8, color: colors.text, fontWeight: "800", fontSize: font.h3 },
   inputWrap: {
     flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.bg,
-    borderRadius: radius.md, paddingHorizontal: 14, height: 50, ...shadow.sm,
+    borderRadius: radius.md, paddingHorizontal: 14, height: 50, ...border.hair,
   },
   input: { flex: 1, color: colors.text, fontSize: font.body, padding: 0 },
   promoRow: { flexDirection: "row", gap: 10 },
   promoInputWrap: {
     flex: 1, flexDirection: "row", alignItems: "center", gap: 8,
     backgroundColor: colors.bg, borderRadius: radius.md,
-    paddingHorizontal: 14, height: 50, ...shadow.sm,
+    paddingHorizontal: 14, height: 50, ...border.hair,
   },
   promoBtn: {
     paddingHorizontal: 20, height: 50, borderRadius: radius.md,
@@ -307,7 +307,7 @@ const styles = StyleSheet.create({
   promoXato: { backgroundColor: colors.saleSoft },
   promoJavobText: { flex: 1, fontWeight: "700", fontSize: font.small },
 
-  summary: { backgroundColor: colors.bg, borderRadius: radius.lg, padding: spacing.lg, marginTop: spacing.lg, gap: 10, ...shadow.sm },
+  summary: { backgroundColor: colors.bg, borderRadius: radius.lg, padding: spacing.lg, marginTop: spacing.lg, gap: 10, ...border.hair },
   sumRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   sumLabel: { color: colors.textMuted },
   sumVal: { color: colors.text, fontWeight: "600" },

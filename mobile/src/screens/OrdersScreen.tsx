@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, Lin
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { api, money } from "../api";
-import { colors, radius, spacing, font, shadow, tracking } from "../theme";
+import { colors, radius, spacing, font, shadow, tracking , border } from "../theme";
 import { Order } from "../types";
 import { Loader } from "./panels/PanelUI";
 
@@ -113,7 +113,7 @@ export default function OrdersScreen() {
 
 const styles = StyleSheet.create({
   sarlavha: { fontSize: font.h1, fontWeight: "900", color: colors.text, letterSpacing: tracking.h1, marginBottom: spacing.xs },
-  card: { backgroundColor: colors.bg, borderRadius: radius.lg, padding: spacing.lg, ...shadow.sm },
+  card: { backgroundColor: colors.bg, borderRadius: radius.lg, padding: spacing.lg, ...border.hair },
   badge: {
     alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 5,
     paddingHorizontal: 10, paddingVertical: 5, borderRadius: radius.pill,

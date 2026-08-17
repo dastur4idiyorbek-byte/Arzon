@@ -12,7 +12,7 @@ import {
   ScrollViewProps,
   ScrollView,
 } from "react-native";
-import { colors, radius, spacing, font, shadow } from "../../theme";
+import { colors, radius, spacing, font, shadow , border } from "../../theme";
 import { SkeletonList } from "../../ui/Skeleton";
 
 export function Segmented({
@@ -152,7 +152,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     padding: 16,
     marginBottom: 12,
-    ...shadow.sm,
+    ...border.hair,
   },
   btn: {
     borderRadius: radius.sm,

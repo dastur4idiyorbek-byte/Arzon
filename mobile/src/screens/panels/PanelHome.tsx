@@ -8,7 +8,7 @@
 import React from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { colors, radius, spacing, font, shadow } from "../../theme";
+import { colors, radius, spacing, font, shadow , border } from "../../theme";
 
 export type PanelBolim = {
   key: string;
@@ -91,7 +91,7 @@ const styles = StyleSheet.create({
   karta: {
     flexDirection: "row", alignItems: "center", gap: 14,
     backgroundColor: colors.bg, borderRadius: radius.lg, padding: spacing.lg,
-    ...shadow.sm,
+    ...border.hair,
   },
   ikonka: {
     width: 48, height: 48, borderRadius: radius.md,

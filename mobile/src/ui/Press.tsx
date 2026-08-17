@@ -6,7 +6,7 @@
  * Spring qaytishi tabiiy his beradi.
  */
 import React, { useRef } from "react";
-import { Animated, Pressable, ViewStyle, StyleProp } from "react-native";
+import { Animated, Pressable, StyleSheet, ViewStyle, StyleProp } from "react-native";
 
 export function Press({
   children,
@@ -40,12 +40,21 @@ export function Press({
       bounciness: 8,
     }).start();
 
+  // MUHIM: `flex` tashqi Pressable'ga ham berilishi kerak. Aks holda ichkaridagi
+  // `flex: 1` ish bermaydi — Pressable kontent kengligicha qolib, to'rdagi
+  // kartochkalar qisilib ketadi.
+  const yassi = StyleSheet.flatten(style) as ViewStyle | undefined;
+  const tashqi: ViewStyle = {};
+  if (yassi?.flex != null) tashqi.flex = yassi.flex;
+  if (yassi?.alignSelf != null) tashqi.alignSelf = yassi.alignSelf;
+
   return (
     <Pressable
       onPress={onPress}
       onPressIn={bosildi}
       onPressOut={qoyildi}
       disabled={disabled}
+      style={tashqi}
     >
       <Animated.View style={[style, { transform: [{ scale: s }] }]}>
         {children}

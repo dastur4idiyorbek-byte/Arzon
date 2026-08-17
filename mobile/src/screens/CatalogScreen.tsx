@@ -15,7 +15,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { api, money } from "../api";
-import { colors, radius, spacing, font, shadow, tracking } from "../theme";
+import { colors, radius, spacing, font, shadow, tracking , border } from "../theme";
 import { SkeletonCatalog } from "../ui/Skeleton";
 import { Press } from "../ui/Press";
 import { Product, effPrice, rasmUrl } from "../types";
@@ -299,7 +299,7 @@ const styles = StyleSheet.create({
     flexDirection: "row", alignItems: "center", gap: 10,
     marginHorizontal: spacing.lg, marginTop: spacing.sm,
     backgroundColor: colors.bg, borderRadius: radius.pill,
-    paddingHorizontal: 16, height: 46, ...shadow.sm,
+    paddingHorizontal: 16, height: 46, ...border.hair,
   },
   search: { flex: 1, color: colors.text, fontSize: font.body, padding: 0 },
 
@@ -310,7 +310,7 @@ const styles = StyleSheet.create({
   },
   chip: {
     height: 34, justifyContent: "center", paddingHorizontal: 14,
-    borderRadius: radius.pill, backgroundColor: colors.bg, ...shadow.xs,
+    borderRadius: radius.pill, backgroundColor: colors.bg, ...border.hair,
   },
   chipOn: { backgroundColor: colors.text },
   chipText: { color: colors.textMuted, fontWeight: "700", fontSize: font.small },
@@ -321,7 +321,7 @@ const styles = StyleSheet.create({
 
   card: {
     flex: 1, backgroundColor: colors.bg, borderRadius: radius.lg,
-    overflow: "hidden", ...shadow.sm,
+    overflow: "hidden", ...border.hair,
   },
   imgWrap: {
     position: "relative", aspectRatio: 1, backgroundColor: colors.secondaryBg,
@@ -371,7 +371,7 @@ const styles = StyleSheet.create({
   addBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
     marginTop: 10, backgroundColor: colors.brand,
-    borderRadius: radius.sm, height: 38,
+    borderRadius: radius.sm, height: 38, borderWidth: 1, borderColor: colors.brand,
   },
   addText: { color: "#fff", fontWeight: "800", fontSize: font.small },
   disabled: { backgroundColor: colors.textFaint },
@@ -379,7 +379,7 @@ const styles = StyleSheet.create({
   empty: { alignItems: "center", marginTop: 70, gap: 10, paddingHorizontal: spacing.xl },
   emptyIcon: {
     width: 72, height: 72, borderRadius: 36, backgroundColor: colors.bg,
-    alignItems: "center", justifyContent: "center", ...shadow.sm,
+    alignItems: "center", justifyContent: "center", ...border.hair,
   },
   emptyTitle: {
     fontSize: font.h2, fontWeight: "800", color: colors.text,
