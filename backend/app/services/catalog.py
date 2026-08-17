@@ -116,6 +116,14 @@ def get_catalog(db: Session, user: User) -> List[dict]:
                     "tavsif": p.tavsif,
                     "korinish": p.korinish,
                     "tugadi": tugadi(p),
+                    # Chegirma muddati — ilovadagi taymer shu bo'yicha ishlaydi.
+                    # Faqat chegirma HAQIQATAN amalda bo'lsa yuboriladi.
+                    "skidka_muddati": (
+                        p.skidka_muddati.isoformat()
+                        if p.skidka_muddati is not None and eff < float(p.narxi)
+                        else None
+                    ),
+                    "miqdor": p.miqdor,
                 }
             )
     return catalog

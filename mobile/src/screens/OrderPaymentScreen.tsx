@@ -101,8 +101,8 @@ export default function OrderPaymentScreen({ route, navigation }: any) {
       if (res.ok) {
         Alert.alert(
           "✅ Chek yuborildi",
-          "Moliya to'lovni tekshiradi. Tasdiqlangach buyurtmangiz do'konga o'tadi " +
-            "va sizga bildirishnoma keladi.",
+          "Moliya to'lovni tekshiradi. Tasdiqlangach buyurtma kodingiz beriladi, " +
+            "buyurtma do'konga o'tadi va sizga bildirishnoma keladi.",
           [{ text: "OK", onPress: () => navigation.navigate("Main", { screen: "Buyurtmalar" }) }]
         );
       } else {
@@ -125,7 +125,11 @@ export default function OrderPaymentScreen({ route, navigation }: any) {
       <View style={styles.summaCard}>
         <Text style={styles.summaLabel}>To'lanadigan summa</Text>
         <Text style={styles.summaVal}>{money(summa)} som</Text>
-        {!!kod && <Text style={styles.kod}>Buyurtma kodi: {kod}</Text>}
+        {kod ? (
+          <Text style={styles.kod}>Buyurtma kodi: {kod}</Text>
+        ) : (
+          <Text style={styles.kod}>🔒 Buyurtma kodi to'lovdan keyin beriladi</Text>
+        )}
       </View>
 
       <Text style={styles.step}>1. To'lov usulini tanlang</Text>

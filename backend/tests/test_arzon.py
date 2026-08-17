@@ -63,10 +63,28 @@ def tolovni_tasdiqla(order_id: int) -> None:
 
 
 def tasdiqla_hammasi(resp) -> list:
-    """Checkout javobidagi barcha buyurtmalar to'lovini tasdiqlaydi."""
+    """Checkout javobidagi barcha buyurtmalar to'lovini tasdiqlaydi.
+
+    DIQQAT: checkout javobida `kod` BO'SH bo'ladi — kod faqat to'lov
+    tasdiqlangach beriladi. Shuning uchun tasdiqlagandan keyin buyurtmalarni
+    qayta o'qib, haqiqiy kodlar bilan qaytaramiz.
+    """
+    from app.database import SessionLocal
+    from app.models import Order
+
     buyurtmalar = resp.json()["buyurtmalar"]
     for o in buyurtmalar:
         tolovni_tasdiqla(o["id"])
+
+    db = SessionLocal()
+    try:
+        for o in buyurtmalar:
+            row = db.get(Order, o["id"])
+            if row is not None:
+                o["kod"] = row.kod
+                o["holat"] = row.holat
+    finally:
+        db.close()
     return buyurtmalar
 
 
@@ -297,7 +315,12 @@ def test_rule8_phone_required_and_rule10_split_orders():
     # Endi checkout ikkita alohida buyurtma yaratadi (rule 10).
     ok = client.post("/api/checkout", headers=cust, json=cart)
     assert ok.status_code == 200, ok.text
-    orders = ok.json()["buyurtmalar"]
+    assert len(ok.json()["buyurtmalar"]) == 2
+    # Kod to'lovdan OLDIN berilmaydi.
+    assert all(o["kod"] == "" for o in ok.json()["buyurtmalar"])
+
+    # To'lov tasdiqlangach kodlar ochiladi.
+    orders = tasdiqla_hammasi(ok)
     assert len(orders) == 2
     # Har bir buyurtmada alohida 6 xonali kod (phase 3.1).
     codes = {o["kod"] for o in orders}
@@ -347,15 +370,15 @@ def test_rule9_loyalty_aggregates_across_stores():
         "/api/checkout",
         headers=cust,
         json={"items": [{"product_id": pa["id"], "soni": 1}], "manzil": "Uy 1"},
-    ).json()
-    kod1 = r1["buyurtmalar"][0]["kod"]
+    )
+    kod1 = tasdiqla_hammasi(r1)[0]["kod"]
     # B do'konidan xarid -> tasdiqlanadi.
     r2 = client.post(
         "/api/checkout",
         headers=cust,
         json={"items": [{"product_id": pb["id"], "soni": 1}], "manzil": "Uy 1"},
-    ).json()
-    kod2 = r2["buyurtmalar"][0]["kod"]
+    )
+    kod2 = tasdiqla_hammasi(r2)[0]["kod"]
 
     # Adminlar o'z buyurtma kodlarini tasdiqlaydi (phase 3.3).
     c1 = client.post(
@@ -387,11 +410,11 @@ def test_rule7_admin_cannot_confirm_other_store_code():
     cust = customer_headers(6060)
     client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700112233"})
     give_balance(6060, 100000)
-    order = client.post(
+    order = tasdiqla_hammasi(client.post(
         "/api/checkout",
         headers=cust,
         json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Uy 1"},
-    ).json()["buyurtmalar"][0]
+    ))[0]
 
     # Admin B, A do'koni buyurtmasini tasdiqlashga urinadi -> 403.
     r = client.post(
@@ -687,10 +710,10 @@ def test_spec_order_search_store_scoped():
     cust = customer_headers(6611)
     client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700123456"})
     give_balance(6611, 100000)
-    order = client.post(
+    order = tasdiqla_hammasi(client.post(
         "/api/checkout", headers=cust,
         json={"items": [{"product_id": pa["id"], "soni": 1}], "manzil": "Uy 1"},
-    ).json()["buyurtmalar"][0]
+    ))[0]
 
     # O'z do'konida kod bo'yicha topiladi.
     r = client.get(
@@ -1470,11 +1493,11 @@ def test_punkt_lookup_and_topshirdim():
     cust = customer_headers(8801)
     client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700123456"})
     give_balance(8801, 100000)
-    o = client.post(
+    # balanssiz oqim: to'lov tasdiqlangach do'konga ketadi va kod ochiladi
+    o = tasdiqla_hammasi(client.post(
         "/api/checkout", headers=cust,
         json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Uy 1"},
-    ).json()["buyurtmalar"][0]
-    tolovni_tasdiqla(o["id"])  # balanssiz oqim: to'lov tasdiqlangach do'konga ketadi
+    ))[0]
 
     # Kod bo'yicha ko'rish — mahsulot + mijoz, tasdiqlamasdan.
     look = client.get(f"/api/admin/orders/by-code/{o['kod']}", headers=admin_headers(ADMIN_A))
@@ -1505,9 +1528,10 @@ def test_order_code_alphanumeric():
     cust = customer_headers(80003)
     client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700800003"})
     give_balance(80003, 5000)
-    kod = client.post("/api/checkout", headers=cust,
-                      json={"items": [{"product_id": p["id"], "soni": 1}],
-                            "manzil": "Bishkek 1"}).json()["buyurtmalar"][0]["kod"]
+    kod = tasdiqla_hammasi(client.post(
+        "/api/checkout", headers=cust,
+        json={"items": [{"product_id": p["id"], "soni": 1}],
+              "manzil": "Bishkek 1"}))[0]["kod"]
     assert len(kod) == 6
     assert kod == kod.upper()
     assert any(c.isalpha() for c in kod) and any(c.isdigit() for c in kod)
@@ -2121,6 +2145,99 @@ def test_balanssiz_tolov_toliq_oqim():
         f"/api/admin/orders/{order['id']}/accept", headers=admin_headers(ADMIN_A)
     )
     assert acc.status_code == 200, acc.text
+
+
+def test_kod_faqat_tolovdan_keyin_beriladi():
+    """Buyurtma kodi to'lov tasdiqlanmaguncha mijozga BERILMAYDI.
+
+    Aks holda mijoz to'lamasdan turib kodni olib, kuryerdan/do'kondan
+    tovarni talab qilishi mumkin bo'lardi.
+    """
+    store_a, _ = setup_two_stores()
+    p = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/products",
+        headers=admin_headers(ADMIN_A),
+        json={"nomi": "Kod sinov", "narxi": 1500, "korinish": "ommaviy"},
+    ).json()
+    cust = customer_headers(60505)
+    client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700605050"})
+
+    r = client.post(
+        "/api/checkout", headers=cust,
+        json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Bishkek 9"},
+    )
+    assert r.status_code == 200, r.text
+    order = r.json()["buyurtmalar"][0]
+    # 1) Checkout javobida kod bo'sh.
+    assert order["kod"] == ""
+
+    # 2) Buyurtmalar ro'yxatida ham kod bo'sh, lekin buyurtma ko'rinadi.
+    ro_yxat = client.get("/api/orders", headers=cust).json()
+    meniki = [x for x in ro_yxat if x["id"] == order["id"]]
+    assert meniki and meniki[0]["kod"] == ""
+    assert meniki[0]["holat"] == "tolov_kutilmoqda"
+
+    # 3) Chek yuklansa ham kod hali berilmaydi (Moliya tasdiqlashi kerak).
+    png = bytes.fromhex(
+        "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4"
+        "890000000a49444154789c63000100000500010d0a2db40000000049454e44ae426082"
+    )
+    ch = client.post(
+        f"/api/orders/{order['id']}/chek", headers=cust,
+        files={"chek": ("chek.png", png, "image/png")},
+    )
+    assert ch.status_code == 200, ch.text
+    assert "kod" not in ch.json()
+    keyin = client.get("/api/orders", headers=cust).json()
+    assert [x for x in keyin if x["id"] == order["id"]][0]["kod"] == ""
+
+    # 4) Moliya tasdiqlagach kod OCHILADI.
+    tolovni_tasdiqla(order["id"])
+    ochiq = client.get("/api/orders", headers=cust).json()
+    yakuniy = [x for x in ochiq if x["id"] == order["id"]][0]
+    assert len(yakuniy["kod"]) == 6, yakuniy
+    assert yakuniy["holat"] == "yangi"
+
+
+def test_katalogda_chegirma_muddati_korinadi():
+    """Admin qo'ygan chegirma muddati mijoz katalogiga yetib boradi.
+
+    Ilovadagi chegirma taymeri shu maydonga tayanadi — u yuborilmasa
+    mijoz muddatni umuman ko'rmaydi.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    store_a, _ = setup_two_stores()
+    muddat = (datetime.now(timezone.utc) + timedelta(days=2)).isoformat()
+    p = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/products",
+        headers=admin_headers(ADMIN_A),
+        json={
+            "nomi": "Muddatli chegirma", "narxi": 10000, "korinish": "ommaviy",
+            "skidka_foizi": 30, "skidka_muddati": muddat,
+        },
+    )
+    assert p.status_code == 200, p.text
+    pid = p.json()["id"]
+
+    cust = customer_headers(60606)
+    katalog = client.get("/api/products", headers=cust).json()
+    meniki = [x for x in katalog if x["id"] == pid]
+    assert meniki, "mahsulot katalogda yo'q"
+    tovar = meniki[0]
+    assert tovar["skidka_muddati"], tovar
+    assert tovar["skidka_foizi"] == 30
+    assert tovar["sotuv_narxi"] == 7000.0
+
+    # Chegirmasiz tovarda muddat bo'lmaydi (taymer chiqmasin).
+    p2 = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/products",
+        headers=admin_headers(ADMIN_A),
+        json={"nomi": "Chegirmasiz", "narxi": 5000, "korinish": "ommaviy"},
+    ).json()
+    katalog2 = client.get("/api/products", headers=cust).json()
+    oddiy = [x for x in katalog2 if x["id"] == p2["id"]][0]
+    assert oddiy["skidka_muddati"] is None
 
 
 def test_balanssiz_tolov_rad_etilsa_bekor_boladi():

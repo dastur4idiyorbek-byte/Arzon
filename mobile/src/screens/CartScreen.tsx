@@ -61,26 +61,29 @@ export default function CartScreen({ navigation }: any) {
     if (ok) {
       const buyurtmalar: any[] = data.buyurtmalar || [];
       clear();
+      // DIQQAT: buyurtma kodi bu yerda KO'RSATILMAYDI — u to'lov
+      // tasdiqlangach "Buyurtmalarim"da ochiladi.
       if (buyurtmalar.length === 1) {
         // Bitta do'kon — to'g'ridan to'lov ekraniga o'tamiz.
         const o = buyurtmalar[0];
         Alert.alert(
           "✅ Buyurtma yaratildi",
-          `Kod: ${o.kod}\nEndi to'lovni amalga oshirib, chekni yuklang.`,
+          "Endi to'lovni amalga oshirib, chekni yuklang. " +
+            "Chek tasdiqlangach buyurtma kodingiz beriladi.",
           [{
             text: "To'lovga o'tish",
             onPress: () => navigation.navigate("OrderPayment", {
-              orderId: o.id, kod: o.kod, summa: o.jami_narx,
+              orderId: o.id, summa: o.jami_narx,
             }),
           }]
         );
       } else {
         // Rule 10: har do'kon uchun alohida buyurtma -> har biriga alohida chek.
-        const kodlar = buyurtmalar.map((o) => o.kod).join(", ");
         Alert.alert(
           "✅ Buyurtmalar yaratildi",
-          `Kod(lar): ${kodlar}\n\nHar bir do'kon uchun alohida buyurtma ochildi. ` +
-            "\"Buyurtmalarim\" bo'limidan har biriga alohida chek yuklang.",
+          `${buyurtmalar.length} ta do'kon uchun alohida buyurtma ochildi.\n\n` +
+            "\"Buyurtmalarim\" bo'limidan har biriga alohida to'lov qiling. " +
+            "Har bir chek tasdiqlangach o'sha buyurtmaning kodi beriladi.",
           [{ text: "OK", onPress: () => navigation.navigate("Buyurtmalar") }]
         );
       }

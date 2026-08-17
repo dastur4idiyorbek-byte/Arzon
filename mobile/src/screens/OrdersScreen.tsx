@@ -65,17 +65,25 @@ export default function OrdersScreen({ navigation }: any) {
               <Text style={[styles.badgeText, { color: st.c }]}>{st.t}</Text>
             </View>
 
-            {/* Buyurtma kodi — kuryerga aytiladigan asosiy narsa */}
+            {/* Buyurtma kodi — kuryerga aytiladigan asosiy narsa.
+                To'lov tasdiqlanmaguncha kod berilmaydi. */}
             <Text style={styles.kodLabel}>Buyurtma kodi</Text>
-            <Text style={styles.kod}>{o.kod}</Text>
+            {tolovKutmoqda ? (
+              <View style={styles.kodQulf}>
+                <Ionicons name="lock-closed" size={17} color={colors.textFaint} />
+                <Text style={styles.kodQulfText}>To'lovdan keyin ochiladi</Text>
+              </View>
+            ) : (
+              <Text style={styles.kod}>{o.kod}</Text>
+            )}
 
             {/* To'lov bloki — faqat to'lov kutayotgan buyurtmalarda */}
             {tolovKutmoqda && (
               <View style={styles.tolov}>
                 <Text style={styles.tolovMatn}>
                   {chekBor
-                    ? "Chek yuborildi. Moliya tekshirmoqda — tasdiqlangach buyurtma do'konga o'tadi."
-                    : "To'lovni amalga oshirib, chek rasmini yuklang. Chek tasdiqlangach buyurtma do'konga yuboriladi."}
+                    ? "Chek yuborildi. Moliya tekshirmoqda — tasdiqlangach buyurtma kodingiz shu yerda paydo bo'ladi."
+                    : "Avval to'lovni amalga oshirib, chek rasmini yuklang. Chek tasdiqlangach buyurtma kodi beriladi va buyurtma do'konga yuboriladi."}
                 </Text>
                 <TouchableOpacity
                   style={[styles.tolovBtn, chekBor && styles.tolovBtnGhost]}
@@ -162,6 +170,8 @@ const styles = StyleSheet.create({
   badgeText: { fontWeight: "800", fontSize: font.tiny },
   kodLabel: { fontSize: font.tiny, color: colors.textFaint, textTransform: "uppercase", marginTop: 12, letterSpacing: 0.5 },
   kod: { fontSize: 32, fontWeight: "900", letterSpacing: 6, color: colors.brand, marginTop: 2 },
+  kodQulf: { flexDirection: "row", alignItems: "center", gap: 7, marginTop: 6, marginBottom: 2 },
+  kodQulfText: { color: colors.textFaint, fontWeight: "700", fontSize: font.body },
 
   yolak: { flexDirection: "row", alignItems: "center", marginTop: 14, marginBottom: 6 },
   bosqich: { flexDirection: "row", alignItems: "center", flex: 1 },

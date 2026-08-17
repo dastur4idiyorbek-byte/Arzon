@@ -34,6 +34,20 @@ from ..services import orders as order_service
 router = APIRouter(prefix="/api", tags=["buyurtma"])
 
 
+def _order_public(o: Order) -> OrderOut:
+    """Mijozga ko'rsatiladigan buyurtma.
+
+    QOIDA: buyurtma kodi FAQAT to'lovdan keyin beriladi. To'lov kutayotgan
+    buyurtmada kod bo'sh ketadi — aks holda mijoz to'lamasdan turib kodni
+    olib, kuryerdan tovarni talab qilishi mumkin edi. Kod maskalanadi,
+    yashirilmaydi: buyurtmaning o'zi ro'yxatda ko'rinaveradi.
+    """
+    out = OrderOut.model_validate(o)
+    if o.holat == "tolov_kutilmoqda":
+        out.kod = ""
+    return out
+
+
 @router.post("/checkout", response_model=CheckoutResponse)
 def checkout(
     payload: CheckoutRequest,
@@ -72,62 +86,15 @@ def checkout(
     jami_xarid = sum(float(o.jami_narx) for o in orders)
     loyalty_service.mark_referral_purchased(db, user, jami_xarid)
 
-    # Yangi buyurtma haqida do'kon adminlariga xabar (spec2 task_1).
-    # PTB o'rnatilmagan yoki botlar faol bo'lmagan muhitда jimgina o'tadi.
-    try:
-        from ..models import PickupPoint, Store
-        from ..tgbots import notify
-
-        import html as _h
-
-        for o in orders:
-            store = db.get(Store, o.store_id)
-            if o.yetkazish_turi == "pickup" and o.pickup_point_id:
-                pp = db.get(PickupPoint, o.pickup_point_id)
-                yetk = (
-                    f"🏬 Olib ketish: <b>{_h.escape(pp.nomi)}</b>, "
-                    f"{_h.escape(pp.manzil)}"
-                    if pp
-                    else "🏬 Olib ketish"
-                )
-            else:
-                yetk = f"🚚 Kuryer: <b>{_h.escape(o.manzil or '-')}</b>"
-                if o.yetkazish_narxi:
-                    yetk += f"\n💵 Yetkazish: {float(o.yetkazish_narxi):,.0f} som"
-            # Lokatsiya bo'lsa — Google Maps havolasi (inline tugma, task_3).
-            maps_link = None
-            if o.lokatsiya_lat is not None and o.lokatsiya_lng is not None:
-                maps_link = (
-                    f"https://www.google.com/maps?q="
-                    f"{o.lokatsiya_lat},{o.lokatsiya_lng}"
-                )
-            notify.notify_new_order(
-                admin_ids=list(store.admin_ids or []) if store else [],
-                order_id=o.id,
-                kod=o.kod,
-                jami=float(o.jami_narx),
-                mahsulotlar=o.mahsulotlar,
-                mijoz_ism=user.ism,
-                mijoz_tel=user.tel,
-                yetkazish_txt=yetk,
-                maps_link=maps_link,
-            )
-            # Native (email) adminlarга push — ularga Telegram yozib bo'lmaydi.
-            from ..services import push as push_service
-
-            push_service.push_store_admins(
-                db, store, "🆕 Yangi buyurtma",
-                f"Kod {o.kod} — {float(o.jami_narx):,.0f} som",
-                {"type": "admin_order", "order_id": o.id},
-            )
-    except ImportError:
-        pass
+    # DIQQAT: bu yerda do'kon adminlariga XABAR YUBORILMAYDI.
+    # Balanssiz tizimda buyurtma avval to'lov kutadi; do'kon uni faqat Moliya
+    # to'lovni tasdiqlagach ko'radi (moliya.approve_buyurtma_tolov).
 
     return CheckoutResponse(
-        buyurtmalar=[OrderOut.model_validate(o) for o in orders],
+        buyurtmalar=[_order_public(o) for o in orders],
         xabar=(
-            f"{len(orders)} ta buyurtma yaratildi. Har biriga alohida kod "
-            "berildi."
+            f"{len(orders)} ta buyurtma yaratildi. To'lovni amalga oshiring — "
+            "chek tasdiqlangach buyurtma kodi beriladi."
         ),
     )
 
@@ -143,7 +110,7 @@ def my_orders(
         .where(Order.user_id == user.id)
         .order_by(Order.yaratilgan_vaqt.desc())
     ).all()
-    return [OrderOut.model_validate(o) for o in rows]
+    return [_order_public(o) for o in rows]
 
 
 @router.delete("/orders/{order_id}")
@@ -415,7 +382,8 @@ def order_chek_yuklash(
         )
     except ImportError:
         pass
-    return {"ok": True, "kod": order.kod, "tolov_holati": order.tolov_holati}
+    # Kod bu yerda ham berilmaydi — u faqat Moliya tasdiqlagach ochiladi.
+    return {"ok": True, "tolov_holati": order.tolov_holati}
 
 
 class PromoCheck(BaseModel):
