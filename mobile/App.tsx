@@ -11,6 +11,7 @@ import { colors } from "./src/theme";
 import { AuthProvider, useAuth } from "./src/auth/AuthContext";
 import { CartProvider, useCart } from "./src/cart/CartContext";
 import { PromptProvider } from "./src/ui/Prompt";
+import { ChooserProvider } from "./src/ui/Chooser";
 import ErrorBoundary from "./src/ui/ErrorBoundary";
 import { useOtaUpdate } from "./src/useOtaUpdate";
 import LoginScreen from "./src/screens/LoginScreen";
@@ -154,6 +155,7 @@ export default function App() {
     // Xato bo'lsa oq ekran emas, tushunarli xabar ko'rsatiladi.
     <ErrorBoundary>
       <PromptProvider>
+       <ChooserProvider>
         <AuthProvider>
           <CartProvider>
             <NavigationContainer ref={navigationRef}>
@@ -162,6 +164,7 @@ export default function App() {
             </NavigationContainer>
           </CartProvider>
         </AuthProvider>
+       </ChooserProvider>
       </PromptProvider>
     </ErrorBoundary>
   );

@@ -15,17 +15,25 @@ import { api } from "../../api";
 import { colors, radius, spacing, font, shadow } from "../../theme";
 import { Screen, Card, Btn, Loader, Empty } from "./PanelUI";
 import { usePrompt } from "../../ui/Prompt";
+import { useChooser } from "../../ui/Chooser";
 
 type Usul = {
   id: number; turi: string; nomi: string; qiymat: string | null;
   egasi: string | null; izoh: string | null; faol: boolean;
 };
 
-const TURLAR: { key: string; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { key: "karta", label: "Bank kartasi", icon: "card-outline" },
-  { key: "telefon", label: "Telefon raqami", icon: "phone-portrait-outline" },
-  { key: "qr_kod", label: "QR kod", icon: "qr-code-outline" },
-  { key: "crypto", label: "Kripto hamyon", icon: "logo-bitcoin" },
+const TURLAR: {
+  key: string; label: string; icon: keyof typeof Ionicons.glyphMap;
+  izoh: string; rang: string;
+}[] = [
+  { key: "karta", label: "Bank kartasi", icon: "card-outline",
+    izoh: "Optima, MBank, Demir va h.k.", rang: colors.brand },
+  { key: "telefon", label: "Telefon raqami", icon: "phone-portrait-outline",
+    izoh: "Balans orqali o'tkazma", rang: colors.store },
+  { key: "qr_kod", label: "QR kod", icon: "qr-code-outline",
+    izoh: "Mijoz QR kodni skanerlaydi", rang: colors.info },
+  { key: "crypto", label: "Kripto hamyon", icon: "logo-bitcoin",
+    izoh: "USDT, BTC va boshqa hamyonlar", rang: colors.gold },
 ];
 
 type Hisob = { karta_raqami: string; hisob_egasi: string } | null;
@@ -36,6 +44,7 @@ export default function TolovUsullariScreen() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const prompt = usePrompt();
+  const choose = useChooser();
 
   const load = useCallback(async () => {
     const [u, h] = await Promise.all([
@@ -83,12 +92,19 @@ export default function TolovUsullariScreen() {
     return false;
   }
 
-  /** Yangi usul qo'shish — turi tanlanadi, so'ng nomi va raqami so'raladi. */
-  function yangi() {
-    Alert.alert("Qanday to'lov usuli?", "Turini tanlang:", [
-      ...TURLAR.map((t) => ({ text: t.label, onPress: () => yangiDavom(t.key, t.label) })),
-      { text: "Bekor", style: "cancel" as const },
-    ]);
+  /** Yangi usul qo'shish — turi tanlanadi, so'ng nomi va raqami so'raladi.
+   *
+   * DIQQAT: bu yerda Alert.alert ISHLATILMAYDI — Android'da u faqat 3 ta
+   * tugmani chizadi va qolganini (masalan "Kripto hamyon") yashirib qo'yadi. */
+  async function yangi() {
+    const turi = await choose({
+      title: "Qanday to'lov usuli?",
+      message: "Mijoz buyurtma pulini shu usul orqali o'tkazadi.",
+      items: TURLAR,
+    });
+    if (turi === null) return;
+    const t = TURLAR.find((x) => x.key === turi);
+    yangiDavom(turi, t?.label || turi);
   }
 
   async function yangiDavom(turi: string, turLabel: string) {
@@ -100,19 +116,43 @@ export default function TolovUsullariScreen() {
     });
     if (nomi === null || !nomi.trim()) return;
 
+    // Har tur uchun so'raladigan qiymat boshqacha bo'ladi.
+    const q: Record<string, { title: string; message: string; placeholder: string }> = {
+      telefon: {
+        title: "Telefon raqami", message: "Mijoz shu raqamga pul o'tkazadi:",
+        placeholder: "+996 ...",
+      },
+      crypto: {
+        title: "Hamyon manzili",
+        message: "Manzilni TARMOG'I bilan yozing — noto'g'ri tarmoqqa yuborilgan pul yo'qoladi.",
+        placeholder: "USDT (TRC20): TXxxxxx...",
+      },
+      qr_kod: {
+        title: "QR kod ma'lumoti", message: "QR kod ichidagi manzil yoki raqam:",
+        placeholder: "https://... yoki 8600 ...",
+      },
+      karta: {
+        title: "Karta raqami", message: "Mijoz shu kartaga pul o'tkazadi:",
+        placeholder: "8600 ...",
+      },
+    };
+    const s = q[turi] || q.karta;
+
     const qiymat = await prompt({
-      title: turi === "telefon" ? "Telefon raqami" : turi === "crypto" ? "Hamyon manzili" : "Karta raqami",
-      message: "Mijoz shu raqamga pul o'tkazadi:",
-      placeholder: turi === "telefon" ? "+996 ..." : "8600 ...",
+      title: s.title,
+      message: s.message,
+      placeholder: s.placeholder,
       keyboardType: turi === "telefon" ? "phone-pad" : "default",
       submitLabel: "Keyingisi",
     });
     if (qiymat === null || !qiymat.trim()) return;
 
     const egasi = await prompt({
-      title: "Hisob egasi",
-      message: "Ism-familiya (bo'sh qoldirsangiz ham bo'ladi):",
-      placeholder: "Masalan: Diyorbek A.",
+      title: turi === "crypto" ? "Tarmoq yoki izoh" : "Hisob egasi",
+      message: turi === "crypto"
+        ? "Masalan: USDT TRC20 (bo'sh qoldirsangiz ham bo'ladi):"
+        : "Ism-familiya (bo'sh qoldirsangiz ham bo'ladi):",
+      placeholder: turi === "crypto" ? "USDT TRC20" : "Masalan: Diyorbek A.",
       submitLabel: "Qo'shish",
     });
     if (egasi === null) return;
