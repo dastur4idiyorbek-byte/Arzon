@@ -2079,6 +2079,14 @@ def test_balanssiz_tolov_toliq_oqim():
     assert ch.status_code == 200, ch.text
     assert ch.json()["tolov_holati"] == "kutilmoqda"
 
+    # 3b) Mijoz o'z ro'yxatida to'lov holatini va chekni ko'radi (ilova shuni
+    #     ko'rsatadi: "Chek yuborildi, Moliya tekshirmoqda").
+    mine = client.get("/api/orders", headers=cust).json()
+    men = [x for x in mine if x["id"] == order["id"]]
+    assert men, mine
+    assert men[0]["tolov_holati"] == "kutilmoqda"
+    assert men[0]["chek_rasm_url"].startswith("/media/db/")
+
     # 4) Moliya ro'yxatida chek bilan ko'rinadi.
     lst = client.get(
         "/api/moliya/buyurtma-tolovlari", headers=admin_headers(SUPER)

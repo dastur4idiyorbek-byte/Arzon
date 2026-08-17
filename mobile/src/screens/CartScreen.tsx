@@ -59,10 +59,31 @@ export default function CartScreen({ navigation }: any) {
       },
     });
     if (ok) {
-      const kodlar = (data.buyurtmalar || []).map((o: any) => o.kod).join(", ");
+      const buyurtmalar: any[] = data.buyurtmalar || [];
       clear();
-      Alert.alert("✅ Buyurtma qabul qilindi", `Kod(lar): ${kodlar}`,
-        [{ text: "OK", onPress: () => navigation.navigate("Buyurtmalar") }]);
+      if (buyurtmalar.length === 1) {
+        // Bitta do'kon — to'g'ridan to'lov ekraniga o'tamiz.
+        const o = buyurtmalar[0];
+        Alert.alert(
+          "✅ Buyurtma yaratildi",
+          `Kod: ${o.kod}\nEndi to'lovni amalga oshirib, chekni yuklang.`,
+          [{
+            text: "To'lovga o'tish",
+            onPress: () => navigation.navigate("OrderPayment", {
+              orderId: o.id, kod: o.kod, summa: o.jami_narx,
+            }),
+          }]
+        );
+      } else {
+        // Rule 10: har do'kon uchun alohida buyurtma -> har biriga alohida chek.
+        const kodlar = buyurtmalar.map((o) => o.kod).join(", ");
+        Alert.alert(
+          "✅ Buyurtmalar yaratildi",
+          `Kod(lar): ${kodlar}\n\nHar bir do'kon uchun alohida buyurtma ochildi. ` +
+            "\"Buyurtmalarim\" bo'limidan har biriga alohida chek yuklang.",
+          [{ text: "OK", onPress: () => navigation.navigate("Buyurtmalar") }]
+        );
+      }
     } else if (status === 428) {
       // Birinchi buyurtma — telefon raqami talab qilinadi (rule 8, 2-bosqich).
       const t = await prompt({
@@ -73,11 +94,6 @@ export default function CartScreen({ navigation }: any) {
         submitLabel: "Tasdiqlash",
       });
       if (t && t.trim()) await doCheckout(t.trim());
-    } else if (status === 402) {
-      Alert.alert("Balans yetarli emas", "Hisobingizni to'ldiring.", [
-        { text: "Hisobni to'ldirish", onPress: () => navigation.navigate("Topup") },
-        { text: "Yopish" },
-      ]);
     } else {
       Alert.alert("Xatolik", data?.detail || "Buyurtma berilmadi.");
     }

@@ -179,8 +179,7 @@ export default function MenejerHomeScreen() {
             <Card style={{ backgroundColor: "rgba(201,151,26,0.10)", borderColor: "rgba(201,151,26,0.35)" }}>
               <Text style={styles.h}>💰 Platforma hisobida</Text>
               <Text style={styles.big}>{money(report.platforma_hisobida)} som</Text>
-              <Field label="Mijozlar balansi" value={`${money(report.jami_mijozlar_balansi)} som`} />
-              <Field label="Adminlar balansi" value={`${money(report.jami_adminlar_balansi)} som`} />
+              <Field label="Do'konlar hisobida" value={`${money(report.jami_adminlar_balansi)} som`} />
               <Field label="Bugun xaridlar" value={`${money(report.bugun_xarid_summa)} som`} />
               <Field label="Bugun komissiya" value={`${money(report.bugun_komissiya)} som`} />
             </Card>

@@ -126,6 +126,10 @@ class OrderOut(BaseModel):
     yetkazish_narxi: Optional[float] = 0
     lokatsiya_lat: Optional[float] = None
     lokatsiya_lng: Optional[float] = None
+    # Balanssiz to'lov: har buyurtma o'z chekiga ega.
+    tolov_holati: Optional[str] = "kutilmoqda"
+    chek_rasm_url: Optional[str] = None
+    tolov_rad_sababi: Optional[str] = None
 
 
 class CheckoutResponse(BaseModel):

@@ -1,8 +1,6 @@
-import React, { useCallback, useState } from "react";
+import React from "react";
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, Share } from "react-native";
-import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
-import { api, money } from "../api";
 import { colors, radius, spacing, font, shadow , border } from "../theme";
 import { useAuth } from "../auth/AuthContext";
 
@@ -21,14 +19,6 @@ const PANELS: {
 
 export default function BalanceScreen({ navigation }: any) {
   const { signOut, user, roles } = useAuth();
-  const [bal, setBal] = useState(0);
-
-  const load = useCallback(async () => {
-    const { ok, data } = await api<{ coin_balans: number }>("/api/balance");
-    if (ok && data) setBal(data.coin_balans || 0);
-  }, []);
-  useFocusEffect(useCallback(() => { load(); }, [load]));
-
   const myPanels = PANELS.filter((p) => roles.includes(p.role));
   const arzonId = user?.arzon_id ?? user?.id;
 
@@ -46,14 +36,21 @@ export default function BalanceScreen({ navigation }: any) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40 }}>
+      {/* Foydalanuvchi kartasi — balans YO'Q (to'lov har buyurtmaga alohida). */}
       <View style={styles.card}>
-        <Text style={styles.label}>🪙 ACOM balansingiz</Text>
-        <Text style={styles.big}>{money(bal)} ACOM</Text>
-        <Text style={styles.hint}>1 ACOM = 1 som. Xaridlar shu balansdan amalga oshadi.</Text>
+        <View style={styles.avatar}>
+          <Text style={styles.avatarText}>
+            {(user?.ism || user?.email || "?").trim().charAt(0).toUpperCase()}
+          </Text>
+        </View>
+        <Text style={styles.ism}>{user?.ism || user?.email}</Text>
+        {!!user?.tel && <Text style={styles.tel}>{user.tel}</Text>}
       </View>
 
-      <TouchableOpacity style={styles.btn} onPress={() => navigation.navigate("Topup")}>
-        <Text style={styles.btnText}>➕ Hisobni to'ldirish</Text>
+      <TouchableOpacity style={styles.panelBtn} onPress={() => navigation.navigate("Buyurtmalar")}>
+        <Ionicons name="cube-outline" size={22} color={colors.brand} />
+        <Text style={styles.panelText}>Buyurtmalarim</Text>
+        <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
       </TouchableOpacity>
 
       {myPanels.length > 0 && (
@@ -85,7 +82,6 @@ export default function BalanceScreen({ navigation }: any) {
         <Ionicons name="share-social-outline" size={20} color={colors.brand} />
       </TouchableOpacity>
 
-      <Text style={styles.profile}>{user?.ism || user?.email}</Text>
       <Text style={styles.roles}>Rollar: {roles.join(", ")}</Text>
       <TouchableOpacity style={[styles.btn, styles.out]} onPress={signOut}>
         <Text style={[styles.btnText, { color: colors.brand }]}>Chiqish</Text>
@@ -96,7 +92,17 @@ export default function BalanceScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgSoft },
-  card: { backgroundColor: colors.goldSoft, borderRadius: radius.xl, padding: spacing.xl, alignItems: "center", gap: 6, ...shadow.sm },
+  card: {
+    backgroundColor: colors.bg, borderRadius: radius.lg, padding: spacing.xl,
+    alignItems: "center", gap: 8, ...border.hair,
+  },
+  avatar: {
+    width: 64, height: 64, borderRadius: 32, backgroundColor: colors.brandSoft,
+    alignItems: "center", justifyContent: "center",
+  },
+  avatarText: { fontSize: 26, fontWeight: "900", color: colors.brand },
+  ism: { fontSize: font.h2, fontWeight: "800", color: colors.text },
+  tel: { color: colors.textMuted, fontSize: font.small },
   label: { color: colors.gold, fontWeight: "700" },
   big: { fontSize: 34, fontWeight: "800", color: colors.gold },
   hint: { color: colors.textMuted, fontSize: 12, textAlign: "center" },

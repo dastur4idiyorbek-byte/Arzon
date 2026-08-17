@@ -8,6 +8,7 @@ import { Order } from "../types";
 import { Loader } from "./panels/PanelUI";
 
 const HOLAT: Record<string, { t: string; c: string; bg: string; icon: keyof typeof Ionicons.glyphMap }> = {
+  tolov_kutilmoqda: { t: "To'lov kutilmoqda", c: colors.gold, bg: "rgba(184,134,11,0.10)", icon: "wallet-outline" },
   yangi: { t: "Yangi", c: colors.info, bg: "#E8F1FA", icon: "sparkles-outline" },
   tayyorlanmoqda: { t: "Tayyorlanmoqda", c: colors.warn, bg: colors.brandSoft, icon: "cube-outline" },
   yolda: { t: "Yo'lda", c: colors.brand, bg: colors.brandSoft, icon: "bicycle-outline" },
@@ -18,7 +19,7 @@ const HOLAT: Record<string, { t: string; c: string; bg: string; icon: keyof type
 // Buyurtma qaysi bosqichda ekanini ko'rsatuvchi yo'lak.
 const BOSQICH = ["yangi", "tayyorlanmoqda", "yolda", "topshirildi"];
 
-export default function OrdersScreen() {
+export default function OrdersScreen({ navigation }: any) {
   const [rows, setRows] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -53,6 +54,9 @@ export default function OrdersScreen() {
         const st = HOLAT[o.holat] || { t: o.holat, c: colors.textMuted, bg: colors.secondaryBg, icon: "ellipse-outline" as const };
         const joriy = BOSQICH.indexOf(o.holat);
         const bekor = o.holat === "bekor_qilindi";
+        // Balanssiz to'lov: chek yuklanmagan bo'lsa mijoz shu yerdan yuklaydi.
+        const tolovKutmoqda = o.holat === "tolov_kutilmoqda";
+        const chekBor = !!o.chek_rasm_url;
         return (
           <View style={styles.card}>
             {/* Yuqori qator: holat */}
@@ -65,8 +69,45 @@ export default function OrdersScreen() {
             <Text style={styles.kodLabel}>Buyurtma kodi</Text>
             <Text style={styles.kod}>{o.kod}</Text>
 
+            {/* To'lov bloki — faqat to'lov kutayotgan buyurtmalarda */}
+            {tolovKutmoqda && (
+              <View style={styles.tolov}>
+                <Text style={styles.tolovMatn}>
+                  {chekBor
+                    ? "Chek yuborildi. Moliya tekshirmoqda — tasdiqlangach buyurtma do'konga o'tadi."
+                    : "To'lovni amalga oshirib, chek rasmini yuklang. Chek tasdiqlangach buyurtma do'konga yuboriladi."}
+                </Text>
+                <TouchableOpacity
+                  style={[styles.tolovBtn, chekBor && styles.tolovBtnGhost]}
+                  activeOpacity={0.85}
+                  onPress={() =>
+                    navigation.navigate("OrderPayment", {
+                      orderId: o.id, kod: o.kod, summa: o.jami_narx,
+                    })
+                  }
+                >
+                  <Ionicons
+                    name={chekBor ? "refresh-outline" : "camera-outline"}
+                    size={16}
+                    color={chekBor ? colors.brand : "#fff"}
+                  />
+                  <Text style={[styles.tolovBtnText, chekBor && { color: colors.brand }]}>
+                    {chekBor ? "Chekni almashtirish" : "To'lash va chek yuklash"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* To'lov rad etilgan bo'lsa — sababi ko'rinsin */}
+            {o.tolov_holati === "rad_etildi" && !!o.tolov_rad_sababi && (
+              <View style={styles.radBlok}>
+                <Ionicons name="alert-circle" size={16} color={colors.sale} />
+                <Text style={styles.radMatn}>To'lov rad etildi: {o.tolov_rad_sababi}</Text>
+              </View>
+            )}
+
             {/* Bosqichlar yo'lagi */}
-            {!bekor && (
+            {!bekor && !tolovKutmoqda && (
               <View style={styles.yolak}>
                 {BOSQICH.map((b, i) => (
                   <View key={b} style={styles.bosqich}>
@@ -128,6 +169,20 @@ const styles = StyleSheet.create({
   nuqtaFaol: { backgroundColor: colors.brand },
   chiziq: { flex: 1, height: 2, backgroundColor: colors.line },
   chiziqFaol: { backgroundColor: colors.brand },
+
+  tolov: { marginTop: 14, gap: 10, backgroundColor: colors.bgSoft, borderRadius: radius.md, padding: 12 },
+  tolovMatn: { color: colors.textMuted, fontSize: font.small, lineHeight: 19 },
+  tolovBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7,
+    backgroundColor: colors.brand, borderRadius: radius.sm, paddingVertical: 13,
+  },
+  tolovBtnGhost: { backgroundColor: colors.bg, ...border.brand },
+  tolovBtnText: { color: "#fff", fontWeight: "800", fontSize: font.small },
+  radBlok: {
+    flexDirection: "row", alignItems: "center", gap: 7, marginTop: 12,
+    backgroundColor: colors.saleSoft, borderRadius: radius.sm, padding: 11,
+  },
+  radMatn: { flex: 1, color: colors.sale, fontWeight: "700", fontSize: font.small },
 
   item: { color: colors.text, marginTop: 6, fontSize: font.body },
   yana: { color: colors.textMuted, fontSize: font.small, marginTop: 4 },

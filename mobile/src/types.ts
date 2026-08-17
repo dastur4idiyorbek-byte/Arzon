@@ -43,6 +43,12 @@ export type Order = {
   mahsulotlar: any[];
   yetkazish_turi?: string;
   kuryer_tel?: string | null;
+  store_id?: number;
+  /** "kutilmoqda" | "tasdiqlandi" | "rad_etildi" — chek holati. */
+  tolov_holati?: string | null;
+  /** Yuklangan chek rasmi (nisbiy manzil). */
+  chek_rasm_url?: string | null;
+  tolov_rad_sababi?: string | null;
 };
 
 export function effPrice(p: Product): number {

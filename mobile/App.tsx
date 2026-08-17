@@ -18,7 +18,7 @@ import ProductScreen from "./src/screens/ProductScreen";
 import CartScreen from "./src/screens/CartScreen";
 import OrdersScreen from "./src/screens/OrdersScreen";
 import BalanceScreen from "./src/screens/BalanceScreen";
-import TopupScreen from "./src/screens/TopupScreen";
+import OrderPaymentScreen from "./src/screens/OrderPaymentScreen";
 // Panel ekranlari (rol asosida — 4-bosqich)
 import AdminHomeScreen from "./src/screens/panels/AdminHomeScreen";
 import AdminProductsScreen from "./src/screens/panels/AdminProductsScreen";
@@ -39,7 +39,7 @@ export const navigationRef = createNavigationContainerRef();
 function handleNotificationNav(data: any) {
   if (!data || !navigationRef.isReady()) return;
   if (data.type === "order") navigationRef.navigate("Main" as never, { screen: "Buyurtmalar" } as never);
-  else if (data.type === "balance") navigationRef.navigate("Main" as never, { screen: "Balans" } as never);
+  else if (data.type === "balance") navigationRef.navigate("Main" as never, { screen: "Profil" } as never);
 }
 
 const stackScreenOptions = {
@@ -85,7 +85,7 @@ function MainTabs() {
             KatalogTab: ["storefront", "storefront-outline"],
             Savat: ["bag", "bag-outline"],
             Buyurtmalar: ["cube", "cube-outline"],
-            Balans: ["person-circle", "person-circle-outline"],
+            Profil: ["person-circle", "person-circle-outline"],
           };
           const juft = map[route.name];
           const nomi = juft ? (focused ? juft[0] : juft[1]) : "ellipse";
@@ -96,7 +96,7 @@ function MainTabs() {
       <Tab.Screen name="KatalogTab" component={CatalogStack} options={{ title: "Katalog" }} />
       <Tab.Screen name="Savat" component={CartScreen} options={{ tabBarBadge: count || undefined }} />
       <Tab.Screen name="Buyurtmalar" component={OrdersScreen} />
-      <Tab.Screen name="Balans" component={BalanceScreen} options={{ title: "Profil" }} />
+      <Tab.Screen name="Profil" component={BalanceScreen} />
     </Tab.Navigator>
   );
 }
@@ -114,7 +114,7 @@ function RootNav() {
   return (
     <Root.Navigator screenOptions={stackScreenOptions}>
       <Root.Screen name="Main" component={MainTabs} options={{ headerShown: false }} />
-      <Root.Screen name="Topup" component={TopupScreen} options={{ title: "Hisobni to'ldirish" }} />
+      <Root.Screen name="OrderPayment" component={OrderPaymentScreen} options={{ title: "Buyurtma to'lovi" }} />
       {/* Admin paneli */}
       <Root.Screen name="AdminHome" component={AdminHomeScreen} options={{ title: "🛠 Admin paneli" }} />
       <Root.Screen name="AdminProducts" component={AdminProductsScreen} options={{ title: "Mahsulotlar" }} />

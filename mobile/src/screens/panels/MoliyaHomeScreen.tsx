@@ -3,23 +3,22 @@
  * Faqat super-admin (moliya roli).
  */
 import React, { useCallback, useState } from "react";
-import { View, Text, StyleSheet, Alert } from "react-native";
+import { View, Text, StyleSheet, Alert, Image } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { api, money } from "../../api";
 import { colors, radius, spacing, font } from "../../theme";
+import { toliqUrl } from "../../types";
 import { Screen, Card, Btn, Loader, Empty, Field } from "./PanelUI";
 import { PanelHome, BolimSarlavha, PanelBolim } from "./PanelHome";
 import { usePrompt } from "../../ui/Prompt";
 import TolovUsullariScreen from "./TolovUsullariScreen";
 
 const BOLIMLAR: PanelBolim[] = [
-  { key: "topups", label: "Balans to'ldirish", izoh: "Mijoz cheklarini tasdiqlash",
-    icon: "card-outline", rang: colors.brand },
+  { key: "buyurtma-tolovlari", label: "Buyurtma to'lovlari", izoh: "Mijoz cheklarini tasdiqlash",
+    icon: "receipt-outline", rang: colors.brand },
   { key: "withdraws", label: "Pul yechish", izoh: "Do'kon adminlarining so'rovlari",
     icon: "cash-outline", rang: colors.gold },
-  { key: "refunds", label: "Balans qaytarish", izoh: "Mijozga pul qaytarish so'rovlari",
-    icon: "return-down-back-outline", rang: colors.info },
-  { key: "usullar", label: "To'lov usullari", izoh: "Kartalar va platforma hisobi",
+  { key: "usullar", label: "To'lov usullari", izoh: "Kartalar, kripto va platforma hisobi",
     icon: "wallet-outline", rang: colors.store },
   { key: "report", label: "Hisobot", izoh: "Umumiy holat va bugungi harakatlar",
     icon: "stats-chart-outline", rang: colors.sale },
@@ -105,8 +104,7 @@ export default function MoliyaHomeScreen() {
               <Card style={{ backgroundColor: "rgba(201,151,26,0.10)", borderColor: "rgba(201,151,26,0.35)" }}>
                 <Text style={styles.h}>💰 Platforma hisobida</Text>
                 <Text style={styles.big}>{money(report.platforma_hisobida)} som</Text>
-                <Field label="Mijozlar balansi" value={`${money(report.jami_mijozlar_balansi)} som`} />
-                <Field label="Adminlar balansi" value={`${money(report.jami_adminlar_balansi)} som`} />
+                <Field label="Do'konlar hisobida" value={`${money(report.jami_adminlar_balansi)} som`} />
               </Card>
               <Card>
                 <Text style={styles.h}>📅 Bugun</Text>
@@ -118,21 +116,40 @@ export default function MoliyaHomeScreen() {
             </>
           )}
 
-          {tab === "topups" && (rows.length === 0 ? <Empty text="Yangi so'rov yo'q." /> :
-            rows.map((s) => (
-              <Card key={s.id}>
-                <Text style={styles.name}>{s.ism || `ID ${s.telegram_id}`}</Text>
-                <Text style={styles.summa}>{money(s.summa)} som</Text>
-                {s.ai_summa != null && <Text style={styles.ai}>🤖 Chekda: {money(s.ai_summa)} som</Text>}
-                {!!s.ai_xulosa && <Text style={styles.muted}>{s.ai_xulosa}</Text>}
-                <View style={styles.actions}>
-                  <Btn label="✅ Tasdiqlash" tone="store" disabled={busy} style={{ flex: 1 }}
-                    onPress={() => act(`/api/moliya/topups/${s.id}/approve`, undefined, "Balans to'ldirildi")} />
-                  <Btn label="❌ Rad" tone="sale" disabled={busy} style={{ flex: 1 }}
-                    onPress={() => reject(`/api/moliya/topups/${s.id}/reject`)} />
-                </View>
-              </Card>
-            )))}
+          {tab === "buyurtma-tolovlari" && (rows.length === 0 ? <Empty text="To'lov kutayotgan buyurtma yo'q." /> :
+            rows.map((s) => {
+              const chek = toliqUrl(s.chek_rasm_url);
+              return (
+                <Card key={s.id}>
+                  <View style={styles.kodRow}>
+                    <Text style={styles.kodBadge}>{s.kod}</Text>
+                    <Text style={styles.muted}>🏬 {s.store_nomi || "-"}</Text>
+                  </View>
+                  <Text style={styles.name}>{s.ism || `ID ${s.telegram_id}`}{s.tel ? ` · ${s.tel}` : ""}</Text>
+                  <Text style={styles.summa}>{money(s.summa)} som</Text>
+
+                  {(s.mahsulotlar || []).slice(0, 4).map((m: any, i: number) => (
+                    <Text key={i} style={styles.muted} numberOfLines={1}>• {m.nomi} × {m.soni}</Text>
+                  ))}
+
+                  {s.ai_summa != null && <Text style={styles.ai}>🤖 Chekda: {money(s.ai_summa)} som</Text>}
+                  {!!s.ai_xulosa && <Text style={styles.muted}>{s.ai_xulosa}</Text>}
+
+                  {chek ? (
+                    <Image source={{ uri: chek }} style={styles.chek} resizeMode="contain" />
+                  ) : (
+                    <Text style={styles.kutmoqda}>⏳ Mijoz hali chek yuklamagan.</Text>
+                  )}
+
+                  <View style={styles.actions}>
+                    <Btn label="✅ Tasdiqlash" tone="store" disabled={busy || !chek} style={{ flex: 1 }}
+                      onPress={() => act(`/api/moliya/buyurtma-tolovlari/${s.id}/approve`, undefined, "To'lov tasdiqlandi")} />
+                    <Btn label="❌ Rad" tone="sale" disabled={busy} style={{ flex: 1 }}
+                      onPress={() => reject(`/api/moliya/buyurtma-tolovlari/${s.id}/reject`)} />
+                  </View>
+                </Card>
+              );
+            }))}
 
           {tab === "withdraws" && (rows.length === 0 ? <Empty text="Yangi so'rov yo'q." /> :
             rows.map((s) => (
@@ -142,21 +159,6 @@ export default function MoliyaHomeScreen() {
                 <Text style={styles.muted}>💳 {s.karta_raqami}</Text>
                 <Btn label="✅ To'landi deb belgilash" tone="gold" disabled={busy} style={{ marginTop: 10 }}
                   onPress={() => act(`/api/moliya/withdraws/${s.id}/paid`, undefined, "To'landi deb belgilandi")} />
-              </Card>
-            )))}
-
-          {tab === "refunds" && (rows.length === 0 ? <Empty text="Yangi so'rov yo'q." /> :
-            rows.map((s) => (
-              <Card key={s.id}>
-                <Text style={styles.name}>{s.ism || `ID ${s.telegram_id}`}</Text>
-                <Text style={styles.summa}>{money(s.summa)} som</Text>
-                <Text style={styles.muted}>💳 {s.karta_raqami}</Text>
-                <View style={styles.actions}>
-                  <Btn label="✅ Tasdiqlash" tone="store" disabled={busy} style={{ flex: 1 }}
-                    onPress={() => act(`/api/moliya/refunds/${s.id}/approve`, undefined, "Qaytarish tasdiqlandi")} />
-                  <Btn label="❌ Rad" tone="sale" disabled={busy} style={{ flex: 1 }}
-                    onPress={() => reject(`/api/moliya/refunds/${s.id}/reject`)} />
-                </View>
               </Card>
             )))}
         </Screen>
@@ -173,4 +175,15 @@ const styles = StyleSheet.create({
   ai: { color: colors.store, fontWeight: "600", marginTop: 4 },
   muted: { color: colors.textMuted, fontSize: 13, marginTop: 4 },
   actions: { flexDirection: "row", gap: 8, marginTop: 12 },
+  kodRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  kodBadge: {
+    fontWeight: "900", color: colors.brand, fontSize: 16, letterSpacing: 2,
+    backgroundColor: colors.brandSoft, borderRadius: radius.sm,
+    paddingHorizontal: 10, paddingVertical: 4,
+  },
+  chek: {
+    width: "100%", height: 260, marginTop: 10,
+    borderRadius: radius.md, backgroundColor: colors.secondaryBg,
+  },
+  kutmoqda: { color: colors.gold, fontWeight: "700", marginTop: 10 },
 });

@@ -1,8 +1,9 @@
 /**
  * Moliya — to'lov usullarini boshqarish (4.2).
  *
- * Mijoz balansini shu usullar orqali to'ldiradi (TopupScreen). Bu yerda ular
- * qo'shiladi, tahrirlanadi, yoqiladi/o'chiriladi va o'chirib tashlanadi.
+ * Mijoz buyurtma to'lovini shu usullar orqali amalga oshiradi
+ * (OrderPaymentScreen). Bu yerda ular qo'shiladi, tahrirlanadi,
+ * yoqiladi/o'chiriladi va o'chirib tashlanadi.
  *
  * Backend: /api/moliya/tolov-usullari (GET, POST, PATCH, toggle, DELETE).
  */
@@ -163,10 +164,10 @@ export default function TolovUsullariScreen() {
           style={{ marginTop: 12 }} onPress={hisobniOzgartir} />
       </Card>
 
-      <Text style={styles.bolim}>Balans to'ldirish usullari</Text>
+      <Text style={styles.bolim}>Buyurtma to'lovi usullari</Text>
       <Text style={styles.izoh}>
-        Mijozlar balansni shu usullar orqali to'ldiradi. Faqat <Text style={{ fontWeight: "800" }}>yoqilgan</Text> usullar
-        ilovada ko'rinadi.
+        Mijozlar buyurtma pulini shu usullar orqali o'tkazadi (karta, bank, kripto).
+        Faqat <Text style={{ fontWeight: "800" }}>yoqilgan</Text> usullar ilovada ko'rinadi.
       </Text>
 
       {rows.length === 0 ? (
