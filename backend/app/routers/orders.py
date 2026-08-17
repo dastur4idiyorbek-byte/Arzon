@@ -353,6 +353,71 @@ def topup_request(
     return {"sorov_id": sorov.id, "holat": sorov.holat}
 
 
+@router.post("/orders/{order_id}/chek")
+def order_chek_yuklash(
+    order_id: int,
+    chek: UploadFile = File(...),
+    tolov_usuli_id: int | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Mijoz buyurtma to'lovi chekini yuklaydi (balanssiz tizim).
+
+    Mijoz kartaga pul o'tkazgach chekni SHU buyurtmaga biriktiradi. Gemini
+    chekdan summani o'qiydi (Moliyaga yordam), so'ng Moliya tasdiqlaydi va
+    buyurtma do'konga ketadi.
+    """
+    from .. import ai as ai_module
+    from ..models import Media
+
+    order = db.get(Order, order_id)
+    if order is None or order.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Buyurtma topilmadi.")
+    if order.holat != "tolov_kutilmoqda":
+        raise HTTPException(
+            status_code=400,
+            detail="Bu buyurtma to'lov kutish holatida emas.",
+        )
+
+    raw = chek.file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Chek rasmi bo'sh.")
+    mime = chek.content_type or "image/jpeg"
+
+    # Rasmni bazaga saqlaymiz (Render diski deploy'da tozalanadi).
+    m = Media(mime=mime, data=raw, yuklagan_admin=None)
+    db.add(m)
+    db.flush()
+
+    natija = ai_module.analyze_receipt(raw, mime, float(order.jami_narx))
+    order.chek_rasm_url = f"/media/db/{m.id}"
+    order.tolov_usuli_id = tolov_usuli_id
+    order.tolov_holati = "kutilmoqda"
+    order.ai_ochigan_summa = natija.get("summa")
+    order.ai_xulosasi = natija.get("xulosa")
+    db.commit()
+
+    # Moliyaga xabar (chek rasmi bilan).
+    try:
+        from ..tgbots import notify
+
+        notify.notify_moliya_topup(
+            sorov_id=order.id,
+            ism=user.ism,
+            telegram_id=user.telegram_id,
+            summa=float(order.jami_narx),
+            ai_summa=natija.get("summa"),
+            ai_sana=natija.get("sana"),
+            ai_xulosa=natija.get("xulosa"),
+            chek_rel_url=None,
+            usul_nomi=f"Buyurtma {order.kod}",
+            image_bytes=raw,
+        )
+    except ImportError:
+        pass
+    return {"ok": True, "kod": order.kod, "tolov_holati": order.tolov_holati}
+
+
 class PromoCheck(BaseModel):
     kod: str = Field(min_length=1, max_length=32)
     store_ids: list[int] = []

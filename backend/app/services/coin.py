@@ -116,6 +116,44 @@ def settle_purchase(
         )
 
 
+def settle_store_payout(
+    db: Session,
+    store: Store,
+    narx,
+    order_id: int,
+    *,
+    user_id: Optional[int] = None,
+    yetkazish=0,
+) -> None:
+    """Do'kon hisobiga sof summani qo'shadi (BALANSSIZ tizim uchun).
+
+    `settle_purchase` dan farqi: mijoz balansidan hech narsa YECHILMAYDI —
+    mijoz kartaga to'g'ridan-to'g'ri to'lagan va Moliya chekni tasdiqlagan.
+    Do'kon tomoni esa avvalgidek: sof summa (narx - komissiya) qo'shiladi,
+    yetkazish narxi platformaniki bo'lib qoladi.
+    """
+    narx = _dec(narx)
+    yetk = _dec(yetkazish)
+    store.kutilayotgan_balans = store_balance(store) + sof_summa(narx)
+    _record(db, T_XARID, narx, user_id=user_id, store_id=store.id, order_id=order_id)
+    if yetk > 0:
+        _record(
+            db, T_YETKAZISH, yetk, user_id=user_id, store_id=store.id,
+            order_id=order_id,
+        )
+
+
+def reverse_store_payout(
+    db: Session, store: Store, narx, order_id: int, *, user_id: Optional[int] = None
+) -> None:
+    """Tasdiqlangan to'lov bekor qilinsa — do'kon hisobidan sof summani qaytaradi."""
+    narx = _dec(narx)
+    store.kutilayotgan_balans = store_balance(store) - sof_summa(narx)
+    _record(
+        db, T_QAYTARISH, narx, user_id=user_id, store_id=store.id, order_id=order_id
+    )
+
+
 def refund_purchase(
     db: Session, user: User, store: Store, narx, order_id: int, yetkazish=0
 ) -> None:

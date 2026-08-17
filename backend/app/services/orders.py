@@ -20,6 +20,9 @@ from ..models import _as_aware, _now
 
 # Buyurtma holati tizimi (phase 3.2).
 ORDER_STATES = [
+    # To'lov kutilmoqda — mijoz chek yuklaydi, Moliya tasdiqlaydi. Do'kon
+    # admini bu buyurtmani hali ko'rmaydi.
+    "tolov_kutilmoqda",
     "yangi",
     "tayyorlanmoqda",
     "yolda",
@@ -28,6 +31,8 @@ ORDER_STATES = [
 ]
 # Ruxsat etilgan o'tishlar.
 ORDER_TRANSITIONS: Dict[str, List[str]] = {
+    # Moliya tasdiqlasa -> 'yangi' (do'konga ketadi), rad etsa -> bekor.
+    "tolov_kutilmoqda": ["yangi", "bekor_qilindi"],
     # tayyorlanmoqda -> topshirildi: punktdan olishда to'g'ridan-to'g'ri topshirish.
     "yangi": ["tayyorlanmoqda", "bekor_qilindi"],
     "tayyorlanmoqda": ["yolda", "topshirildi", "bekor_qilindi"],
@@ -251,34 +256,70 @@ def create_orders_from_cart(
     if vaucher_bor:
         user.chegirma_vaucher = (user.chegirma_vaucher or 0) - 1
 
-    # ACOM coin bilan to'lash (rule 1: naqd yo'q; rule 3: balans yetsa darhol).
-    from . import coin as coin_service
-
-    db.flush()  # order.id larini olamiz (harakat yozuvlari uchun)
-    grand_total = sum((coin_service._dec(o.jami_narx) for o in orders), coin_service._dec(0))
-    mavjud = coin_service.balance(user)
-    if mavjud < grand_total:
-        raise HTTPException(
-            status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail=(
-                f"Balansingiz yetarli emas (joriy: {mavjud:,.0f} som, "
-                f"kerak: {grand_total:,.0f} som). Hisobingizni to'ldiring."
-            ),
-        )
-    # Rule 4: har buyurtma uchun darhol hisob-kitob (yechish + komissiya + admin).
-    # Komissiya faqat mahsulot narxidan olinadi; yetkazish narxi platformaники.
+    # BALANSSIZ TIZIM: mijozda ACOM/balans yo'q. Buyurtma "to'lov kutilmoqda"
+    # holatida yaratiladi; mijoz kartaga pul o'tkazib chekni shu buyurtmaga
+    # biriktiradi, Moliya tasdiqlagach do'kon hisobiga o'tkaziladi
+    # (approve_order_payment). Admin tomoni (komissiya, pul yechish) o'zgarmadi.
+    db.flush()  # order.id larini olamiz
     for o in orders:
-        store = db.get(Store, o.store_id)
-        yetk = coin_service._dec(o.yetkazish_narxi)
-        mahsulot_base = coin_service._dec(o.jami_narx) - yetk
-        coin_service.settle_purchase(
-            db, user, store, mahsulot_base, o.id, yetkazish=yetk
-        )
+        o.holat = "tolov_kutilmoqda"
+        o.tolov_holati = "kutilmoqda"
 
     db.commit()
     for o in orders:
         db.refresh(o)
     return orders
+
+
+def approve_order_payment(db: Session, order: Order, admin_id: int) -> Order:
+    """Moliya buyurtma to'lovini tasdiqlaydi -> buyurtma do'konga ketadi.
+
+    Shu paytda hisob-kitob qilinadi: do'kon hisobiga sof summa (narx minus
+    komissiya) qo'shiladi, yetkazish narxi platformaniki bo'lib qoladi.
+    Mijoz balansi ishlatilmaydi (balanssiz tizim) — u allaqachon kartaga
+    to'lagan va cheki tasdiqlandi.
+    """
+    from . import coin as coin_service
+
+    if order.tolov_holati == "tasdiqlandi":
+        raise HTTPException(status_code=400, detail="To'lov allaqachon tasdiqlangan.")
+    if order.holat != "tolov_kutilmoqda":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Bu buyurtma to'lov kutish holatida emas ({order.holat}).",
+        )
+
+    store = db.get(Store, order.store_id)
+    yetk = coin_service._dec(order.yetkazish_narxi)
+    mahsulot_base = coin_service._dec(order.jami_narx) - yetk
+    # Do'kon hisobiga sof summa + harakat yozuvlari (komissiya shu yerda).
+    coin_service.settle_store_payout(
+        db, store, mahsulot_base, order.id, user_id=order.user_id, yetkazish=yetk
+    )
+
+    order.tolov_holati = "tasdiqlandi"
+    order.holat = "yangi"
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+def reject_order_payment(
+    db: Session, order: Order, admin_id: int, sabab: str
+) -> Order:
+    """Moliya to'lovni rad etadi -> buyurtma bekor qilinadi, ombor qaytariladi."""
+    if order.holat not in ("tolov_kutilmoqda",):
+        raise HTTPException(
+            status_code=400, detail="Faqat to'lov kutayotgan buyurtmani rad etish mumkin."
+        )
+    order.tolov_holati = "rad_etildi"
+    order.tolov_rad_sababi = (sabab or "").strip()[:255] or None
+    order.holat = "bekor_qilindi"
+    # Ombor tegilmagan: miqdor faqat admin qabul qilganda (accept_order)
+    # kamayadi, to'lov kutayotgan buyurtma esa hali qabul qilinmagan.
+    db.commit()
+    db.refresh(order)
+    return order
 
 
 def _apply_promo(
@@ -378,16 +419,19 @@ def cancel_order(
     order.holat = "bekor_qilindi"
     order.bekor_sababi = (sabab or "").strip()[:255] or None
 
-    # Rule 5 / task_4: coin darhol qaytariladi (mijozга to'liq, adminдан sof).
+    # BALANSSIZ tizim: mijozda balans yo'q, shuning uchun unga coin
+    # qaytarilmaydi — puli kartaga qaytariladi (Moliya qo'lда o'tkazadi).
+    # Do'kon tomonida esa to'lov TASDIQLANGAN bo'lsa, hisobga qo'shilgan sof
+    # summani orqaga qaytaramiz. Tasdiqlanmagan bo'lsa qaytaradigan narsa yo'q.
     from . import coin as coin_service
 
     user = db.get(User, order.user_id)
     store = db.get(Store, order.store_id)
-    if user and store:
+    if store and order.tolov_holati == "tasdiqlandi":
         yetk = coin_service._dec(order.yetkazish_narxi)
         mahsulot_base = coin_service._dec(order.jami_narx) - yetk
-        coin_service.refund_purchase(
-            db, user, store, mahsulot_base, order.id, yetkazish=yetk
+        coin_service.reverse_store_payout(
+            db, store, mahsulot_base, order.id, user_id=order.user_id
         )
 
     db.commit()

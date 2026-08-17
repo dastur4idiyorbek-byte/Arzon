@@ -239,6 +239,22 @@ class Order(Base):
     manzil: Mapped[str | None] = mapped_column(String(512), nullable=True)
     # Kuryer telefon raqami — "Yo'lda" holatiда admin qo'lда kiritadi (task_2).
     kuryer_tel: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # --- To'lov (balanssiz tizim) ---
+    # Mijoz balansi YO'Q: har buyurtma uchun alohida to'lov qilinadi va cheki
+    # shu buyurtmaga biriktiriladi. Moliya tasdiqlagachgina buyurtma do'konga
+    # ketadi (holat 'tolov_kutilmoqda' -> 'yangi').
+    #   kutilmoqda | tasdiqlandi | rad_etildi
+    tolov_holati: Mapped[str | None] = mapped_column(
+        String(16), nullable=True, default="kutilmoqda"
+    )
+    tolov_usuli_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    chek_rasm_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # Gemini chekdan o'qigan summa/sana va xulosasi (Moliyaga yordam).
+    ai_ochigan_summa: Mapped[float | None] = mapped_column(
+        Numeric(14, 2), nullable=True
+    )
+    ai_xulosasi: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    tolov_rad_sababi: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Yetkazib berish narxi (som). Manzilga qarab hisoblanadi (hozircha 100).
     yetkazish_narxi: Mapped[float | None] = mapped_column(
         Numeric(12, 2), nullable=True, default=0

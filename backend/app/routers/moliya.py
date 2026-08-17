@@ -274,6 +274,123 @@ def reject_refund(
 # ---------------------------------------------------------------------------
 # Umumiy hisobot + platforma hisob
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Buyurtma to'lovlari (balanssiz tizim) — mijoz chek yuklaydi, Moliya tasdiqlaydi
+# ---------------------------------------------------------------------------
+@router.get("/buyurtma-tolovlari")
+def list_buyurtma_tolovlari(
+    _: int = Depends(require_super),
+    db: Session = Depends(get_db),
+):
+    """To'lov kutayotgan buyurtmalar (chek yuklangani birinchi turadi)."""
+    from ..models import Order
+
+    rows = db.scalars(
+        select(Order)
+        .where(Order.holat == "tolov_kutilmoqda")
+        .order_by(Order.id.desc())
+    ).all()
+    natija = []
+    for o in rows:
+        u = db.get(User, o.user_id)
+        store = db.get(Store, o.store_id)
+        natija.append(
+            {
+                "id": o.id,
+                "kod": o.kod,
+                "ism": u.ism if u else None,
+                "tel": u.tel if u else None,
+                "telegram_id": u.telegram_id if u else None,
+                "store_nomi": store.nomi if store else None,
+                "summa": float(o.jami_narx),
+                "mahsulotlar": o.mahsulotlar,
+                "chek_rasm_url": o.chek_rasm_url,
+                "ai_summa": float(o.ai_ochigan_summa)
+                if o.ai_ochigan_summa is not None
+                else None,
+                "ai_xulosa": o.ai_xulosasi,
+                "tolov_holati": o.tolov_holati,
+            }
+        )
+    return natija
+
+
+@router.post("/buyurtma-tolovlari/{order_id}/approve")
+def approve_buyurtma_tolov(
+    order_id: int,
+    admin_id: int = Depends(require_super),
+    db: Session = Depends(get_db),
+):
+    """To'lovni tasdiqlaydi -> buyurtma do'konga ketadi, hisob-kitob bo'ladi."""
+    from ..models import Order
+    from ..services import orders as order_service
+
+    order = db.get(Order, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="Buyurtma topilmadi.")
+    order = order_service.approve_order_payment(db, order, admin_id)
+
+    u = db.get(User, order.user_id)
+    store = db.get(Store, order.store_id)
+    _notify(
+        u.telegram_id if u else None,
+        f"✅ To'lovingiz tasdiqlandi!\nBuyurtma kodi: {order.kod}\n"
+        "Do'kon buyurtmangizni tayyorlashga kirishdi.",
+    )
+    _push(db, u, "✅ To'lov tasdiqlandi", f"Buyurtma {order.kod} tayyorlanmoqda.",
+          {"type": "order", "order_id": order.id})
+
+    # Do'kon adminlariga yangi buyurtma haqida xabar.
+    try:
+        from ..tgbots import notify
+        from ..services import push as push_service
+
+        notify.notify_new_order(
+            admin_ids=list(store.admin_ids or []) if store else [],
+            order_id=order.id, kod=order.kod, jami=float(order.jami_narx),
+            mahsulotlar=order.mahsulotlar,
+            mijoz_ism=u.ism if u else None, mijoz_tel=u.tel if u else None,
+            yetkazish_txt=f"🚚 {order.manzil or '-'}",
+        )
+        push_service.push_store_admins(
+            db, store, "🆕 Yangi buyurtma",
+            f"Kod {order.kod} — {float(order.jami_narx):,.0f} som",
+            {"type": "admin_order", "order_id": order.id},
+        )
+    except ImportError:
+        pass
+    return {"holat": order.holat, "tolov_holati": order.tolov_holati}
+
+
+@router.post("/buyurtma-tolovlari/{order_id}/reject")
+def reject_buyurtma_tolov(
+    order_id: int,
+    payload: RejectBody,
+    admin_id: int = Depends(require_super),
+    db: Session = Depends(get_db),
+):
+    """To'lovni rad etadi -> buyurtma bekor qilinadi, mijozga sabab yuboriladi."""
+    from ..models import Order
+    from ..services import orders as order_service
+
+    order = db.get(Order, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="Buyurtma topilmadi.")
+    order = order_service.reject_order_payment(db, order, admin_id, payload.sabab)
+
+    u = db.get(User, order.user_id)
+    sabab_txt = f"\nSabab: {payload.sabab}" if payload.sabab else ""
+    _notify(
+        u.telegram_id if u else None,
+        f"❌ Buyurtma {order.kod} to'lovi rad etildi.{sabab_txt}\n"
+        "Pulingiz qaytariladi — Moliya bilan bog'laning.",
+    )
+    _push(db, u, "❌ To'lov rad etildi",
+          f"Buyurtma {order.kod}." + (f" {payload.sabab}" if payload.sabab else ""),
+          {"type": "order", "order_id": order.id})
+    return {"holat": order.holat, "tolov_holati": order.tolov_holati}
+
+
 @router.get("/report")
 def report(
     _: int = Depends(require_super),

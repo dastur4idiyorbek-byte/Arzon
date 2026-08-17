@@ -48,6 +48,28 @@ def admin_headers(admin_id: int) -> dict:
     return {**INTERNAL, "X-Admin-Id": str(admin_id)}
 
 
+def tolovni_tasdiqla(order_id: int) -> None:
+    """Moliya buyurtma to'lovini tasdiqlaydi -> buyurtma do'konga ketadi.
+
+    BALANSSIZ tizimda checkout buyurtmani 'tolov_kutilmoqda' holatida
+    yaratadi. Do'kon admini uni faqat to'lov tasdiqlangach ko'radi, shuning
+    uchun admin oqimini sinaydigan testlar shu qadamdan o'tishi kerak.
+    """
+    r = client.post(
+        f"/api/moliya/buyurtma-tolovlari/{order_id}/approve",
+        headers=admin_headers(SUPER),
+    )
+    assert r.status_code == 200, r.text
+
+
+def tasdiqla_hammasi(resp) -> list:
+    """Checkout javobidagi barcha buyurtmalar to'lovini tasdiqlaydi."""
+    buyurtmalar = resp.json()["buyurtmalar"]
+    for o in buyurtmalar:
+        tolovni_tasdiqla(o["id"])
+    return buyurtmalar
+
+
 def give_balance(telegram_id: int, amount: float) -> None:
     """Testда mijozga ACOM coin balansи beradi (checkout coin bilan ishlaydi).
 
@@ -484,6 +506,7 @@ def test_spec_stock_flow_accept_and_out_of_stock():
     )
     assert ok.status_code == 200, ok.text
     order = ok.json()["buyurtmalar"][0]
+    tolovni_tasdiqla(order["id"])  # balanssiz oqim: Moliya to'lovni tasdiqlaydi
 
     # Boshqa admin qabul qila olmaydi (rule 7).
     forbidden = client.post(
@@ -968,23 +991,41 @@ def test_coin_purchase_settlement():
         json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Bishkek 1"},
     )
     assert r.status_code == 200, r.text
-    # Mijozdan to'liq 1000 yechildi.
-    assert get_balance(40001) == 3900.0  # 5000 - (1000 + 100 yetkazish)
+    order = r.json()["buyurtmalar"][0]
 
-    # Admin (do'kon) balansi 950 (1000 - 5%).
     from app.database import SessionLocal
     from app.models import Store
     from app.services import coin as coin_service
+
+    # BALANSSIZ tizim: to'lov tasdiqlanmaguncha do'kon hisobiga hech narsa
+    # tushmaydi va mijoz balansi umuman ishlatilmaydi.
+    assert order["holat"] == "tolov_kutilmoqda"
+    db = SessionLocal()
+    try:
+        s = db.get(Store, store_a["store_id"])
+        assert float(coin_service.store_balance(s)) == 0.0
+    finally:
+        db.close()
+
+    # Moliya to'lovni tasdiqlaydi -> do'konga sof summa (1000 - 1%) tushadi.
+    tolovni_tasdiqla(order["id"])
     db = SessionLocal()
     try:
         s = db.get(Store, store_a["store_id"])
         assert float(coin_service.store_balance(s)) == 990.0
     finally:
         db.close()
+    # Mijoz balansi tegilmagan (u kartaga to'lagan).
+    assert get_balance(40001) == 5000.0
 
 
-def test_coin_insufficient_balance_blocks_checkout():
-    """rule 3: balans yetmasa xarid amalga oshmaydi (402)."""
+def test_checkout_balanssiz_ishlaydi():
+    """BALANSSIZ tizim: balans yo'q bo'lsa ham buyurtma beriladi.
+
+    Avval balans yetmasa 402 qaytarardi. Endi mijoz balansi umuman
+    ishlatilmaydi — buyurtma 'tolov_kutilmoqda' holatida yaratiladi va mijoz
+    chekni biriktirgach Moliya tasdiqlaydi.
+    """
     store_a, _ = setup_two_stores()
     p = client.post(
         f"/api/admin/stores/{store_a['store_id']}/products",
@@ -993,17 +1034,20 @@ def test_coin_insufficient_balance_blocks_checkout():
     ).json()
     cust = customer_headers(40002)
     client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700400002"})
-    give_balance(40002, 1000)  # kerakli 5000 dan kam
+    give_balance(40002, 0)  # balans umuman yo'q
 
     r = client.post(
         "/api/checkout", headers=cust,
         json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Bishkek 1"},
     )
-    assert r.status_code == 402, r.text
-    # Balans o'zgarmagan, buyurtma yaratilmagan.
-    assert get_balance(40002) == 1000.0
+    assert r.status_code == 200, r.text
+    order = r.json()["buyurtmalar"][0]
+    assert order["holat"] == "tolov_kutilmoqda"
+    # Balans tegilmagan.
+    assert get_balance(40002) == 0.0
+    # Buyurtma tarixida ko'rinadi.
     orders = client.get("/api/orders", headers=cust).json()
-    assert all(o["jami_narx"] != 5000 for o in orders)
+    assert any(o["id"] == order["id"] for o in orders)
 
 
 def test_coin_refund_on_cancel():
@@ -1022,7 +1066,9 @@ def test_coin_refund_on_cancel():
         "/api/checkout", headers=cust,
         json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Bishkek 1"},
     ).json()["buyurtmalar"][0]
-    assert get_balance(40003) == 2900.0  # 5000 - (2000 + 100 yetkazish)
+    # To'lov tasdiqlangach do'kon hisobiga tushadi.
+    tolovni_tasdiqla(order["id"])
+    assert get_balance(40003) == 5000.0  # mijoz balansi tegilmaydi
 
     from app.database import SessionLocal
     from app.models import Store
@@ -1124,10 +1170,11 @@ def test_coin_withdraw_and_report():
     cust = customer_headers(40006)
     client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700400006"})
     give_balance(40006, 20000)
-    client.post(
+    _r = client.post(
         "/api/checkout", headers=cust,
         json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Bishkek 1"},
     )
+    tasdiqla_hammasi(_r)  # balanssiz oqim: hisob-kitob to'lov tasdiqlangach
     # Admin balansi 9500 (10000 - 5%).
     db = SessionLocal()
     try:
@@ -1201,8 +1248,9 @@ def test_admin_withdraw_flow():
     cust = customer_headers(50002)
     client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700500002"})
     give_balance(50002, 10000)
-    client.post("/api/checkout", headers=cust,
+    _r = client.post("/api/checkout", headers=cust,
                 json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Bishkek 1"})
+    tasdiqla_hammasi(_r)  # balanssiz oqim: to'lov tasdiqlangach do'kon oladi
     # Admin balansi 7600 (8000 - 5%). Yechish so'rovi.
     w = client.post(
         f"/api/admin/stores/{store_a['store_id']}/withdraw",
@@ -1384,6 +1432,7 @@ def test_order_status_progression():
                         json={"items": [{"product_id": p["id"], "soni": 1}],
                               "manzil": "Bishkek 1"}).json()["buyurtmalar"][0]
     oid = order["id"]
+    tolovni_tasdiqla(oid)  # balanssiz oqim: to'lov tasdiqlangach do'konga ketadi
 
     # Qabul (yangi -> tayyorlanmoqda).
     client.post(f"/api/admin/orders/{oid}/accept", headers=admin_headers(ADMIN_A))
@@ -1425,6 +1474,7 @@ def test_punkt_lookup_and_topshirdim():
         "/api/checkout", headers=cust,
         json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Uy 1"},
     ).json()["buyurtmalar"][0]
+    tolovni_tasdiqla(o["id"])  # balanssiz oqim: to'lov tasdiqlangach do'konga ketadi
 
     # Kod bo'yicha ko'rish — mahsulot + mijoz, tasdiqlamasdan.
     look = client.get(f"/api/admin/orders/by-code/{o['kod']}", headers=admin_headers(ADMIN_A))
@@ -1738,6 +1788,7 @@ def test_pickup_direct_handover():
                               "yetkazish_turi": "pickup",
                               "pickup_points": {str(store_a["store_id"]): pp["id"]}}).json()["buyurtmalar"][0]
     oid = order["id"]
+    tolovni_tasdiqla(oid)  # balanssiz oqim
     client.post(f"/api/admin/orders/{oid}/accept", headers=admin_headers(ADMIN_A))
     # Punkt: tayyorlanmoqda -> topshirildi (yolda'siz).
     r = client.patch(f"/api/admin/orders/{oid}/status",
@@ -1979,6 +2030,129 @@ def test_add_admin_by_unknown_email_fails():
     )
     assert r.status_code == 404, r.text
     assert "topilmadi" in r.json()["detail"]
+
+
+def test_balanssiz_tolov_toliq_oqim():
+    """BALANSSIZ to'lov: buyurtma -> chek -> Moliya tasdiqlaydi -> do'konga.
+
+    Mijoz balansi umuman ishlatilmaydi; do'kon hisobiga sof summa faqat
+    to'lov tasdiqlangach tushadi.
+    """
+    from app.database import SessionLocal
+    from app.models import Store
+    from app.services import coin as coin_service
+
+    store_a, _ = setup_two_stores()
+    p = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/products",
+        headers=admin_headers(ADMIN_A),
+        json={"nomi": "Balanssiz tovar", "narxi": 3000, "korinish": "ommaviy"},
+    ).json()
+    cust = customer_headers(60101)
+    client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700601010"})
+
+    # 1) Buyurtma — balanssiz, "to'lov kutilmoqda".
+    r = client.post(
+        "/api/checkout", headers=cust,
+        json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Bishkek 5"},
+    )
+    assert r.status_code == 200, r.text
+    order = r.json()["buyurtmalar"][0]
+    assert order["holat"] == "tolov_kutilmoqda"
+
+    # 2) Do'kon admini uni hali KO'RMAYDI (to'lov tasdiqlanmagan).
+    adm = client.get(
+        f"/api/admin/stores/{store_a['store_id']}/orders", headers=admin_headers(ADMIN_A)
+    ).json()
+    kutayotgan = [o for o in adm if o["id"] == order["id"]]
+    assert kutayotgan and kutayotgan[0]["holat"] == "tolov_kutilmoqda"
+
+    # 3) Mijoz chekni SHU buyurtmaga biriktiradi.
+    png = bytes.fromhex(
+        "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4"
+        "890000000a49444154789c63000100000500010d0a2db40000000049454e44ae426082"
+    )
+    ch = client.post(
+        f"/api/orders/{order['id']}/chek", headers=cust,
+        files={"chek": ("chek.png", png, "image/png")},
+    )
+    assert ch.status_code == 200, ch.text
+    assert ch.json()["tolov_holati"] == "kutilmoqda"
+
+    # 4) Moliya ro'yxatida chek bilan ko'rinadi.
+    lst = client.get(
+        "/api/moliya/buyurtma-tolovlari", headers=admin_headers(SUPER)
+    ).json()
+    meniki = [x for x in lst if x["id"] == order["id"]]
+    assert meniki and meniki[0]["chek_rasm_url"], lst
+
+    # Tasdiqlashdan OLDIN do'kon hisobi tegilmagan.
+    db = SessionLocal()
+    try:
+        oldin = float(coin_service.store_balance(db.get(Store, store_a["store_id"])))
+    finally:
+        db.close()
+
+    # 5) Moliya tasdiqlaydi -> buyurtma 'yangi', do'konga sof summa tushadi.
+    ap = client.post(
+        f"/api/moliya/buyurtma-tolovlari/{order['id']}/approve",
+        headers=admin_headers(SUPER),
+    )
+    assert ap.status_code == 200, ap.text
+    assert ap.json()["holat"] == "yangi"
+
+    db = SessionLocal()
+    try:
+        keyin = float(coin_service.store_balance(db.get(Store, store_a["store_id"])))
+    finally:
+        db.close()
+    assert keyin - oldin == 2970.0  # 3000 - 1% komissiya
+
+    # 6) Endi admin uni oddiy buyurtma sifatida qabul qila oladi.
+    acc = client.post(
+        f"/api/admin/orders/{order['id']}/accept", headers=admin_headers(ADMIN_A)
+    )
+    assert acc.status_code == 200, acc.text
+
+
+def test_balanssiz_tolov_rad_etilsa_bekor_boladi():
+    """Moliya to'lovni rad etsa — buyurtma bekor, do'kon hisobi tegilmaydi."""
+    from app.database import SessionLocal
+    from app.models import Store
+    from app.services import coin as coin_service
+
+    store_a, _ = setup_two_stores()
+    p = client.post(
+        f"/api/admin/stores/{store_a['store_id']}/products",
+        headers=admin_headers(ADMIN_A),
+        json={"nomi": "Rad tovar", "narxi": 1500, "korinish": "ommaviy"},
+    ).json()
+    cust = customer_headers(60102)
+    client.post("/api/confirm-phone", headers=cust, json={"tel": "+996700601020"})
+    order = client.post(
+        "/api/checkout", headers=cust,
+        json={"items": [{"product_id": p["id"], "soni": 1}], "manzil": "Bishkek 6"},
+    ).json()["buyurtmalar"][0]
+
+    db = SessionLocal()
+    try:
+        oldin = float(coin_service.store_balance(db.get(Store, store_a["store_id"])))
+    finally:
+        db.close()
+
+    rj = client.post(
+        f"/api/moliya/buyurtma-tolovlari/{order['id']}/reject",
+        headers=admin_headers(SUPER), json={"sabab": "Chek summasi mos emas"},
+    )
+    assert rj.status_code == 200, rj.text
+    assert rj.json()["holat"] == "bekor_qilindi"
+
+    db = SessionLocal()
+    try:
+        keyin = float(coin_service.store_balance(db.get(Store, store_a["store_id"])))
+    finally:
+        db.close()
+    assert keyin == oldin  # do'kon hisobiga hech narsa tushmagan
 
 
 def test_media_upload_va_korish():
