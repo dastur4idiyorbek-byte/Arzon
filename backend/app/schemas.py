@@ -1,7 +1,5 @@
-"""ARZON 2.0 Pydantic schemas."""
-from datetime import datetime
+"""ARZON 2.0 schema definitions."""
 from pydantic import BaseModel, ConfigDict, Field
-
 
 class ProductOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -20,11 +18,9 @@ class ProductOut(BaseModel):
     tavsif: str | None = None
     miqdor: int | None = None
 
-
 class CheckoutItem(BaseModel):
     product_id: int
     soni: int = Field(ge=1)
-
 
 class CheckoutRequest(BaseModel):
     items: list[CheckoutItem]

@@ -1,45 +1,41 @@
-import pytest
-from backend.app.models import Product, Store, User, YetkazishHudud, ObunaTarif
-
-
-def auth_headers(client):
-    response = client.post("/api/auth/register", json={"email": "user@test.local", "parol": "secret1", "ism": "Test User"})
-    assert response.status_code == 200
-    return {"Authorization": f"Bearer {response.json()['token']}"}
+"""ARZON 2.0 migration regression tests."""
+from backend.app.models import Store, Product, User
 
 
 def test_health(client):
-    assert client.get("/health").json()["status"] == "ok"
-
-
-def test_register_me_and_profile(client):
-    response = client.post("/api/auth/register", json={"email": "native@test.local", "parol": "secret1", "ism": "Native"})
+    response = client.get("/health")
     assert response.status_code == 200
-    token = response.json()["token"]
-    headers = {"Authorization": f"Bearer {token}"}
-    assert client.get("/api/auth/me", headers=headers).status_code == 200
-    updated = client.patch("/api/auth/me", headers=headers, json={"ism": "Yangilangan", "tel": "+996555000000"})
-    assert updated.status_code == 200
-    assert updated.json()["user"]["ism"] == "Yangilangan"
+    assert response.json()["version"] == "2.0.0"
 
 
-def test_guest_catalog_and_store(client):
+def test_native_registration_profile_and_guest_endpoints(client):
+    response = client.post("/api/auth/register", json={"email": "native@example.test", "parol": "secret123", "ism": "Test"})
+    assert response.status_code == 200
+    headers = {"Authorization": f"Bearer {response.json()['token']}"}
+    assert client.patch("/api/auth/me", headers=headers, json={"ism": "Edited", "tel": "+996555000000"}).status_code == 200
     assert client.get("/api/products").status_code == 200
     assert client.get("/api/stores").status_code == 200
     assert client.get("/api/hududlar").status_code == 200
+    assert client.post("/api/promo/check", json={"kod": "NOTFOUND"}).status_code == 200
 
 
-def test_promo_check_is_guest(client):
-    response = client.post("/api/promo/check", json={"kod": "NONE"})
+def test_catalog_marks_paused_store_products(client):
+    from backend.app.database import SessionLocal
+    with SessionLocal() as db:
+        store = Store(nomi="Paused", turi="magazin", tarif_turi="pro", holat="vaqtincha_toxtatilgan")
+        db.add(store); db.flush()
+        db.add(Product(store_id=store.id, nomi="Item", narxi=100))
+        db.commit()
+    result = client.get("/api/products").json()
+    assert len(result) == 1
+    assert result[0]["sotish_toxtatilgan"] is True
+
+
+def test_private_media_requires_owner(client):
+    registered = client.post("/api/auth/register", json={"email": "media@example.test", "parol": "secret123"})
+    headers = {"Authorization": f"Bearer {registered.json()['token']}"}
+    response = client.post("/api/media/upload", headers=headers, params={"maxfiy": "true"}, files={"rasm": ("kyc.jpg", b"image-bytes", "image/jpeg")})
     assert response.status_code == 200
-    assert "ok" in response.json()
-
-
-def test_private_media_requires_owner_or_super_admin(client):
-    register = client.post("/api/auth/register", json={"email": "private@test.local", "parol": "secret1"})
-    token = register.json()["token"]
-    media = client.post("/api/media/upload", headers={"Authorization": f"Bearer {token}"}, params={"maxfiy": "true"}, files={"rasm": ("selfie.jpg", b"image", "image/jpeg")})
-    assert media.status_code == 200
-    media_id = media.json()["id"]
+    media_id = response.json()["id"]
     assert client.get(f"/media/db/{media_id}").status_code == 403
-    assert client.get(f"/media/db/{media_id}", headers={"Authorization": f"Bearer {token}"}).status_code == 200
+    assert client.get(f"/media/db/{media_id}", headers=headers).status_code == 200

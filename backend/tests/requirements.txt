@@ -1,2 +1,2 @@
-# ARZON 2.0 backend tests
+# ARZON 2.0 test dependencies
 pytest==8.3.5
