@@ -1,0 +1,1 @@
+# Legacy bot directories and Mini App are removed in ARZON 2.0 API branch.

@@ -1,0 +1,2 @@
+# ARZON 2.0 backend tests
+pytest==8.3.5
