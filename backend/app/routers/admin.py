@@ -1,13 +1,15 @@
-"""ARZON 2.0 admin router."""
+"""ARZON 2.0 admin router (native users and Expo push)."""
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import Product, PromoCode, Store, PickupPoint, YetkazishHudud, Order, Shikoyat, Media, _now
+from ..models import Product, PromoCode, Store, PickupPoint, Order, User
 from ..security import require_admin, check_store_access
-from ..services.push import push_store_admins
+from ..services.push import push_store_admins, push_user
+from .. import ai
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -65,8 +67,6 @@ def update_store(store_id: int, payload: StoreProfile, admin_id: int = Depends(r
     store = check_store_access(admin_id, store_id, db)
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(store, field, value)
-    if store.tarif_turi == "lite" and payload.yetkazish_rejimi == "ozi":
-        store.yetkazish_rejimi = "ozi"
     db.commit(); db.refresh(store)
     return {"id": store.id, "ok": True}
 
@@ -77,34 +77,34 @@ def add_product(store_id: int, payload: ProductBody, admin_id: int = Depends(req
     if store.holat == "vaqtincha_toxtatilgan":
         raise HTTPException(403, "Do'kon vaqtincha to'xtatilgan.")
     if store.mahsulot_limiti is not None:
-        count = db.scalar(select(__import__('sqlalchemy').func.count(Product.id)).where(Product.store_id == store_id)) or 0
+        count = db.scalar(select(func.count(Product.id)).where(Product.store_id == store_id)) or 0
         if count >= store.mahsulot_limiti:
             raise HTTPException(400, "Mahsulot limiti to'lgan.")
-    p = Product(store_id=store_id, **payload.model_dump())
-    db.add(p); db.commit(); db.refresh(p)
-    push_store_admins(db, store, "Mahsulot qo'shildi", p.nomi, {"type": "product", "product_id": p.id})
-    return {"id": p.id, "nomi": p.nomi}
+    product = Product(store_id=store_id, **payload.model_dump())
+    db.add(product); db.commit(); db.refresh(product)
+    push_store_admins(db, store, "Mahsulot qo'shildi", product.nomi, {"type": "product", "product_id": product.id})
+    return {"id": product.id, "nomi": product.nomi}
 
 
 @router.patch("/products/{product_id}")
 def update_product(product_id: int, payload: ProductBody, admin_id: int = Depends(require_admin), db: Session = Depends(get_db)):
-    p = db.get(Product, product_id)
-    if p is None:
+    product = db.get(Product, product_id)
+    if product is None:
         raise HTTPException(404, "Mahsulot topilmadi.")
-    check_store_access(admin_id, p.store_id, db)
+    check_store_access(admin_id, product.store_id, db)
     for field, value in payload.model_dump(exclude_unset=True).items():
-        setattr(p, field, value)
-    db.commit(); db.refresh(p)
-    return {"id": p.id, "ok": True}
+        setattr(product, field, value)
+    db.commit(); db.refresh(product)
+    return {"id": product.id, "ok": True}
 
 
 @router.delete("/products/{product_id}")
 def delete_product(product_id: int, admin_id: int = Depends(require_admin), db: Session = Depends(get_db)):
-    p = db.get(Product, product_id)
-    if p is None:
+    product = db.get(Product, product_id)
+    if product is None:
         raise HTTPException(404, "Mahsulot topilmadi.")
-    check_store_access(admin_id, p.store_id, db)
-    db.delete(p); db.commit()
+    check_store_access(admin_id, product.store_id, db)
+    db.delete(product); db.commit()
     return {"ochirildi": True}
 
 
@@ -121,10 +121,7 @@ def add_pickup(store_id: int, payload: PickupBody, admin_id: int = Depends(requi
 @router.post("/stores/{store_id}/promo")
 def add_promo(store_id: int, payload: PromoBody, admin_id: int = Depends(require_admin), db: Session = Depends(get_db)):
     check_store_access(admin_id, store_id, db)
-    muddat = None
-    if payload.muddat:
-        from datetime import datetime
-        muddat = datetime.fromisoformat(payload.muddat)
+    muddat = datetime.fromisoformat(payload.muddat) if payload.muddat else None
     promo = PromoCode(store_id=store_id, kod=payload.kod.strip(), chegirma_foizi=payload.chegirma_foizi, muddat=muddat)
     db.add(promo); db.commit(); db.refresh(promo)
     return {"id": promo.id, "kod": promo.kod}
@@ -133,7 +130,8 @@ def add_promo(store_id: int, payload: PromoBody, admin_id: int = Depends(require
 @router.get("/stores/{store_id}/promo")
 def list_promo(store_id: int, admin_id: int = Depends(require_admin), db: Session = Depends(get_db)):
     check_store_access(admin_id, store_id, db)
-    return [{"id": p.id, "kod": p.kod, "chegirma_foizi": p.chegirma_foizi, "muddat": p.muddat.isoformat() if p.muddat else None}
+    return [{"id": p.id, "kod": p.kod, "chegirma_foizi": p.chegirma_foizi,
+             "muddat": p.muddat.isoformat() if p.muddat else None}
             for p in db.scalars(select(PromoCode).where(PromoCode.store_id == store_id)).all()]
 
 
@@ -154,15 +152,31 @@ def accept_order(order_id: int, admin_id: int = Depends(require_admin), db: Sess
         raise HTTPException(404, "Buyurtma topilmadi.")
     check_store_access(admin_id, order.store_id, db)
     if order.tolov_holati != "tasdiqlandi":
-        raise Exception("To'lov avval tasdiqlanishi kerak")
-    order.holat = "tayyorlanmoqda"
+        raise HTTPException(400, "To'lov avval tasdiqlanishi kerak.")
+    order.holat = "tayyorlanmoqda"; order.tasdiqlangan_vaqt = datetime.now()
     for item in order.mahsulotlar or []:
-        p = db.get(Product, item.get("product_id"))
-        if p and p.miqdor is not None:
-            p.miqdor = max(0, p.miqdor - int(item.get("soni", 0)))
+        product = db.get(Product, item.get("product_id"))
+        if product and product.miqdor is not None:
+            product.miqdor = max(0, product.miqdor - int(item.get("soni", 0)))
     db.commit()
-    user = db.get(__import__('backend.app.models', fromlist=['User']).User, order.user_id) if False else None
+    user = db.get(User, order.user_id)
+    push_user(db, user, "Buyurtma qabul qilindi", "Buyurtmangiz tayyorlanmoqda.", {"type": "order", "order_id": order.id})
     return {"id": order.id, "holat": order.holat}
+
+
+@router.post("/orders/{order_id}/payment/accept")
+def accept_payment(order_id: int, admin_id: int = Depends(require_admin), db: Session = Depends(get_db)):
+    order = db.get(Order, order_id)
+    if order is None:
+        raise HTTPException(404, "Buyurtma topilmadi.")
+    check_store_access(admin_id, order.store_id, db)
+    expected = float(order.oldindan_summa or order.jami_narx)
+    if order.ai_ochigan_summa is not None and abs(float(order.ai_ochigan_summa) - expected) <= 1:
+        order.ai_xulosasi = "mos_keladi"
+    order.tolov_holati = "tasdiqlandi"; order.holat = "yangi"
+    db.commit()
+    push_user(db, db.get(User, order.user_id), "To'lov tasdiqlandi", "Buyurtmangiz do'konga yuborildi.", {"type": "order", "order_id": order.id})
+    return {"id": order.id, "tolov_holati": order.tolov_holati, "ai_xulosasi": order.ai_xulosasi}
 
 
 @router.post("/orders/{order_id}/payment/reject")
@@ -173,4 +187,5 @@ def reject_receipt(order_id: int, admin_id: int = Depends(require_admin), db: Se
     check_store_access(admin_id, order.store_id, db)
     order.tolov_holati = "rad_etildi"; order.holat = "bekor_qilindi"
     db.commit()
+    push_user(db, db.get(User, order.user_id), "To'lov rad etildi", "Buyurtma cheki tasdiqlanmadi.", {"type": "order", "order_id": order.id})
     return {"id": order.id, "tolov_holati": order.tolov_holati}
