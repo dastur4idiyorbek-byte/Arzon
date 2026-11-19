@@ -1,1 +1,1 @@
-"""ARZON 2.0 legacy ACOM service removed."""
+"""ARZON 2.0 does not maintain ACOM coin accounts."""

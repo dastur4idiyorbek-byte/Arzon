@@ -1,1 +1,1 @@
-"""ARZON 2.0 legacy manager service removed."""
+"""ARZON 2.0 subscription and user administration live in the native API."""

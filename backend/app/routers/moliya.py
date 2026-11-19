@@ -1,1 +1,1 @@
-"""ARZON 2.0 legacy module removed; use /api/super-admin."""
+"""ARZON 2.0 uses the unified native super-admin router."""

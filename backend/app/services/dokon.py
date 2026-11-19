@@ -1,1 +1,1 @@
-"""ARZON 2.0 legacy shop service removed."""
+"""ARZON 2.0 does not require the legacy shop helper."""

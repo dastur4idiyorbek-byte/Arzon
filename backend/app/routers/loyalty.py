@@ -1,1 +1,1 @@
-"""ARZON 2.0 loyalty module removed in favor of native-only commerce."""
+"""ARZON 2.0 no longer exposes loyalty or referral endpoints."""

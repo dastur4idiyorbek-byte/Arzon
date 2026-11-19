@@ -1,1 +1,1 @@
-"""ARZON 2.0 legacy order service removed; use native order router."""
+"""ARZON 2.0 order rules live in the native API router."""
