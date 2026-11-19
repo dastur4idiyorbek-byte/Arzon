@@ -1,21 +1,22 @@
-"""Test sozlamalari — muhit o'zgaruvchilari app import'idan OLDIN o'rnatiladi."""
 import os
-import tempfile
+import pytest
+from fastapi.testclient import TestClient
 
-# Settings import paytida keshlanadi — shuning uchun bu yerda, eng boshda.
-_db_fd, _db_path = tempfile.mkstemp(suffix=".db")
-os.environ["DATABASE_URL"] = f"sqlite:///{_db_path}"
-os.environ["MINIAPP_BOT_TOKEN"] = "TEST:BOT-TOKEN-123"
-os.environ["SAVDO_BOT_TOKEN"] = "TEST:BOT-TOKEN-123"
-os.environ["INTERNAL_API_TOKEN"] = "internal-secret-xyz"
-os.environ["SUPER_ADMIN_IDS"] = "999999"
-os.environ["MENEJER_IDS"] = "777777"
-os.environ["JWT_SECRET"] = "test-jwt-secret"
-os.environ["SUPER_ADMIN_EMAILS"] = "boss@arzon.kg"
-os.environ["MENEJER_EMAILS"] = "menejer@arzon.kg"
-os.environ["ANTHROPIC_API_KEY"] = ""  # AI zaxira javob rejimida
+os.environ.setdefault("DATABASE_URL", "sqlite:///./test_arzon.db")
+os.environ.setdefault("JWT_SECRET", "test-secret")
 
-# Jadvallarni yaratamiz (TestClient lifespan'siz ishlatilishi mumkin).
-from app.database import init_db  # noqa: E402
+from backend.app.database import Base, engine
+from backend.app.main import app
 
-init_db()
+
+@pytest.fixture(autouse=True)
+def clean_db():
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    yield
+    Base.metadata.drop_all(bind=engine)
+
+
+@pytest.fixture
+def client():
+    return TestClient(app)

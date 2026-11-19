@@ -1,6 +1,3 @@
-# Cloud (Render) uchun backend bog'liqliklari — yengil to'plam.
-# Faqat backend web-xizmati uchun kerak bo'lganlari (chromadb/anthropic emas —
-# ular ixtiyoriy va og'ir; kerak bo'lса keyin qo'shiladi).
 fastapi==0.139.2
 uvicorn==0.51.0
 SQLAlchemy==2.0.51
@@ -8,18 +5,12 @@ pydantic==2.13.4
 pydantic-settings==2.14.2
 python-dotenv==1.2.2
 httpx==0.28.1
-# Mini App'дан chek rasmini yuklash (multipart/form-data) uchun.
 python-multipart==0.0.20
-# PostgreSQL (Neon) drayveri — doimiy baza uchun.
 psycopg2-binary==2.9.10
-# Native ilova autentifikatsiyasi: parol hash (bcrypt), JWT sessiya,
-# Apple id_token imzosini tekshirish (RS256 -> cryptography).
 bcrypt==4.2.1
 PyJWT==2.10.1
 cryptography==44.0.0
-# Telegram botlar (webhook rejimi — bulutда, backend ichida ishlaydi).
-# [job-queue] — kunlik hisobot uchun (APScheduler).
-python-telegram-bot[job-queue]==22.8
-# Gemini Flash — chek/rasm tahlili (ACOM coin). Kalit bo'lmasa ishlamaydi,
-# lekin backend baribir ishlaydi (super-admin qo'lда tekshiradi).
+apscheduler==3.11.0
 google-genai==1.16.1
+anthropic==0.42.0
+pytest==8.3.5

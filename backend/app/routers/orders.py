@@ -1,449 +1,186 @@
-"""Savat/checkout, buyurtmalar tarixi, kontakt tasdiqlash (phase 2.3, 3.5)."""
-from __future__ import annotations
-
-from typing import List
-
-from fastapi import (
-    APIRouter,
-    Depends,
-    File,
-    Form,
-    HTTPException,
-    UploadFile,
-    status,
-)
+"""ARZON 2.0 checkout and order APIs."""
+from decimal import Decimal
+import secrets
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .. import ai
 from ..database import get_db
-from ..models import Order, User
-from ..models import PickupPoint
-from ..schemas import (
-    CheckoutRequest,
-    CheckoutResponse,
-    OrderOut,
-    PhoneConfirmRequest,
-    PickupPointOut,
-)
+from ..models import Order, Product, Store, PickupPoint, PromoCode, User, Media, _now, _as_aware
 from ..security import get_current_user
-from ..services import catalog as catalog_service
-from ..services import loyalty as loyalty_service
-from ..services import orders as order_service
 
-router = APIRouter(prefix="/api", tags=["buyurtma"])
+router = APIRouter(prefix="/api", tags=["orders"])
 
 
-def _order_public(o: Order) -> OrderOut:
-    """Mijozga ko'rsatiladigan buyurtma.
-
-    QOIDA: buyurtma kodi FAQAT to'lovdan keyin beriladi. To'lov kutayotgan
-    buyurtmada kod bo'sh ketadi — aks holda mijoz to'lamasdan turib kodni
-    olib, kuryerdan tovarni talab qilishi mumkin edi. Kod maskalanadi,
-    yashirilmaydi: buyurtmaning o'zi ro'yxatda ko'rinaveradi.
-    """
-    out = OrderOut.model_validate(o)
-    if o.holat == "tolov_kutilmoqda":
-        out.kod = ""
-    return out
+class CartItem(BaseModel):
+    product_id: int
+    soni: int = Field(ge=1)
 
 
-@router.post("/checkout", response_model=CheckoutResponse)
-def checkout(
-    payload: CheckoutRequest,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    """Savatni buyurtmaga aylantiradi — do'kon bo'yicha ajratib (rule 10).
-
-    2-bosqich tasdiqlash (rule 8): telefon tasdiqlanmagan bo'lsa, checkout
-    rad etiladi va mijoz "Kontaktni ulashish"ga yo'naltiriladi.
-    """
-    if not user.tel_tasdiqlangan:
-        raise HTTPException(
-            status_code=status.HTTP_428_PRECONDITION_REQUIRED,
-            detail=(
-                "Birinchi buyurtma uchun telefon raqamingizni tasdiqlang "
-                "('Kontaktni ulashish')."
-            ),
-        )
-
-    accessible = catalog_service.accessible_store_ids(db, user)
-    orders = order_service.create_orders_from_cart(
-        db,
-        user,
-        payload.items,
-        accessible,
-        payload.promo_kod,
-        yetkazish_turi=payload.yetkazish_turi,
-        manzil=payload.manzil,
-        pickup_points=payload.pickup_points,
-        lokatsiya_lat=payload.lokatsiya_lat,
-        lokatsiya_lng=payload.lokatsiya_lng,
-    )
-
-    # Referal: birinchi xaridni belgilash + referal egasiga 5% mukofot (phase 4.4).
-    jami_xarid = sum(float(o.jami_narx) for o in orders)
-    loyalty_service.mark_referral_purchased(db, user, jami_xarid)
-
-    # DIQQAT: bu yerda do'kon adminlariga XABAR YUBORILMAYDI.
-    # Balanssiz tizimda buyurtma avval to'lov kutadi; do'kon uni faqat Moliya
-    # to'lovni tasdiqlagach ko'radi (moliya.approve_buyurtma_tolov).
-
-    return CheckoutResponse(
-        buyurtmalar=[_order_public(o) for o in orders],
-        xabar=(
-            f"{len(orders)} ta buyurtma yaratildi. To'lovni amalga oshiring — "
-            "chek tasdiqlangach buyurtma kodi beriladi."
-        ),
-    )
+class CheckoutRequest(BaseModel):
+    items: list[CartItem]
+    promo_kod: str | None = None
+    yetkazish_turi: str = "kuryer"
+    manzil: str | None = None
+    lokatsiya_lat: float | None = None
+    lokatsiya_lng: float | None = None
+    pickup_point_id: int | None = None
 
 
-@router.get("/orders", response_model=List[OrderOut])
-def my_orders(
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    """Mijozning buyurtmalar tarixi (phase 7.5)."""
-    rows = db.scalars(
-        select(Order)
-        .where(Order.user_id == user.id)
-        .order_by(Order.yaratilgan_vaqt.desc())
-    ).all()
-    return [_order_public(o) for o in rows]
+def _money(value) -> Decimal:
+    return Decimal(str(value or 0)).quantize(Decimal("0.01"))
 
 
-@router.delete("/orders/{order_id}")
-def delete_order(
-    order_id: int,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    """Mijoz eski (tugagan) buyurtмани tarixidan o'chiradi."""
-    order = db.get(Order, order_id)
-    if order is None:
-        raise HTTPException(status_code=404, detail="Buyurtma topilmadi.")
-    order_service.delete_order_for_user(db, order, user)
-    return {"ochirildi": True}
+def _new_order_code(db: Session) -> str:
+    # The code is not returned to the buyer until payment approval.
+    for _ in range(25):
+        code = secrets.token_hex(3).upper()
+        if db.scalar(select(Order.id).where(Order.kod == code)) is None:
+            return code
+    raise HTTPException(503, "Buyurtma kodi yaratilmadi, qayta urinib ko'ring.")
 
 
-@router.get("/pickup-points", response_model=List[PickupPointOut])
-def pickup_points(
-    store_ids: str,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    """Berilgan do'konlar uchun olib ketish punktlari (Mini App checkout).
+@router.post("/checkout")
+def checkout(payload: CheckoutRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not payload.items:
+        raise HTTPException(400, "Savat bo'sh.")
+    if payload.yetkazish_turi not in ("kuryer", "pickup"):
+        raise HTTPException(400, "yetkazish_turi kuryer yoki pickup bo'lishi kerak.")
+    if payload.yetkazish_turi == "kuryer" and not (payload.manzil or "").strip() and payload.lokatsiya_lat is None:
+        raise HTTPException(400, "Kuryer uchun manzil yoki lokatsiya majburiy.")
 
-    store_ids — vergul bilan ajratilган (masalan "1,3"). Faqat faol punktlar.
-    """
-    ids = [int(x) for x in store_ids.split(",") if x.strip().isdigit()]
-    if not ids:
-        return []
-    rows = db.scalars(
-        select(PickupPoint).where(
-            PickupPoint.store_id.in_(ids), PickupPoint.holat == "faol"
-        )
-    ).all()
-    return [PickupPointOut.model_validate(p) for p in rows]
+    grouped: dict[int, list[tuple[Product, CartItem]]] = {}
+    for item in payload.items:
+        product = db.get(Product, item.product_id)
+        if product is None:
+            raise HTTPException(404, f"Mahsulot topilmadi: {item.product_id}")
+        if product.stop_list:
+            raise HTTPException(400, f"'{product.nomi}' stop-listda.")
+        if product.miqdor is not None and (product.miqdor <= 0 or item.soni > product.miqdor):
+            raise HTTPException(400, f"'{product.nomi}' yetarli miqdorda emas.")
+        grouped.setdefault(product.store_id, []).append((product, item))
 
+    created = []
+    # Validate all stores and calculate every order before adding any rows.
+    for store_id, lines in grouped.items():
+        store = db.get(Store, store_id)
+        if store is None:
+            raise HTTPException(404, "Do'kon topilmadi.")
+        if store.holat != "faol":
+            raise HTTPException(403, "Do'kon sotish uchun faol emas.")
 
-@router.get("/balance")
-def balance(
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    """Mini App uchun mijoz ACOM coin balansi (header'да ko'rsatiladi)."""
-    from ..services import coin as coin_service
+        total = _money(0)
+        product_json = []
+        for product, item in lines:
+            price = _money(product.yakuniy_narx or product.narxi)
+            total += price * item.soni
+            product_json.append({"product_id": product.id, "nomi": product.nomi,
+                                 "narxi": float(price), "soni": item.soni})
 
-    return {"coin_balans": float(coin_service.balance(user))}
+        if payload.promo_kod:
+            promo = db.scalar(select(PromoCode).where(PromoCode.store_id == store_id,
+                                                       PromoCode.kod == payload.promo_kod.strip()))
+            if promo and (promo.muddat is None or _as_aware(promo.muddat) >= _now()):
+                total = (total * _money(100 - promo.chegirma_foizi) / _money(100)).quantize(Decimal("0.01"))
+                promo.ishlatilish_soni += 1
 
+        delivery_type = payload.yetkazish_turi
+        pickup_point_id = None
+        delivery = Decimal("0")
+        if store.turi == "kafe":
+            if not store.ochiq:
+                raise HTTPException(400, "Kafe hozir yopiq.")
+            # Cafes require full prepayment and have no delivery schedule selection.
+            delivery_type = "pickup"
+            oldindan, qoldiq = total, Decimal("0")
+        elif delivery_type == "pickup":
+            if store.tarif_turi == "lite":
+                pp = db.get(PickupPoint, payload.pickup_point_id) if payload.pickup_point_id else None
+                if pp is None or pp.store_id != store_id or not pp.rasm_url or pp.lokatsiya_lat is None or pp.lokatsiya_lng is None:
+                    raise HTTPException(400, "Lite do'konida rasm va GPS li punkt majburiy.")
+            elif payload.pickup_point_id:
+                pp = db.get(PickupPoint, payload.pickup_point_id)
+                if pp is None or pp.store_id != store_id:
+                    raise HTTPException(400, "Olib ketish punkti noto'g'ri.")
+            pickup_point_id = payload.pickup_point_id
+            oldindan, qoldiq = total, Decimal("0")
+        else:
+            delivery = _money(store.kuryer_narxi)
+            oldindan = (total * Decimal("0.5") + delivery).quantize(Decimal("0.01"))
+            qoldiq = (total - total * Decimal("0.5")).quantize(Decimal("0.01"))
 
-@router.post("/miniapp-opened")
-def miniapp_opened(
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    """Mini App'ni birinchi ochган uchun bir martalik bonus (10 ACOM)."""
-    from ..services import coin as coin_service
-    from ..services import loyalty as loyalty_service
+        order = Order(store_id=store_id, user_id=user.id, mahsulotlar=product_json,
+                      jami_narx=float(total), holat="tolov_kutilmoqda", kod=_new_order_code(db),
+                      yetkazish_turi=delivery_type,
+                      manzil=payload.manzil.strip() if payload.manzil else None,
+                      pickup_point_id=pickup_point_id, lokatsiya_lat=payload.lokatsiya_lat,
+                      lokatsiya_lng=payload.lokatsiya_lng,
+                      oldindan_summa=float(oldindan), qoldiq_summa=float(qoldiq),
+                      yetkazish_narxi=float(delivery), tolov_holati="kutilmoqda")
+        db.add(order)
+        created.append(order)
 
-    # Mukofot referal egasiga beriladi (do'st Mini App'ni ochdi).
-    bonus = loyalty_service.award_miniapp_referral_bonus(db, user)
-    return {"bonus": bonus, "coin_balans": float(coin_service.balance(user))}
-
-
-@router.get("/reverse-geocode")
-def reverse_geocode(
-    lat: float,
-    lng: float,
-    user: User = Depends(get_current_user),
-):
-    """Koordinatani qisqa manzil nomiga aylantiradi (OpenStreetMap Nominatim).
-
-    Mijoz lokatsiya yuborganда manzil maydoni avtomatik to'ldirilsin — qo'lда
-    yozish shart bo'lmaydi. Xizmat javob bermasa — koordinata qaytadi (zaxira).
-    """
-    import httpx
-
-    fallback = f"{lat:.5f}, {lng:.5f}"
     try:
-        r = httpx.get(
-            "https://nominatim.openstreetmap.org/reverse",
-            params={
-                "format": "jsonv2",
-                "lat": lat,
-                "lon": lng,
-                "zoom": 18,
-                "addressdetails": 1,
-            },
-            headers={
-                "User-Agent": "ARZON-Shop/1.0 (telegram mini app)",
-                "Accept-Language": "ru,uz",
-            },
-            timeout=8,
-        )
-        if r.status_code != 200:
-            return {"nomi": fallback}
-        data = r.json()
-        adr = data.get("address", {}) or {}
-        # Qisqa nom: ko'cha/mahalla + shahar.
-        koча = (
-            adr.get("road")
-            or adr.get("pedestrian")
-            or adr.get("neighbourhood")
-            or adr.get("suburb")
-            or adr.get("city_district")
-        )
-        shahar = (
-            adr.get("city")
-            or adr.get("town")
-            or adr.get("village")
-            or adr.get("county")
-        )
-        uy = adr.get("house_number")
-        qismlar = []
-        if koча:
-            qismlar.append(f"{koча} {uy}" if uy else koча)
-        if shahar and shahar != koча:
-            qismlar.append(shahar)
-        nomi = ", ".join(qismlar) if qismlar else (data.get("display_name") or fallback)
-        # Juda uzun bo'lsa qisqartiramiz.
-        if len(nomi) > 120:
-            nomi = nomi[:117] + "..."
-        return {"nomi": nomi}
-    except Exception:  # noqa: BLE001
-        return {"nomi": fallback}
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(409, "Buyurtma yaratishda to'qnashuv yuz berdi. Qayta urinib ko'ring.")
+    for order in created:
+        db.refresh(order)
+    return {"buyurtmalar": [{"id": o.id, "store_id": o.store_id, "jami_narx": float(o.jami_narx),
+                             "oldindan_summa": float(o.oldindan_summa), "qoldiq_summa": float(o.qoldiq_summa),
+                             "holat": o.holat, "kod": ""} for o in created],
+            "xabar": "To'lov cheki yuklanishi kerak. Buyurtma kodi to'lov tasdiqlangach beriladi."}
 
 
-def _tolov_usuli_public(usul, base: str) -> dict:
-    """To'lov usulini Mini App uchun formatlaydi (QR uchun to'liq URL)."""
-    from ..services import coin as coin_service
-
-    d = coin_service.tolov_usuli_dict(usul)
-    if d.get("qr_rasm_url") and d["qr_rasm_url"].startswith("/media/") and base:
-        d["qr_rasm_url"] = f"{base}{d['qr_rasm_url']}"
-    return d
-
-
-@router.get("/tolov-usullari")
-def tolov_usullari(
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    """Mini App to'ldirish oynasi uchun faol to'lov usullari (task_1, task_3)."""
-    import os
-
-    from ..services import coin as coin_service
-
-    base = (
-        os.getenv("WEBHOOK_BASE_URL", "").strip()
-        or os.getenv("RENDER_EXTERNAL_URL", "").strip()
-    ).rstrip("/")
-    usullar = coin_service.list_active_tolov_usullari(db)
-    return [_tolov_usuli_public(u, base) for u in usullar]
-
-
-@router.post("/topup-request")
-def topup_request(
-    summa: float = Form(...),
-    tolov_usuli_id: int | None = Form(None),
-    chek: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    """Mini App ichida balans to'ldirish so'rovi (task_3).
-
-    Chek rasmi yuklanadi -> Gemini tahlil -> so'rov yaratiladi -> Moliya Botiga
-    (chek rasmi bilan) yuboriladi. Backend mantig'i bot oqimi bilan bir xil.
-    """
-    from .. import ai as ai_module
-    from ..services import coin as coin_service
-
-    raw = chek.file.read()
-    if not raw:
-        raise HTTPException(status_code=400, detail="Chek rasmi bo'sh.")
-    mime = chek.content_type or "image/jpeg"
-    natija = ai_module.analyze_receipt(raw, mime, summa)
-
-    sorov = coin_service.create_topup_request(
-        db,
-        user,
-        summa,
-        ai_summa=natija.get("summa"),
-        ai_sana=natija.get("sana"),
-        ai_xulosa=natija.get("xulosa"),
-        tolov_usuli_id=tolov_usuli_id,
-    )
-    usul = (
-        coin_service.get_tolov_usuli(db, tolov_usuli_id)
-        if tolov_usuli_id
-        else None
-    )
-    try:
-        from ..tgbots import notify
-
-        notify.notify_moliya_topup(
-            sorov_id=sorov.id,
-            ism=user.ism,
-            telegram_id=user.telegram_id,
-            summa=float(sorov.som_summasi),
-            ai_summa=natija.get("summa"),
-            ai_sana=natija.get("sana"),
-            ai_xulosa=natija.get("xulosa"),
-            chek_rel_url=None,
-            usul_nomi=usul.nomi if usul else None,
-            image_bytes=raw,
-        )
-    except ImportError:
-        pass
-    return {"sorov_id": sorov.id, "holat": sorov.holat}
+@router.get("/orders")
+def my_orders(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    orders = db.scalars(select(Order).where(Order.user_id == user.id).order_by(Order.yaratilgan_vaqt.desc())).all()
+    return [{"id": o.id, "store_id": o.store_id, "jami_narx": float(o.jami_narx), "holat": o.holat,
+             "kod": o.kod if o.tolov_holati == "tasdiqlandi" else "", "mahsulotlar": o.mahsulotlar,
+             "yetkazish_turi": o.yetkazish_turi, "oldindan_summa": float(o.oldindan_summa),
+             "qoldiq_summa": float(o.qoldiq_summa), "qaytarilgan_summa": float(o.qaytarilgan_summa)} for o in orders]
 
 
 @router.post("/orders/{order_id}/chek")
-def order_chek_yuklash(
-    order_id: int,
-    chek: UploadFile = File(...),
-    tolov_usuli_id: int | None = Form(None),
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    """Mijoz buyurtma to'lovi chekini yuklaydi (balanssiz tizim).
-
-    Mijoz kartaga pul o'tkazgach chekni SHU buyurtmaga biriktiradi. Gemini
-    chekdan summani o'qiydi (Moliyaga yordam), so'ng Moliya tasdiqlaydi va
-    buyurtma do'konga ketadi.
-    """
-    from .. import ai as ai_module
-    from ..models import Media
-
+async def order_receipt(order_id: int, chek: UploadFile = File(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     order = db.get(Order, order_id)
     if order is None or order.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Buyurtma topilmadi.")
-    if order.holat != "tolov_kutilmoqda":
-        raise HTTPException(
-            status_code=400,
-            detail="Bu buyurtma to'lov kutish holatida emas.",
-        )
-
-    raw = chek.file.read()
+        raise HTTPException(404, "Buyurtma topilmadi.")
+    if order.tolov_holati == "tasdiqlandi":
+        raise HTTPException(400, "To'lov allaqachon tasdiqlangan.")
+    raw = await chek.read()
     if not raw:
-        raise HTTPException(status_code=400, detail="Chek rasmi bo'sh.")
-    mime = chek.content_type or "image/jpeg"
-
-    # Rasmni bazaga saqlaymiz (Render diski deploy'da tozalanadi).
-    m = Media(mime=mime, data=raw, yuklagan_admin=None)
-    db.add(m)
-    db.flush()
-
-    natija = ai_module.analyze_receipt(raw, mime, float(order.jami_narx))
-    order.chek_rasm_url = f"/media/db/{m.id}"
-    order.tolov_usuli_id = tolov_usuli_id
-    order.tolov_holati = "kutilmoqda"
-    order.ai_ochigan_summa = natija.get("summa")
-    order.ai_xulosasi = natija.get("xulosa")
+        raise HTTPException(400, "Chek bo'sh.")
+    if len(raw) > 8 * 1024 * 1024:
+        raise HTTPException(413, "Chek rasmi 8 MB dan oshmasin.")
+    mime = (chek.content_type or "image/jpeg").lower()
+    if not mime.startswith("image/"):
+        raise HTTPException(400, "Faqat rasm yuklash mumkin.")
+    media = Media(mime=mime, data=raw, yuklagan_user_id=user.id, maxfiy=False)
+    db.add(media); db.flush()
+    result = ai.analyze_receipt(raw, mime, float(order.oldindan_summa))
+    order.chek_rasm_url = f"/media/db/{media.id}"
+    order.ai_ochigan_summa = result.get("summa")
+    order.ai_xulosasi = result.get("xulosa")
     db.commit()
-
-    # Moliyaga xabar (chek rasmi bilan).
-    try:
-        from ..tgbots import notify
-
-        notify.notify_moliya_topup(
-            sorov_id=order.id,
-            ism=user.ism,
-            telegram_id=user.telegram_id,
-            summa=float(order.jami_narx),
-            ai_summa=natija.get("summa"),
-            ai_sana=natija.get("sana"),
-            ai_xulosa=natija.get("xulosa"),
-            chek_rel_url=None,
-            usul_nomi=f"Buyurtma {order.kod}",
-            image_bytes=raw,
-        )
-    except ImportError:
-        pass
-    # Kod bu yerda ham berilmaydi — u faqat Moliya tasdiqlagach ochiladi.
-    return {"ok": True, "tolov_holati": order.tolov_holati}
+    return {"ok": True, "tolov_holati": order.tolov_holati, "ai_xulosasi": order.ai_xulosasi}
 
 
-class PromoCheck(BaseModel):
-    kod: str = Field(min_length=1, max_length=32)
-    store_ids: list[int] = []
-
-
-@router.post("/promo/check")
-def promo_check(
-    payload: PromoCheck,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    """Promo kodni buyurtmadan OLDIN tekshiradi.
-
-    Mijoz savatda kodni kiritganda darhol javob ko'rsin: kod to'g'rimi, necha
-    foiz chegirma va qaysi do'konga tegishli. Chegirma checkout'da qo'llanadi
-    (services/orders._apply_promo) — bu yerda faqat tekshiruv, hech narsa
-    o'zgarmaydi va ishlatilish soni oshmaydi.
-    """
-    from ..models import PromoCode, Store, _as_aware, _now
-
-    kod = payload.kod.strip()
-    q = select(PromoCode).where(PromoCode.kod == kod)
-    if payload.store_ids:
-        q = q.where(PromoCode.store_id.in_(payload.store_ids))
-    promo = db.scalar(q)
-
-    if promo is None:
-        return {
-            "ok": False,
-            "sabab": "Bunday promo kod topilmadi yoki savatingizdagi "
-                     "do'konlarga tegishli emas.",
-        }
-    if promo.muddat and _as_aware(promo.muddat) < _now():
-        return {"ok": False, "sabab": "Promo kod muddati tugagan."}
-
-    store = db.get(Store, promo.store_id)
-    return {
-        "ok": True,
-        "kod": promo.kod,
-        "chegirma_foizi": promo.chegirma_foizi,
-        "store_id": promo.store_id,
-        "store_nomi": store.nomi if store else None,
-        "muddat": _as_aware(promo.muddat).isoformat() if promo.muddat else None,
-    }
-
-
-@router.post("/confirm-phone")
-def confirm_phone(
-    payload: PhoneConfirmRequest,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    """Kontaktni ulashish — telefonni tasdiqlash (rule 8, 2-bosqich).
-
-    Telegram "Kontaktni ulashish" tugmasi orqali yuborilgan raqam bot
-    tomonidan backendga uzatiladi. SMS-OTP kerak emas (rule 8 notogri).
-    """
-    user.tel = payload.tel
-    user.tel_tasdiqlangan = True
+@router.post("/orders/{order_id}/mijoz-rad-etdi")
+def customer_rejected(order_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    order = db.get(Order, order_id)
+    if order is None or order.user_id != user.id:
+        raise HTTPException(404, "Buyurtma topilmadi.")
+    if order.yetkazish_turi != "kuryer":
+        raise HTTPException(400, "Bu holat faqat kuryerli buyurtma uchun.")
+    if order.holat not in ("yolda", "tayyorlanmoqda"):
+        raise HTTPException(400, "Bu buyurtmani mijoz rad eta olmaydi.")
+    delivery = _money(order.yetkazish_narxi)
+    refund = (_money(order.oldindan_summa) - delivery).quantize(Decimal("0.01"))
+    order.qaytarilgan_summa = float(max(refund, Decimal("0")))
+    order.holat = "mijoz_rad_etdi"
     db.commit()
-    return {"tel_tasdiqlangan": True, "xabar": "Telefon tasdiqlandi."}
+    return {"qaytarilgan_summa": float(order.qaytarilgan_summa), "holat": order.holat}

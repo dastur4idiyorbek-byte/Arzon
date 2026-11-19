@@ -1,554 +1,237 @@
-"""ORM modellar — spec'dagi database_schema bo'limiga aynan mos.
-
-Muhim arxitektura eslatmalari (critical_architecture_rules):
-  * stores'da faqat `mahfiy_kirish_kodi` bor — "korinish/havola" maydoni YO'Q
-    (rule 2). Do'kon darajasidagi bitta kod butun mahfiy to'plamni ochadi
-    (rule 3).
-  * products.korinish 'ommaviy' yoki 'mahfiy' bo'ladi — mahsulotga alohida
-    kod biriktirilmaydi (rule 3).
-  * loyalty_cards / referrals user_id'ga bog'lanadi, store_id'ga emas (rule 9).
-  * unlocked_stores mijoz kiritgan kodni saqlaydi; katalog ko'rsatilганда
-    joriy kod bilan solishtiriladi (rule 5, rule 6).
-"""
+"""ARZON 2.0 SQLAlchemy models (native-user identity, subscription commerce)."""
 from datetime import datetime, timezone
-
-from sqlalchemy import (
-    JSON,
-    BigInteger,
-    Boolean,
-    DateTime,
-    ForeignKey,
-    Integer,
-    LargeBinary,
-    Numeric,
-    String,
-    Text,
-    UniqueConstraint,
-)
+from sqlalchemy import JSON, BigInteger, Boolean, DateTime, ForeignKey, Integer, LargeBinary, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
 from .database import Base
 
 
-def _now() -> datetime:
+def _now():
     return datetime.now(timezone.utc)
 
 
-def _as_aware(dt: datetime | None) -> datetime | None:
-    """Naive datetime'ni UTC deb belgilaydi.
-
-    SQLite timezone'ni saqlamaydi (qiymat naive qaytadi), Postgres esa aware
-    qaytaradi. Taqqoslashда ikkalasi ham aware bo'lishi uchun shu yordamchi.
-    """
-    if dt is not None and dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
-    return dt
-
-
-def admin_identity(user) -> int:
-    """Do'kon adminini bildiruvchi yagona raqam (stores.admin_ids ichida turadi).
-
-    * Telegram foydalanuvchisi -> `telegram_id` (doim MUSBAT).
-    * Native (email/Google/Apple) hisob -> `-user.id` (MANFIY).
-
-    Telegram ID'lar hech qachon manfiy bo'lmagani uchun ikki turdagi hisob
-    to'qnashmaydi. Shu tufayli email bilan kirgan hisob ham do'kon admini
-    bo'la oladi (botlar mantig'i o'zgarmaydi).
-
-    DIQQAT: manfiy ID'ga Telegram orqali xabar yuborib bo'lmaydi — bunday
-    adminlarga bildirishnoma push orqali boradi (services/push.py).
-    """
-    if user.telegram_id:
-        return int(user.telegram_id)
-    return -int(user.id)
-
-
-class Media(Base):
-    """Ilovadan yuklangan rasmlar (mahsulot rasmi va h.k.).
-
-    NEGA BAZADA: Render diski har deploy'da tozalanadi, shuning uchun faylni
-    diskka saqlab bo'lmaydi. Tashqi xizmat (S3) esa ortiqcha murakkablik —
-    rasmlar kichik (siqilgan ~200 KB), baza bemalol ko'taradi.
-
-    Telegram bot orqali yuklangan rasmlar esa avvalgidek file_id bilan
-    saqlanadi va /media/{file_id} orqali beriladi (ikkalasi yonma-yon ishlaydi).
-    """
-
-    __tablename__ = "media"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    mime: Mapped[str] = mapped_column(String(64), default="image/jpeg")
-    data: Mapped[bytes] = mapped_column(LargeBinary)
-    # Kim yuklagani (tozalash/tekshiruv uchun).
-    yuklagan_admin: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    yaratilgan_vaqt: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_now
-    )
-
-
-class Store(Base):
-    __tablename__ = "stores"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    nomi: Mapped[str] = mapped_column(String(255))
-    logo: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    # admin_ids — Telegram ID'lar ro'yxati. Portativlik uchun JSON sifatida
-    # saqlanadi (SQLite'da massiv turi yo'q; Postgres'da ham JSON ishlaydi).
-    # Bazada saqlanadi — .env'dagi statik ro'yxat EMAS (rule 11).
-    admin_ids: Mapped[list] = mapped_column(JSON, default=list)
-    # Do'konning yagona mahfiy kirish kodi (rule 3). Faqat Boshqaruv Botida
-    # yaratiladi/yangilanadi (rule 4).
-    mahfiy_kirish_kodi: Mapped[str | None] = mapped_column(
-        String(10), nullable=True
-    )
-    holat: Mapped[str] = mapped_column(String(10), default="faol")
-    # Do'kon (admin) kutilayotgan balansi — xariddan tushган sof summa (KGS).
-    # Pul yechilганда kamayadi. NULL bardoshli: kodда `or 0`.
-    kutilayotgan_balans: Mapped[float | None] = mapped_column(
-        Numeric(14, 2), nullable=True, default=0
-    )
-    # Mahsulot limiti (pullik do'kon ochishда tanlangan). NULL = cheksiz.
-    mahsulot_limiti: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    # Oylik arenda (ijara) summasi — menejer belgilaydi (som). NULL = arenda yo'q.
-    arenda_summasi: Mapped[float | None] = mapped_column(
-        Numeric(14, 2), nullable=True
-    )
-    # Arenda muddati qachon tugashi. O'tса va to'lanmasа holat 'vaqtincha_toxtatilgan'.
-    arenda_muddati_tugashi: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-
-    products: Mapped[list["Product"]] = relationship(
-        back_populates="store", cascade="all, delete-orphan"
-    )
-
-
-class Product(Base):
-    __tablename__ = "products"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    store_id: Mapped[int] = mapped_column(
-        ForeignKey("stores.id", ondelete="CASCADE"), index=True
-    )
-    nomi: Mapped[str] = mapped_column(String(255))
-    narxi: Mapped[float] = mapped_column(Numeric(12, 2))
-    olcham: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    rang: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    rasm_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    # Bir nechta rasm (max 10) — /media/<file_id> ko'rinishidagi URL'lar ro'yxati.
-    rasm_urls: Mapped[list | None] = mapped_column(JSON, nullable=True)
-    # Rasm nisbati (Mini App'да ko'rsatish uchun): '1:1','4:3','3:4','9:16','16:9'.
-    rasm_nisbati: Mapped[str | None] = mapped_column(
-        String(8), nullable=True, default="1:1"
-    )
-    tavsif: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # Chegirma: foiz (0 = yo'q), yakuniy narx (hisoblangan), muddat (ixtiyoriy).
-    skidka_foizi: Mapped[int | None] = mapped_column(
-        Integer, nullable=True, default=0
-    )
-    yakuniy_narx: Mapped[float | None] = mapped_column(
-        Numeric(12, 2), nullable=True
-    )
-    skidka_muddati: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    # Ombor: qolgan dona. NULL = cheksiz. 0 = "Tugadi" (sotib bo'lmaydi).
-    miqdor: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    # 'ommaviy' | 'mahfiy' — mahfiy do'konning kodi orqali ochiladi (rule 3).
-    korinish: Mapped[str] = mapped_column(String(10), default="ommaviy")
-
-    store: Mapped["Store"] = relationship(back_populates="products")
+def _as_aware(value):
+    if value is not None and value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
 
 
 class User(Base):
     __tablename__ = "users"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    # BigInteger — Telegram ID'lar 2.1 mlrd (INT4) dан oshishi mumkin (Postgres).
-    # Native ilova (email/Google/Apple) foydalanuvchilarida telegram_id bo'lmaydi
-    # -> nullable (Telegram bot foydalanuvchilarида to'ladi).
-    telegram_id: Mapped[int | None] = mapped_column(
-        BigInteger, unique=True, index=True, nullable=True
-    )
+    id: Mapped[int] = mapped_column(primary_key=True)  # ARZON ID
     ism: Mapped[str | None] = mapped_column(String(255), nullable=True)
     tel: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    # --- Native ilova autentifikatsiyasi (Phase 2) ---
     email: Mapped[str | None] = mapped_column(String(255), unique=True, index=True, nullable=True)
-    parol_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)  # bcrypt
+    parol_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     google_sub: Mapped[str | None] = mapped_column(String(255), unique=True, index=True, nullable=True)
     apple_sub: Mapped[str | None] = mapped_column(String(255), unique=True, index=True, nullable=True)
     parol_reset_token: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    parol_reset_muddat: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    # Kontaktni ulashish orqali tasdiqlanadi (rule 8, 2-bosqich).
-    tel_tasdiqlangan: Mapped[bool] = mapped_column(Boolean, default=False)
-    # ACOM coin balansi (KGS bilan 1:1). NULL bardoshli: kodда `or 0`.
-    coin_balans: Mapped[float | None] = mapped_column(
-        Numeric(14, 2), nullable=True, default=0
-    )
-    # Bir martalik sodiqlik bonuslari (start / Mini App ochish) — NULL bardoshli.
-    start_bonus_berildi: Mapped[bool | None] = mapped_column(
-        Boolean, nullable=True, default=False
-    )
-    miniapp_bonus_berildi: Mapped[bool | None] = mapped_column(
-        Boolean, nullable=True, default=False
-    )
-    # Referal chegirma vaucherlari — taklif qilgan do'st xarid qilganда 1 tadan
-    # qo'shiladi; egasi keyingi xaridida har biri 5% chegirma beradi (NULL=0).
-    chegirma_vaucher: Mapped[int | None] = mapped_column(
-        Integer, nullable=True, default=0
-    )
-    # Native ilova push-bildirishnoma tokeni (Expo push token, Phase 5). NULL —
-    # push yo'q (mas. faqat Telegram bot foydalanuvchisi).
-    expo_push_token: Mapped[str | None] = mapped_column(
-        String(255), nullable=True
-    )
-    yaratilgan_vaqt: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_now
-    )
+    parol_reset_muddat: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_kuryer: Mapped[bool] = mapped_column(Boolean, default=False)
+    instagram_id: Mapped[str | None] = mapped_column(String(128), unique=True, index=True, nullable=True)
+    expo_push_token: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    yaratilgan_vaqt: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class Media(Base):
+    __tablename__ = "media"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    mime: Mapped[str] = mapped_column(String(64), default="image/jpeg")
+    data: Mapped[bytes] = mapped_column(LargeBinary)
+    yuklagan_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    maxfiy: Mapped[bool] = mapped_column(Boolean, default=False)
+    yaratilgan_vaqt: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class ObunaTarif(Base):
+    __tablename__ = "obuna_tariflari"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    turi: Mapped[str] = mapped_column(String(10), index=True)  # lite|pro|kafe
+    nomi: Mapped[str] = mapped_column(String(100))
+    mahsulot_limiti: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    oylik_narx: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
+    faol: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class SotuvchiSorovi(Base):
+    __tablename__ = "sotuvchi_sorovlari"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    sorov_turi: Mapped[str] = mapped_column(String(20), default="yangi")
+    tarif_id: Mapped[int | None] = mapped_column(ForeignKey("obuna_tariflari.id", ondelete="SET NULL"), nullable=True)
+    tarif_turi: Mapped[str] = mapped_column(String(10), default="lite")
+    dokon_turi: Mapped[str] = mapped_column(String(10), default="magazin")
+    fish: Mapped[str] = mapped_column(String(255))
+    tel: Mapped[str] = mapped_column(String(32))
+    dokon_nomi: Mapped[str] = mapped_column(String(255))
+    manzil: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    ish_vaqti: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    dokon_rasm_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    lokatsiya_lat: Mapped[float | None] = mapped_column(Numeric(10, 7), nullable=True)
+    lokatsiya_lng: Mapped[float | None] = mapped_column(Numeric(10, 7), nullable=True)
+    pasport_oldi_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pasport_orqa_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    selfi_pasport_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    chek_rasm_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ai_ochigan_summa: Mapped[float | None] = mapped_column(Numeric(14, 2), nullable=True)
+    ai_xulosasi: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    holat: Mapped[str] = mapped_column(String(20), default="kutilmoqda", index=True)
+    yaratilgan_vaqt: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class Store(Base):
+    __tablename__ = "stores"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nomi: Mapped[str] = mapped_column(String(255))
+    turi: Mapped[str] = mapped_column(String(10), default="magazin")
+    tarif_turi: Mapped[str] = mapped_column(String(10), default="lite")
+    logo: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    boshqaruvchi_ismi: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    manzil: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    tel: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    ish_vaqti: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    lokatsiya_lat: Mapped[float | None] = mapped_column(Numeric(10, 7), nullable=True)
+    lokatsiya_lng: Mapped[float | None] = mapped_column(Numeric(10, 7), nullable=True)
+    ochiq: Mapped[bool] = mapped_column(Boolean, default=True)
+    tayyorlanish_vaqti: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    yetkazish_rejimi: Mapped[str] = mapped_column(String(20), default="ozi")
+    kuryer_narxi: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    admin_ids: Mapped[list] = mapped_column(JSON, default=list)  # User.id values
+    tolov_usullari: Mapped[list] = mapped_column(JSON, default=list)
+    pasport_oldi_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pasport_orqa_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    selfi_pasport_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    holat: Mapped[str] = mapped_column(String(30), default="faol", index=True)
+    mahsulot_limiti: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    arenda_muddati_tugashi: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    obuna_muddati_tugashi: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    products: Mapped[list["Product"]] = relationship(back_populates="store", cascade="all, delete-orphan")
+
+
+class Product(Base):
+    __tablename__ = "products"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    store_id: Mapped[int] = mapped_column(ForeignKey("stores.id", ondelete="CASCADE"), index=True)
+    nomi: Mapped[str] = mapped_column(String(255))
+    narxi: Mapped[float] = mapped_column(Numeric(12, 2))
+    kategoriya: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    holat_turi: Mapped[str] = mapped_column(String(20), default="yangi")
+    holat_izohi: Mapped[str | None] = mapped_column(Text, nullable=True)
+    porsiya: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    tayyorlanish_daq: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    stop_list: Mapped[bool] = mapped_column(Boolean, default=False)
+    olcham: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    rang: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    rasm_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    rasm_urls: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    rasm_nisbati: Mapped[str | None] = mapped_column(String(8), default="1:1", nullable=True)
+    tavsif: Mapped[str | None] = mapped_column(Text, nullable=True)
+    skidka_foizi: Mapped[int] = mapped_column(Integer, default=0)
+    yakuniy_narx: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    skidka_muddati: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    miqdor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    store: Mapped["Store"] = relationship(back_populates="products")
 
 
 class Order(Base):
     __tablename__ = "orders"
-
     id: Mapped[int] = mapped_column(primary_key=True)
-    # Har bir buyurtma bitta do'konga tegishli — savat store_id bo'yicha
-    # ajratiladi (rule 10).
-    store_id: Mapped[int] = mapped_column(
-        ForeignKey("stores.id", ondelete="CASCADE"), index=True
-    )
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), index=True
-    )
+    store_id: Mapped[int] = mapped_column(ForeignKey("stores.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     mahsulotlar: Mapped[list] = mapped_column(JSON)
     jami_narx: Mapped[float] = mapped_column(Numeric(12, 2))
-    holat: Mapped[str] = mapped_column(String(20), default="yangi")
-    # 6 xonali takrorlanmas kod (phase 3.1).
+    holat: Mapped[str] = mapped_column(String(30), default="yangi", index=True)
     kod: Mapped[str] = mapped_column(String(6), unique=True, index=True)
-    yaratilgan_vaqt: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_now
-    )
-    # Kod amal qilish muddati (14 kun — phase 3.1).
-    amal_qilish_muddati: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    # Yetkazib berish: 'kuryer' (manzilga) yoki 'pickup' (punktdan olish).
-    yetkazish_turi: Mapped[str] = mapped_column(String(10), default="kuryer")
-    # Kuryer uchun manzil matni.
+    yaratilgan_vaqt: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    yetkazish_turi: Mapped[str] = mapped_column(String(20), default="kuryer")
     manzil: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    # Kuryer telefon raqami — "Yo'lda" holatiда admin qo'lда kiritadi (task_2).
-    kuryer_tel: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    # --- To'lov (balanssiz tizim) ---
-    # Mijoz balansi YO'Q: har buyurtma uchun alohida to'lov qilinadi va cheki
-    # shu buyurtmaga biriktiriladi. Moliya tasdiqlagachgina buyurtma do'konga
-    # ketadi (holat 'tolov_kutilmoqda' -> 'yangi').
-    #   kutilmoqda | tasdiqlandi | rad_etildi
-    tolov_holati: Mapped[str | None] = mapped_column(
-        String(16), nullable=True, default="kutilmoqda"
-    )
-    tolov_usuli_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    kuryer_tel: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    pickup_point_id: Mapped[int | None] = mapped_column(ForeignKey("pickup_points.id", ondelete="SET NULL"), nullable=True)
+    yetkazish_narxi: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    lokatsiya_lat: Mapped[float | None] = mapped_column(Numeric(10, 7), nullable=True)
+    lokatsiya_lng: Mapped[float | None] = mapped_column(Numeric(10, 7), nullable=True)
+    oldindan_summa: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    qoldiq_summa: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    qaytarilgan_summa: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    tolov_holati: Mapped[str] = mapped_column(String(20), default="kutilmoqda")
     chek_rasm_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    # Gemini chekdan o'qigan summa/sana va xulosasi (Moliyaga yordam).
-    ai_ochigan_summa: Mapped[float | None] = mapped_column(
-        Numeric(14, 2), nullable=True
-    )
+    ai_ochigan_summa: Mapped[float | None] = mapped_column(Numeric(14, 2), nullable=True)
     ai_xulosasi: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    tolov_rad_sababi: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    # Yetkazib berish narxi (som). Manzilga qarab hisoblanadi (hozircha 100).
-    yetkazish_narxi: Mapped[float | None] = mapped_column(
-        Numeric(12, 2), nullable=True, default=0
-    )
-    # Mijoz yuborgan joylashuv (lokatsiya) — kuryer/punkt uchun.
-    lokatsiya_lat: Mapped[float | None] = mapped_column(
-        Numeric(10, 7), nullable=True
-    )
-    lokatsiya_lng: Mapped[float | None] = mapped_column(
-        Numeric(10, 7), nullable=True
-    )
-    # Punktdan olish uchun tanlangan punkt.
-    pickup_point_id: Mapped[int | None] = mapped_column(
-        ForeignKey("pickup_points.id", ondelete="SET NULL"), nullable=True
-    )
-    tasdiqlangan_vaqt: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    # Kod'ni kim tasdiqlagani (admin telegram_id) — audit uchun (phase 3.3).
-    # BigInteger — Telegram ID'lar katta bo'lishi mumkin.
-    tasdiqlagan_kim: Mapped[int | None] = mapped_column(
-        BigInteger, nullable=True
-    )
-    # Bekor qilish sababi (admin kiritadi, mijozga yuboriladi).
-    bekor_sababi: Mapped[str | None] = mapped_column(
-        String(255), nullable=True
-    )
-
-
-class LoyaltyCard(Base):
-    __tablename__ = "loyalty_cards"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    # user_id'ga bog'lanadi — barcha do'konlar bo'yicha umumiy (rule 9).
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), index=True
-    )
-    turi: Mapped[str] = mapped_column(String(10))  # 'kumush' | 'oltin'
-    kod: Mapped[str | None] = mapped_column(String(10), nullable=True)
-    yaratilgan_vaqt: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_now
-    )
-
-
-class Referral(Base):
-    __tablename__ = "referrals"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    # Taklif qilingan (yangi) foydalanuvchi.
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), index=True
-    )
-    # Taklif qilgan foydalanuvchi.
-    referred_by: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), index=True
-    )
-    # 'start_bosgan' | 'xarid_qilgan'
-    holat: Mapped[str] = mapped_column(String(20), default="start_bosgan")
-    yaratilgan_vaqt: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_now
-    )
-
-    __table_args__ = (
-        UniqueConstraint("user_id", name="uq_referral_user"),
-    )
+    tasdiqlangan_vaqt: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    kuryer_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
 class PromoCode(Base):
     __tablename__ = "promo_codes"
-
     id: Mapped[int] = mapped_column(primary_key=True)
-    # Promo do'kon darajasida (rule 9 sodiqlikdan farqli — promo store_id'ga).
-    store_id: Mapped[int] = mapped_column(
-        ForeignKey("stores.id", ondelete="CASCADE"), index=True
-    )
+    store_id: Mapped[int] = mapped_column(ForeignKey("stores.id", ondelete="CASCADE"), index=True)
     kod: Mapped[str] = mapped_column(String(32), index=True)
     chegirma_foizi: Mapped[int] = mapped_column(Integer)
-    muddat: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    muddat: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ishlatilish_soni: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class PickupPoint(Base):
     __tablename__ = "pickup_points"
-
     id: Mapped[int] = mapped_column(primary_key=True)
-    store_id: Mapped[int] = mapped_column(
-        ForeignKey("stores.id", ondelete="CASCADE"), index=True
-    )
+    store_id: Mapped[int] = mapped_column(ForeignKey("stores.id", ondelete="CASCADE"), index=True)
     nomi: Mapped[str] = mapped_column(String(255))
     manzil: Mapped[str] = mapped_column(String(512))
     ish_vaqti: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    holat: Mapped[str] = mapped_column(String(10), default="faol")
-    # Lokatsiyadан avtomatik generatsiya qilinadigan Google Maps havolasi (task_3).
+    rasm_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    lokatsiya_lat: Mapped[float | None] = mapped_column(Numeric(10, 7), nullable=True)
+    lokatsiya_lng: Mapped[float | None] = mapped_column(Numeric(10, 7), nullable=True)
     google_maps_link: Mapped[str | None] = mapped_column(Text, nullable=True)
+    holat: Mapped[str] = mapped_column(String(10), default="faol")
 
 
-class UnlockedStore(Base):
-    __tablename__ = "unlocked_stores"
-
+class YetkazishHudud(Base):
+    __tablename__ = "yetkazish_hududlari"
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), index=True
-    )
-    store_id: Mapped[int] = mapped_column(
-        ForeignKey("stores.id", ondelete="CASCADE"), index=True
-    )
-    # Mijoz kiritgan kod. Katalogda joriy stores.mahfiy_kirish_kodi bilan
-    # solishtiriladi — mos kelmasa yopiq hisoblanadi (rule 6).
-    ishlatilgan_kod: Mapped[str] = mapped_column(String(10))
-    ochilgan_vaqt: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_now
-    )
-
-    __table_args__ = (
-        UniqueConstraint("user_id", "store_id", name="uq_unlocked_user_store"),
-    )
+    store_id: Mapped[int | None] = mapped_column(ForeignKey("stores.id", ondelete="CASCADE"), nullable=True, index=True)
+    hudud_nomi: Mapped[str] = mapped_column(String(255))
+    vaqt_oraligi: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    boshlanish_soati: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    narx: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    faol: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
-# ===========================================================================
-# ACOM coin tizimi (ichki hisob-kitob birligi, 1 ACOM = 1 KGS)
-# ===========================================================================
-class PlatformaHisob(Base):
-    """Platforma biznes karta ma'lumotlari — mijoz balans to'ldirishда o'tkazadi.
-
-    Bitta yozuv (super-admin sozlaydi). Bir nechta bo'lsa oxirgisi ishlatiladi.
-    """
-
-    __tablename__ = "platforma_hisob"
-
+class PlatformaSozlama(Base):
+    __tablename__ = "platforma_sozlamalari"
     id: Mapped[int] = mapped_column(primary_key=True)
-    karta_raqami: Mapped[str] = mapped_column(String(32))
-    hisob_egasi: Mapped[str] = mapped_column(String(255))
-    yangilangan_vaqt: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_now
-    )
+    faqat_platforma_kuryeri: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class Shikoyat(Base):
+    __tablename__ = "shikoyatlar"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    store_id: Mapped[int] = mapped_column(ForeignKey("stores.id", ondelete="CASCADE"), index=True)
+    matn: Mapped[str] = mapped_column(Text)
+    rasm_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    holat: Mapped[str] = mapped_column(String(20), default="yangi")
+    admin_javobi: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class SotuvchiTolovUsuli(Base):
+    __tablename__ = "sotuvchi_tolov_usullari"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    store_id: Mapped[int] = mapped_column(ForeignKey("stores.id", ondelete="CASCADE"), index=True)
+    turi: Mapped[str] = mapped_column(String(20))
+    nomi: Mapped[str] = mapped_column(String(100))
+    qiymat: Mapped[str | None] = mapped_column(Text, nullable=True)
+    egasi: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    qr_rasm_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    faol: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
 class PlatformaTolovUsuli(Base):
-    """Balans to'ldirish uchun to'lov usullari (super-admin sozlaydi).
-
-    Bir nechta usul: karta, telefon (mobil to'lov), QR kod, crypto hamyon.
-    Faqat faol=True usullar mijozларга ko'rinadi (tartib_raqami bo'yicha).
-    """
-
     __tablename__ = "platforma_tolov_usullari"
-
     id: Mapped[int] = mapped_column(primary_key=True)
-    # karta / telefon / qr_kod / crypto
     turi: Mapped[str] = mapped_column(String(20))
-    nomi: Mapped[str] = mapped_column(String(50))  # "Optima Bank", "Elsom"...
-    # karta raqami / telefon raqami / crypto manzili (QR uchun bo'sh bo'lishi mumkin)
+    nomi: Mapped[str] = mapped_column(String(100))
     qiymat: Mapped[str | None] = mapped_column(Text, nullable=True)
-    egasi: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    egasi: Mapped[str | None] = mapped_column(String(255), nullable=True)
     qr_rasm_url: Mapped[str | None] = mapped_column(Text, nullable=True)
-    izoh: Mapped[str | None] = mapped_column(Text, nullable=True)
     faol: Mapped[bool] = mapped_column(Boolean, default=True)
-    tartib_raqami: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)
-
-
-class CoinToldirishSorovi(Base):
-    """Balansni to'ldirish so'rovi — chek rasmi + AI xulosasi bilan."""
-
-    __tablename__ = "coin_toldirish_sorovlari"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), index=True
-    )
-    som_summasi: Mapped[float] = mapped_column(Numeric(14, 2))  # KGS
-    # Mijoz tanlagan to'lov usuli (yangilanish: bir nechta usul).
-    tolov_usuli_id: Mapped[int | None] = mapped_column(
-        ForeignKey("platforma_tolov_usullari.id", ondelete="SET NULL"),
-        nullable=True,
-    )
-    chek_rasm_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    # Gemini Flash o'qigan (TAKLIF — rule 2, yakuniy qaror emas).
-    ai_ochigan_summa: Mapped[float | None] = mapped_column(
-        Numeric(14, 2), nullable=True
-    )
-    ai_ochigan_sana: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    # mos_keladi / mos_kelmaydi / aniq_emas
-    ai_xulosasi: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    # kutilmoqda / tasdiqlandi / rad_etildi
-    holat: Mapped[str] = mapped_column(String(20), default="kutilmoqda")
-    tasdiqlagan_admin: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    rad_sababi: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    yaratilgan_vaqt: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_now
-    )
-
-
-class PulYechishSorovi(Base):
-    """Admin (do'kon) pul yechish so'rovi — kutilayotgan balansdan."""
-
-    __tablename__ = "pul_yechish_sorovlari"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    store_id: Mapped[int] = mapped_column(
-        ForeignKey("stores.id", ondelete="CASCADE"), index=True
-    )
-    sorolgan_summa: Mapped[float] = mapped_column(Numeric(14, 2))  # KGS
-    karta_raqami: Mapped[str] = mapped_column(String(32))
-    # kutilmoqda / yopildi / rad_etildi
-    holat: Mapped[str] = mapped_column(String(20), default="kutilmoqda")
-    soragan_admin: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    yaratilgan_vaqt: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_now
-    )
-    yopilgan_vaqt: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-
-
-class CoinQaytarishSorovi(Base):
-    """Mijoz ishlatilmagan balansini qaytarib olish so'rovi."""
-
-    __tablename__ = "coin_qaytarish_sorovlari"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), index=True
-    )
-    sorolgan_summa: Mapped[float] = mapped_column(Numeric(14, 2))  # KGS
-    karta_raqami: Mapped[str] = mapped_column(String(32))
-    # kutilmoqda / yopildi / rad_etildi
-    holat: Mapped[str] = mapped_column(String(20), default="kutilmoqda")
-    yaratilgan_vaqt: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_now
-    )
-    yopilgan_vaqt: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-
-
-class DokonSorovi(Base):
-    """Do'kon ochish so'rovi — mijoz to'lov qiladi, hisobchi tasdiqlaydi,
-    so'ng do'kon avtomatik ochiladi (admin_telegram_id egasi bo'ladi).
-    """
-
-    __tablename__ = "dokon_sorovlari"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    # So'rov yuborgan mijoz (Savdo boti foydalanuvchisi).
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), index=True
-    )
-    dokon_nomi: Mapped[str] = mapped_column(String(255))
-    # Bo'lajak admin Telegram ID (mijoz kiritadi — odatda o'zi).
-    admin_telegram_id: Mapped[int] = mapped_column(BigInteger)
-    mahsulot_soni: Mapped[int] = mapped_column(Integer)  # 10..100
-    summa: Mapped[float] = mapped_column(Numeric(14, 2))  # KGS
-    tolov_usuli_id: Mapped[int | None] = mapped_column(
-        ForeignKey("platforma_tolov_usullari.id", ondelete="SET NULL"),
-        nullable=True,
-    )
-    chek_rasm_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    ai_ochigan_summa: Mapped[float | None] = mapped_column(
-        Numeric(14, 2), nullable=True
-    )
-    ai_ochigan_sana: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    ai_xulosasi: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    # kutilmoqda / tasdiqlandi / rad_etildi
-    holat: Mapped[str] = mapped_column(String(20), default="kutilmoqda")
-    tasdiqlagan_admin: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    rad_sababi: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    created_store_id: Mapped[int | None] = mapped_column(
-        ForeignKey("stores.id", ondelete="SET NULL"), nullable=True
-    )
-    yaratilgan_vaqt: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_now
-    )
-
-
-class CoinHarakati(Base):
-    """Barcha coin harakatlari — umumiy tarix (hisobot SUM() bilan hisoblanadi)."""
-
-    __tablename__ = "coin_harakatlari"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
-    )
-    store_id: Mapped[int | None] = mapped_column(
-        ForeignKey("stores.id", ondelete="SET NULL"), nullable=True, index=True
-    )
-    # toldirish / xarid / bekor_qilish_qaytarish / pul_yechish /
-    # qaytarib_olish / referal_bonus / sodiqlik_bonus / komissiya
-    turi: Mapped[str] = mapped_column(String(30), index=True)
-    summa: Mapped[float] = mapped_column(Numeric(14, 2))  # KGS
-    order_id: Mapped[int | None] = mapped_column(
-        ForeignKey("orders.id", ondelete="SET NULL"), nullable=True
-    )
-    vaqt: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_now, index=True
-    )
+    tartib_raqami: Mapped[int] = mapped_column(Integer, default=0)

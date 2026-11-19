@@ -1,6 +1,4 @@
-# Render.com uchun sozlama (Blueprint).
-# Bu backend web-xizmatini yaratadi: u ham API (/api/...), ham Mini App (/app)
-# ni xizmat qiladi. Maxfiy qiymatlar (tokenlar) Render saytida qo'lда kiritiladi.
+# ARZON 2.0 Render Blueprint — set DATABASE_URL to Supabase PostgreSQL.
 services:
   - type: web
     name: arzon-backend
@@ -9,49 +7,21 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port $PORT
     envVars:
-      - key: CORS_ORIGINS
-        value: "*"
-      # DATABASE_URL — Neon ulanish satri. sync:false => Blueprint uni
-      # QAYTA YOZMAYDI (siz Render saytida kiritган Neon qiymati saqlanadi).
-      # DIQQAT: bu qiymat bo'sh bo'lса kod SQLite'ga tushadi va ma'lumot
-      # saqlanmaydi — shuning uchun uni albatta Neon satriga o'rnating.
       - key: DATABASE_URL
         sync: false
-      # Quyidagilarni Render saytida qo'lда kiritasiz (Environment bo'limi):
-      #   MINIAPP_BOT_TOKEN   = Savdo bot tokeni (initData tekshiruvi uchun)
-      #   INTERNAL_API_TOKEN  = botlar bilan bir xil maxfiy token
-      #   SUPER_ADMIN_IDS     = sizning Telegram ID
-      - key: MINIAPP_BOT_TOKEN
+      - key: JWT_SECRET
         sync: false
-      - key: INTERNAL_API_TOKEN
+      - key: SUPER_ADMIN_EMAILS
         sync: false
-      - key: SUPER_ADMIN_IDS
+      - key: KURYER_EMAILS
         sync: false
-      # Webhook rejimi: botlar backend ichida ishlaydi (PowerShell kerak emas).
-      #   SAVDO_BOT_TOKEN     = mijoz boti tokeni (MINIAPP_BOT_TOKEN bilan bir xil)
-      #   BOSHQARUV_BOT_TOKEN = admin boti tokeni
-      - key: SAVDO_BOT_TOKEN
-        sync: false
-      - key: BOSHQARUV_BOT_TOKEN
-        sync: false
-      # Moliya Boti (faqat super-admin — ACOM coin so'rovlari).
-      - key: MOLIYA_BOT_TOKEN
-        sync: false
-      # Menejer Boti (do'kon/admin/arenda boshqaruvi) + menejer ID'lari.
-      - key: MENEJER_BOT_TOKEN
-        sync: false
-      - key: MENEJER_IDS
-        sync: false
-      # Do'kon ochilgach yuboriladigan admin bot username (@siz).
-      - key: ADMIN_BOT_USERNAME
-        sync: false
-      # Gemini Flash — chek/rasm tahlili (ixtiyoriy; bo'sh bo'lса super-admin
-      # qo'lда tekshiradi). Mijoz chatи uchun emas — u Claude API.
+      - key: CORS_ORIGINS
+        value: "*"
       - key: GEMINI_API_KEY
         sync: false
-      # Majburiy kanalga obuna (ixtiyoriy — bo'sh bo'lса o'chiq).
-      # Bot kanalда ADMIN bo'lishi kerak. ID: @username yoki -100...
-      - key: NEWS_CHANNEL_ID
+      - key: ANTHROPIC_API_KEY
         sync: false
-      - key: NEWS_CHANNEL_LINK
+      - key: INSTAGRAM_VERIFY_TOKEN
+        sync: false
+      - key: INSTAGRAM_PAGE_TOKEN
         sync: false
