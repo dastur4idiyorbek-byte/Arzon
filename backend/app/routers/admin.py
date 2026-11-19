@@ -1,5 +1,5 @@
 """ARZON 2.0 admin router (native users and Expo push)."""
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -9,7 +9,6 @@ from ..database import get_db
 from ..models import Product, PromoCode, Store, PickupPoint, Order, User
 from ..security import require_admin, check_store_access
 from ..services.push import push_store_admins, push_user
-from .. import ai
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -153,10 +152,14 @@ def accept_order(order_id: int, admin_id: int = Depends(require_admin), db: Sess
     check_store_access(admin_id, order.store_id, db)
     if order.tolov_holati != "tasdiqlandi":
         raise HTTPException(400, "To'lov avval tasdiqlanishi kerak.")
-    order.holat = "tayyorlanmoqda"; order.tasdiqlangan_vaqt = datetime.now()
+    if order.holat != "yangi":
+        raise HTTPException(400, "Buyurtma allaqachon qabul qilingan yoki yopilgan.")
+    order.holat = "tayyorlanmoqda"; order.tasdiqlangan_vaqt = datetime.now(timezone.utc)
     for item in order.mahsulotlar or []:
         product = db.get(Product, item.get("product_id"))
         if product and product.miqdor is not None:
+            if product.miqdor < int(item.get("soni", 0)):
+                raise HTTPException(400, f"'{product.nomi}' omborida yetarli mahsulot yo'q.")
             product.miqdor = max(0, product.miqdor - int(item.get("soni", 0)))
     db.commit()
     user = db.get(User, order.user_id)
@@ -170,6 +173,10 @@ def accept_payment(order_id: int, admin_id: int = Depends(require_admin), db: Se
     if order is None:
         raise HTTPException(404, "Buyurtma topilmadi.")
     check_store_access(admin_id, order.store_id, db)
+    if order.holat != "tolov_kutilmoqda":
+        raise HTTPException(400, "Buyurtma to'lov kutish holatida emas.")
+    if not order.chek_rasm_url:
+        raise HTTPException(400, "To'lov cheki hali yuklanmagan.")
     expected = float(order.oldindan_summa or order.jami_narx)
     if order.ai_ochigan_summa is not None and abs(float(order.ai_ochigan_summa) - expected) <= 1:
         order.ai_xulosasi = "mos_keladi"
@@ -185,6 +192,8 @@ def reject_receipt(order_id: int, admin_id: int = Depends(require_admin), db: Se
     if order is None:
         raise HTTPException(404, "Buyurtma topilmadi.")
     check_store_access(admin_id, order.store_id, db)
+    if order.tolov_holati != "kutilmoqda":
+        raise HTTPException(400, "Bu to'lov allaqachon yakunlangan.")
     order.tolov_holati = "rad_etildi"; order.holat = "bekor_qilindi"
     db.commit()
     push_user(db, db.get(User, order.user_id), "To'lov rad etildi", "Buyurtma cheki tasdiqlanmadi.", {"type": "order", "order_id": order.id})

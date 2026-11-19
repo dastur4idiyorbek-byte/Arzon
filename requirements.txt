@@ -1,1 +1,16 @@
+fastapi==0.139.2
+uvicorn==0.51.0
+SQLAlchemy==2.0.51
+pydantic==2.13.4
+pydantic-settings==2.14.2
+python-dotenv==1.2.2
+httpx==0.28.1
+python-multipart==0.0.20
+psycopg2-binary==2.9.10
+bcrypt==4.2.1
+PyJWT==2.10.1
+cryptography==44.0.0
+apscheduler==3.11.0
+google-genai==1.16.1
+anthropic==0.42.0
 pytest==8.3.5

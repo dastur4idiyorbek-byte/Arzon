@@ -24,7 +24,12 @@ def available_orders(db: Session = Depends(get_db), courier: User = Depends(requ
              "manzil": o.manzil, "lokatsiya_lat": float(o.lokatsiya_lat) if o.lokatsiya_lat is not None else None,
              "lokatsiya_lng": float(o.lokatsiya_lng) if o.lokatsiya_lng is not None else None,
              "holat": o.holat, "oldindan_summa": float(o.oldindan_summa)}
-            for o in db.scalars(select(Order).where(Order.yetkazish_turi == "kuryer", Order.holat.in(["yangi", "tayyorlanmoqda", "yolda"]), Order.kuryer_user_id.is_(None))).all()]
+            for o in db.scalars(select(Order).where(
+                Order.yetkazish_turi == "kuryer",
+                Order.holat.in_(["yangi", "tayyorlanmoqda", "yolda"]),
+                Order.kuryer_user_id.is_(None),
+                Order.tolov_holati == "tasdiqlandi",
+            )).all()]
 
 
 @router.post("/orders/{order_id}/take")
@@ -32,6 +37,10 @@ def take_order(order_id: int, db: Session = Depends(get_db), courier: User = Dep
     order = db.get(Order, order_id)
     if order is None:
         raise HTTPException(404, "Buyurtma topilmadi.")
+    if order.tolov_holati != "tasdiqlandi":
+        raise HTTPException(400, "Buyurtma to'lovi tasdiqlanmagan.")
+    if order.holat not in ("yangi", "tayyorlanmoqda"):
+        raise HTTPException(400, "Bu buyurtmani hozir qabul qilib bo'lmaydi.")
     if order.kuryer_user_id is not None:
         raise HTTPException(400, "Buyurtma boshqa kuryerga biriktirilgan.")
     order.kuryer_user_id = courier.id
@@ -49,7 +58,11 @@ def delivered(order_id: int, db: Session = Depends(get_db), courier: User = Depe
         raise HTTPException(404, "Buyurtma topilmadi.")
     if order.kuryer_user_id != courier.id:
         raise HTTPException(403, "Bu buyurtma sizga biriktirilmagan.")
-    order.holat = "topshirildi"; order.tasdiqlangan_vaqt = __import__('datetime').datetime.now(__import__('datetime').timezone.utc)
+    if order.holat != "yolda":
+        raise HTTPException(400, "Buyurtma yo'lda holatida emas.")
+    order.holat = "topshirildi"
+    from datetime import datetime, timezone
+    order.tasdiqlangan_vaqt = datetime.now(timezone.utc)
     db.commit()
     push_user(db, db.get(User, order.user_id), "Buyurtma topshirildi", "Buyurtmangiz topshirildi. Xaridingiz uchun rahmat!", {"type": "order", "order_id": order.id})
     return {"id": order.id, "holat": order.holat}
@@ -62,6 +75,8 @@ def customer_rejected(order_id: int, db: Session = Depends(get_db), courier: Use
         raise HTTPException(404, "Buyurtma topilmadi.")
     if order.kuryer_user_id != courier.id:
         raise HTTPException(403, "Bu buyurtma sizga biriktirilmagan.")
+    if order.holat != "yolda":
+        raise HTTPException(400, "Faqat yo'lda holatidagi buyurtmani rad etish mumkin.")
     from decimal import Decimal
     delivery = Decimal(str(order.yetkazish_narxi or 0))
     refund = (Decimal(str(order.oldindan_summa or 0)) - delivery).quantize(Decimal("0.01"))
